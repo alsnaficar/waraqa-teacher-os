@@ -1,4 +1,4 @@
-import { getGemini, generateContent } from "../../../services/gemini";
+﻿import { getGemini, generateContent } from "../../../../services/gemini";
 import { GoogleGenAI } from "@google/genai";
 
 export const DEFAULT_AI_MODEL = "gemini-2.5-flash";

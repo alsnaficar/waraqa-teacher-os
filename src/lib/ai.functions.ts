@@ -1,9 +1,9 @@
-import { createServerFn } from "@tanstack/react-start";
+﻿import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { saveAiGeneration } from "@/lib/ai/persistence.server";
-import { aiOrchestrator } from "@/lib/ai/orchestrator";
+import { aiOrchestrator } from "@/features/ai/orchestrator";
 
 const StageEnum = z.enum(["primary", "intermediate", "secondary"]).optional();
 const SemesterEnum = z.string().optional();
@@ -26,7 +26,7 @@ export const generateLessonPlan = createServerFn({ method: "POST" })
     const row = await saveAiGeneration(context.supabase, {
       userId: context.userId,
       kind: "lesson_plan",
-      prompt: `تحضير درس: ${data.title}`,
+      prompt: `ØªØ­Ø¶ÙŠØ± Ø¯Ø±Ø³: ${data.title}`,
       output: {
         content: result.content,
         input: data,
@@ -60,7 +60,7 @@ export const generateWorksheet = createServerFn({ method: "POST" })
     const row = await saveAiGeneration(context.supabase, {
       userId: context.userId,
       kind: "worksheet",
-      prompt: `واجب منزلي: ${data.title}`,
+      prompt: `ÙˆØ§Ø¬Ø¨ Ù…Ù†Ø²Ù„ÙŠ: ${data.title}`,
       output: {
         content: result.content,
         input: data,
@@ -90,7 +90,7 @@ export const generateQuiz = createServerFn({ method: "POST" })
     const row = await saveAiGeneration(context.supabase, {
       userId: context.userId,
       kind: "quiz",
-      prompt: `اختبار قصير: ${data.title}`,
+      prompt: `Ø§Ø®ØªØ¨Ø§Ø± Ù‚ØµÙŠØ±: ${data.title}`,
       output: {
         content: result.content,
         input: data,
@@ -119,7 +119,7 @@ export const generateActivityIdeas = createServerFn({ method: "POST" })
     const row = await saveAiGeneration(context.supabase, {
       userId: context.userId,
       kind: "activity_ideas",
-      prompt: `أفكار أنشطة: ${data.title}`,
+      prompt: `Ø£ÙÙƒØ§Ø± Ø£Ù†Ø´Ø·Ø©: ${data.title}`,
       output: {
         content: result.content,
         input: data,

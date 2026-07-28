@@ -1,4 +1,4 @@
-import {
+﻿import {
   AIGeneratorType,
   GeneratorAdapter,
   OrchestratorOptions,
@@ -7,8 +7,8 @@ import {
   AIOrchestratorLog,
 } from "./types";
 import { LessonPlanAdapter, HomeworkAdapter, QuizAdapter, ActivitiesAdapter } from "./adapters";
-import { buildCurriculumContext } from "@/lib/ai/curriculum-context.server";
-import { callDirectAi } from "@/lib/ai/direct.server";
+import { buildCurriculumContext } from "@/features/ai/services/curriculum-context.server";
+import { callDirectAi } from "@/features/ai/services/direct.server";
 
 export class GeminiProvider implements AIProvider {
   name = "gemini-direct";
@@ -46,7 +46,7 @@ export class AIOrchestrator {
   public getAdapter(type: AIGeneratorType): GeneratorAdapter {
     const adapter = this.adapters.get(type);
     if (!adapter) {
-      throw new Error(`لم يتم العثور على محول للمولد من النوع: ${type}`);
+      throw new Error(`Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ù…Ø­ÙˆÙ„ Ù„Ù„Ù…ÙˆÙ„Ø¯ Ù…Ù† Ø§Ù„Ù†ÙˆØ¹: ${type}`);
     }
     return adapter;
   }
@@ -75,7 +75,7 @@ export class AIOrchestrator {
         .map((e) => `${e.path.join(".")}: ${e.message}`)
         .join(", ");
       console.error(`[AIOrchestrator] Input validation failed for ${type}:`, errorMsg);
-      throw new Error(`بيانات المدخلات غير صالحة لـ ${type}: ${errorMsg}`);
+      throw new Error(`Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ù…Ø¯Ø®Ù„Ø§Øª ØºÙŠØ± ØµØ§Ù„Ø­Ø© Ù„Ù€ ${type}: ${errorMsg}`);
     }
     const validatedInput = parsedInput.data;
 
@@ -137,7 +137,7 @@ export class AIOrchestrator {
 
     // Handle complete failure
     if (!response) {
-      const finalError = lastError || new Error("فشلت عملية توليد المحتوى بالذكاء الاصطناعي.");
+      const finalError = lastError || new Error("ÙØ´Ù„Øª Ø¹Ù…Ù„ÙŠØ© ØªÙˆÙ„ÙŠØ¯ Ø§Ù„Ù…Ø­ØªÙˆÙ‰ Ø¨Ø§Ù„Ø°ÙƒØ§Ø¡ Ø§Ù„Ø§ØµØ·Ù†Ø§Ø¹ÙŠ.");
 
       // 6. Centralized Logging (Failure case)
       this.log({
