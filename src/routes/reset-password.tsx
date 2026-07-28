@@ -2,12 +2,12 @@ import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { BackButton } from "@/components/common/back-button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/shared/ui/button";
+import { BackButton } from "@/shared/components/back-button";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { supabase } from "@/platform/database/supabase/client";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({

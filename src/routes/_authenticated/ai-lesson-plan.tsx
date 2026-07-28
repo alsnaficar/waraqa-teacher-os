@@ -27,29 +27,29 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Label } from "@/shared/ui/label";
+import { Input } from "@/shared/ui/input";
+import { Textarea } from "@/shared/ui/textarea";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/shared/ui/select";
 import { type Assignment } from "@/routes/_authenticated/settings";
 import { CurriculumSelector, type CurriculumSelection } from "@/features/ai/components/curriculum-selector";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
-import { generateLessonPreparation } from "@/lib/ai-lesson-generator.functions";
-import { downloadStructuredLessonPrepDocx, copyToClipboard } from "@/lib/ai/docx";
-import { supabase } from "@/integrations/supabase/client";
+import { generateLessonPreparation } from "@/platform/ai/functions/ai-lesson-generator.functions";
+import { downloadStructuredLessonPrepDocx, copyToClipboard } from "@/platform/ai/docx";
+import { supabase } from "@/platform/database/supabase/client";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
   CONFIG_SCHEDULE_OVERRIDES_DATE,
-} from "@/lib/schedule/planner-engine";
+} from "@/features/planner/services/planner-engine";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 

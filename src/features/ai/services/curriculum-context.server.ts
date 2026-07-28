@@ -6,7 +6,7 @@
  * their existing prompt unchanged.
  */
 
-import { getLessonContent } from "@/lib/curriculum/content-service";
+import { getLessonContent } from "@/features/curriculum/content-service";
 import type { EducationStage, Semester } from "@/features/ai/components/curriculum-selector";
 
 export interface EnrichArgs {

@@ -3,10 +3,10 @@ import { Bell, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Button } from "@/components/ui/button";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { BackButton } from "@/components/common/back-button";
-import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/shared/ui/button";
+import { SidebarTrigger } from "@/shared/ui/sidebar";
+import { BackButton } from "@/shared/components/back-button";
+import { supabase } from "@/platform/database/supabase/client";
 
 export function AppHeader() {
   const navigate = useNavigate();

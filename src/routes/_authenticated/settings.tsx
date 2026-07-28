@@ -4,22 +4,22 @@ import { toast } from "sonner";
 import { Plus, Trash2, BookOpen, RefreshCw } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { MadrasatiAuthModal } from "@/layers/integration-layer/madrasati/components/madrasati-auth-modal";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { SectionHeader } from "@/shared/components/section-header";
+import { MadrasatiAuthModal } from "@/platform/integration/connectors/madrasati/components/madrasati-auth-modal";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Button } from "@/shared/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/shared/ui/avatar";
+import { Badge } from "@/shared/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+} from "@/shared/ui/select";
+import { supabase } from "@/platform/database/supabase/client";
 import {
   STAGE_LABEL,
   GRADES_BY_STAGE,

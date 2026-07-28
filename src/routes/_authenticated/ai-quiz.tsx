@@ -21,24 +21,24 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { generateQuizAndAssignment } from "@/lib/ai-quiz-generator.functions";
+} from "@/shared/ui/select";
+import { generateQuizAndAssignment } from "@/platform/ai/functions/ai-quiz-generator.functions";
 import {
   copyToClipboard,
   downloadStructuredQuizAndAssignmentDocx,
   type StructuredQuizAndAssignmentData,
-} from "@/lib/ai/docx";
+} from "@/platform/ai/docx";
 import {
   CurriculumSelector,
   EMPTY_CURRICULUM,

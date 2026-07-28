@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Bell } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { EmptyState } from "@/components/common/empty-state";
+import { SectionHeader } from "@/shared/components/section-header";
+import { EmptyState } from "@/shared/components/empty-state";
 
 export const Route = createFileRoute("/_authenticated/notifications")({
   component: NotificationsPage,

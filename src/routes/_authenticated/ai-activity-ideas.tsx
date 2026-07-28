@@ -6,20 +6,20 @@ import { z } from "zod";
 import { ArrowRight, Copy, Download, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { generateActivityIdeas } from "@/lib/ai.functions";
-import { copyToClipboard, downloadArabicDocx } from "@/lib/ai/docx";
+} from "@/shared/ui/select";
+import { generateActivityIdeas } from "@/platform/ai/functions/ai.functions";
+import { copyToClipboard, downloadArabicDocx } from "@/platform/ai/docx";
 import {
   CurriculumSelector,
   EMPTY_CURRICULUM,

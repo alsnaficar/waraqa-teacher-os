@@ -1,12 +1,12 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/platform/database/supabase/client";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
 import { BottomNav } from "@/components/layout/bottom-nav";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { useAcademicCalendar } from "@/lib/academic-config";
+import { SidebarInset, SidebarProvider } from "@/shared/ui/sidebar";
+import { useAcademicCalendar } from "@/platform/config/academic-config";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,

@@ -3,8 +3,8 @@ import { BarChart3, ClipboardList, FlaskConical, CheckCircle2 } from "lucide-rea
 import type { LucideIcon } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Badge } from "@/shared/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   component: ReportsPage,

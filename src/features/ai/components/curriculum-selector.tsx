@@ -1,14 +1,14 @@
 import { useEffect, useMemo } from "react";
 
-import { Label } from "@/components/ui/label";
+import { Label } from "@/shared/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { useAcademicTerms } from "@/lib/academic-config";
+} from "@/shared/ui/select";
+import { useAcademicTerms } from "@/platform/config/academic-config";
 
 export type EducationStage = "primary" | "intermediate" | "secondary";
 export type Semester = string;

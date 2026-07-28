@@ -4,13 +4,13 @@ import { useState, useEffect } from "react";
 import { FileSpreadsheet, FileText, Upload, Settings } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { EmptyState } from "@/components/common/empty-state";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { getTermsLabelMap } from "@/lib/academic-config";
+import { SectionHeader } from "@/shared/components/section-header";
+import { EmptyState } from "@/shared/components/empty-state";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { supabase } from "@/platform/database/supabase/client";
+import { getTermsLabelMap } from "@/platform/config/academic-config";
 
 export const Route = createFileRoute("/_authenticated/curriculum")({
   component: CurriculumPage,

@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Home, CalendarDays, ClipboardCheck, BarChart3, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/utils/utils";
 
 type NavItem = {
   to: "/dashboard" | "/planner" | "/corrections" | "/reports" | "/settings";

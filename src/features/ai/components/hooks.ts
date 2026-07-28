@@ -3,12 +3,12 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { CurriculumSelection, validateCurriculum } from "./curriculum-selector";
 import { AIDifficulty, AIHomeworkType, FieldErrors } from "@/features/ai/components/types";
-import { copyToClipboard, downloadArabicDocx } from "@/lib/ai/docx";
-import { supabase } from "@/integrations/supabase/client";
+import { copyToClipboard, downloadArabicDocx } from "@/platform/ai/docx";
+import { supabase } from "@/platform/database/supabase/client";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
   CONFIG_SCHEDULE_OVERRIDES_DATE,
-} from "@/lib/schedule/planner-engine";
+} from "@/features/planner/services/planner-engine";
 
 // 1. useAIClipboard hook
 export function useAIClipboard() {

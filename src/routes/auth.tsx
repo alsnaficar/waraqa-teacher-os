@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { AuthForm } from "@/components/auth/auth-form";
-import { BackButton } from "@/components/common/back-button";
-import { Card, CardContent } from "@/components/ui/card";
+import { BackButton } from "@/shared/components/back-button";
+import { Card, CardContent } from "@/shared/ui/card";
 import { ar } from "@/i18n/ar";
 
 export const Route = createFileRoute("/auth")({

@@ -19,14 +19,14 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { getScheduleService, type ScheduleEntry } from "@/lib/schedule/service";
-import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Badge } from "@/shared/ui/badge";
+import { getScheduleService, type ScheduleEntry } from "@/features/planner/services/service";
+import { supabase } from "@/platform/database/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { cn } from "@/lib/utils";
-import { startOfWeekSunday, formatHijriFull } from "@/lib/utils/date";
+import { cn } from "@/shared/utils/utils";
+import { startOfWeekSunday, formatHijriFull } from "@/shared/utils/date";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: HomePage,
@@ -86,7 +86,7 @@ function HomePage() {
     staleTime: 30_000,
     queryFn: async () => {
       try {
-        const { generateSchedule } = await import("@/lib/schedule/planner-engine");
+        const { generateSchedule } = await import("@/features/planner/services/planner-engine");
         const entries = await generateSchedule();
         return entries;
       } catch (err) {

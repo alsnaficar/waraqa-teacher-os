@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Mail, Lock, RefreshCw, Check, Loader2, ShieldCheck } from "lucide-react";
-import { syncMadrasatiSchedule } from "@/layers/integration-layer/madrasati/madrasati.functions";
+import { syncMadrasatiSchedule } from "@/platform/integration/connectors/madrasati/madrasati.functions";
 import { toast } from "sonner";
 
 interface MadrasatiAuthModalProps {

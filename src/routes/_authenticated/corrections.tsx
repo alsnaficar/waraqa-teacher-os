@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ClipboardCheck, ClipboardList, FlaskConical } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Badge } from "@/shared/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/corrections")({
   component: CorrectionsPage,

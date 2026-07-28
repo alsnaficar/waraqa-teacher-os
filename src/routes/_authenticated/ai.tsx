@@ -11,10 +11,10 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 import { ar } from "@/i18n/ar";
 
 export const Route = createFileRoute("/_authenticated/ai")({

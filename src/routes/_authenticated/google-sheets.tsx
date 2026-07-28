@@ -25,11 +25,11 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Badge } from "@/shared/ui/badge";
+import { supabase } from "@/platform/database/supabase/client";
 import { toast } from "sonner";
 
 import {
@@ -42,7 +42,7 @@ import {
   SheetWorksheetInfo,
   DiagnosticResult,
   ExportResult,
-} from "@/lib/schedule/sheets.functions";
+} from "@/features/planner/sheets.functions";
 
 export const Route = createFileRoute("/_authenticated/google-sheets")({
   component: GoogleSheetsIntegrationPage,

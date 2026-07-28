@@ -21,22 +21,22 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
-import { getTermsLabelMap } from "@/lib/academic-config";
+} from "@/shared/ui/select";
+import { Textarea } from "@/shared/ui/textarea";
+import { Badge } from "@/shared/ui/badge";
+import { supabase } from "@/platform/database/supabase/client";
+import { getTermsLabelMap } from "@/platform/config/academic-config";
 import { toast } from "sonner";
 
 import {
@@ -47,7 +47,7 @@ import {
   deleteCurriculumDraft,
   getAdminCurriculumFiles,
   getAdminCurriculumLessons,
-} from "@/lib/curriculum-management.functions";
+} from "@/platform/curriculum/curriculum-management.functions";
 
 export const Route = createFileRoute("/_authenticated/curriculum-management")({
   component: CurriculumManagementPage,

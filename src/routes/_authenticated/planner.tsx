@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { PlannerDesktopLayout } from "@/components/planner/planner-desktop-layout";
-import { PlannerMobileLayout } from "@/components/planner/planner-mobile-layout";
-import { type DayKey, type Lesson } from "@/components/planner/types";
+import { PlannerDesktopLayout } from "@/features/planner/components/planner-desktop-layout";
+import { PlannerMobileLayout } from "@/features/planner/components/planner-mobile-layout";
+import { type DayKey, type Lesson } from "@/features/planner/components/types";
 import {
   generateSchedule,
   syncScheduleToDatabase,
   recalculateAndSyncPlanner,
   type CalculatedLessonEntry,
-} from "@/lib/schedule/planner-engine";
-import type { LessonOverrideScope } from "@/lib/schedule/overrides";
+} from "@/features/planner/services/planner-engine";
+import type { LessonOverrideScope } from "@/features/planner/overrides";
 
 export const Route = createFileRoute("/_authenticated/planner")({
   component: PlannerPage,

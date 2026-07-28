@@ -5,10 +5,10 @@ import { z } from "zod";
 import { ArrowRight, FileText, RefreshCw } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { generateWorksheet } from "@/lib/ai.functions";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { generateWorksheet } from "@/platform/ai/functions/ai.functions";
 import { useAIGeneration, useAIClipboard, useAIExport } from "@/features/ai/components/hooks";
 import { AIGenerationForm } from "@/features/ai/components/ai-generation-form";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";

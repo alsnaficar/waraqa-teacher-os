@@ -3,8 +3,8 @@ import { ArrowRight, Sparkles } from "lucide-react";
 import { z } from "zod";
 
 import { PageShell } from "@/components/layout/page-shell";
-import { SectionHeader } from "@/components/common/section-header";
-import { Card, CardContent } from "@/components/ui/card";
+import { SectionHeader } from "@/shared/components/section-header";
+import { Card, CardContent } from "@/shared/ui/card";
 
 const SearchSchema = z.object({
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),

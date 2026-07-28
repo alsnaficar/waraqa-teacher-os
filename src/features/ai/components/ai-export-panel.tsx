@@ -1,4 +1,4 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { Eye, Edit2 } from "lucide-react";
 import { AIActionToolbar } from "./ai-action-toolbar";
 import { AIResultViewer } from "./ai-result-viewer";

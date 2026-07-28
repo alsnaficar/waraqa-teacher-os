@@ -10,8 +10,8 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { supabase } from "@/integrations/supabase/client";
-import { Toaster } from "@/components/ui/sonner";
+import { supabase } from "@/platform/database/supabase/client";
+import { Toaster } from "@/shared/ui/sonner";
 
 function NotFoundComponent() {
   return (

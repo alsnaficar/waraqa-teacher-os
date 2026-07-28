@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/utils/utils";
 
 export function PageShell({ children, className }: { children: ReactNode; className?: string }) {
   return (

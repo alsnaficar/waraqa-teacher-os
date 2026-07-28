@@ -10,7 +10,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/platform/database/supabase/client";
 
 import {
   Sidebar,
@@ -22,7 +22,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/shared/ui/sidebar";
 import { ar } from "@/i18n/ar";
 
 const items = [

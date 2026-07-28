@@ -1,19 +1,19 @@
 import { Clock, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { Label } from "@/shared/ui/label";
+import { Input } from "@/shared/ui/input";
+import { Textarea } from "@/shared/ui/textarea";
+import { Button } from "@/shared/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/shared/ui/select";
 import { CurriculumSelector, CurriculumSelection } from "./curriculum-selector";
 import { AIDifficulty, AIHomeworkType, FieldErrors } from "@/features/ai/components/types";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/platform/database/supabase/client";
 import { type Assignment } from "@/routes/_authenticated/settings";
 
 interface AIGenerationFormProps {
