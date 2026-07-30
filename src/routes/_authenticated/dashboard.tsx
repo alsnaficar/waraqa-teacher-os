@@ -1,0 +1,508 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Sparkles,
+  BookOpen,
+  FileText,
+  FlaskConical,
+  PlaySquare,
+  Lightbulb,
+  CalendarDays,
+  ClipboardList,
+  Megaphone,
+  BarChart3,
+  User,
+  Bot,
+  ChevronLeft,
+  CheckCircle2,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import { PageShell } from "@/components/layout/page-shell";
+import { Card, CardContent } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Badge } from "@/shared/ui/badge";
+import { getScheduleService, type ScheduleEntry } from "@/features/planner/services/service";
+import { supabase } from "@/platform/database/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { cn } from "@/shared/utils/utils";
+import { startOfWeekSunday, formatHijriFull } from "@/shared/utils/date";
+
+export const Route = createFileRoute("/_authenticated/dashboard")({
+  component: HomePage,
+});
+
+const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+
+function HomePage() {
+  const today = useMemo(() => new Date(), []);
+  const todayKey = DAY_KEYS[today.getDay()];
+  const hijri = useMemo(() => formatHijriFull(today), [today]);
+
+  const { data: profile } = useQuery({
+    queryKey: ["home-profile"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data: userRes } = await supabase.auth.getUser();
+      const u = userRes.user;
+      const { data } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", u?.id ?? "")
+        .maybeSingle();
+      return {
+        name: data?.full_name?.trim() || u?.email?.split("@")[0] || "معلم",
+      };
+    },
+  });
+
+  // Query real AI generation stats
+  const { data: stats } = useQuery({
+    queryKey: ["dashboard-stats"],
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data: userRes } = await supabase.auth.getUser();
+      const userId = userRes.user?.id;
+      if (!userId) return { lessonPlans: 0, worksheets: 0, quizzes: 0 };
+
+      const { data, error } = await supabase
+        .from("ai_generations")
+        .select("kind")
+        .eq("user_id", userId);
+
+      if (error || !data) return { lessonPlans: 0, worksheets: 0, quizzes: 0 };
+
+      const lessonPlans = data.filter((g) => g.kind === "lesson_plan").length;
+      const worksheets = data.filter((g) => g.kind === "worksheet").length;
+      const quizzes = data.filter((g) => g.kind === "quiz").length;
+
+      return { lessonPlans, worksheets, quizzes };
+    },
+  });
+
+  // Query the real weekly/daily schedule
+  const { data: scheduleData } = useQuery({
+    queryKey: ["dashboard-schedule"],
+    staleTime: 30_000,
+    queryFn: async () => {
+      try {
+        const { generateSchedule } = await import("@/features/planner/services/planner-engine");
+        const entries = await generateSchedule();
+        return entries;
+      } catch (err) {
+        console.error("Failed to load schedule for dashboard:", err);
+        return [];
+      }
+    },
+  });
+
+  const [mockLessons, setMockLessons] = useState<ScheduleEntry[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getScheduleService()
+      .getWeek({ weekOf: startOfWeekSunday(today) })
+      .then((entries) => {
+        if (cancelled) return;
+        setMockLessons(
+          entries.filter((e) => e.day === todayKey).sort((a, b) => a.period - b.period),
+        );
+      })
+      .catch(() => !cancelled && setMockLessons([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [today, todayKey]);
+
+  // Extract today's real lessons, fallback to mock if no plan is set up
+  const todaysLessons = useMemo(() => {
+    if (!scheduleData || scheduleData.length === 0) return mockLessons;
+    const todayISO = today.toISOString().slice(0, 10);
+    const realToday = scheduleData
+      .filter((e) => e.suggestedDate === todayISO && e.status !== "Skipped")
+      .sort((a, b) => a.period - b.period);
+    return realToday.length > 0 ? realToday : mockLessons;
+  }, [scheduleData, mockLessons, today]);
+
+  const normalizedTodayLessons = useMemo(() => {
+    return todaysLessons.map((l) => {
+      const displayGrade = ("className" in l ? l.className : "grade" in l ? l.grade : "") || "";
+      const displayKlass = ("klass" in l ? l.klass : "") || "";
+      return {
+        id: l.id,
+        period: l.period,
+        grade: displayGrade,
+        klass: displayKlass,
+        lessonTitle: l.lessonTitle,
+        subject: l.subject,
+      };
+    });
+  }, [todaysLessons]);
+
+  // Find next upcoming lesson
+  const nextLesson = useMemo(() => {
+    if (!scheduleData || scheduleData.length === 0) return null;
+    const todayISO = today.toISOString().slice(0, 10);
+    return scheduleData.find((e) => e.suggestedDate >= todayISO && e.status !== "Skipped");
+  }, [scheduleData, today]);
+
+  const activeLesson = todaysLessons[0] || nextLesson;
+  const lessonPlanSearch:
+    | {
+        stage?: "primary" | "intermediate" | "secondary";
+        grade?: string;
+        subject?: string;
+        title?: string;
+      }
+    | undefined = useMemo(() => {
+    if (!activeLesson) return undefined;
+    const gradeVal =
+      "className" in activeLesson
+        ? activeLesson.className
+        : "grade" in activeLesson
+          ? (activeLesson as { grade: string }).grade
+          : "";
+    const isInt = String(gradeVal).includes("متوسط");
+    const isSec = String(gradeVal).includes("ثانوي");
+    return {
+      stage: isInt ? "intermediate" : isSec ? "secondary" : "primary",
+      grade: String(gradeVal),
+      subject: activeLesson.subject,
+      title: activeLesson.lessonTitle,
+    };
+  }, [activeLesson]);
+
+  return (
+    <PageShell>
+      {/* Greeting */}
+      <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+              <User className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-primary">أهلاً بك</p>
+              <h1 className="mt-0.5 truncate text-xl font-bold sm:text-2xl">
+                {profile?.name ?? "..."}
+              </h1>
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CalendarDays className="h-3.5 w-3.5" />
+                {hijri}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quick actions */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground font-bold">
+          إجراءات سريعة
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <QuickAction
+            to="/ai-lesson-plan"
+            search={lessonPlanSearch}
+            title="تحضير درس اليوم"
+            icon={Sparkles}
+            tone="violet"
+            highlight
+          />
+          <QuickAction
+            to="/ai-quiz"
+            search={lessonPlanSearch}
+            title="إنشاء اختبار سريع"
+            icon={FlaskConical}
+            tone="red"
+            highlight
+          />
+          <QuickAction
+            to="/ai-worksheet"
+            search={lessonPlanSearch}
+            title="ورقة عمل جديدة"
+            icon={FileText}
+            tone="orange"
+          />
+          <QuickAction to="/planner" title="جدول الحصص كاملاً" icon={CalendarDays} tone="blue" />
+        </div>
+      </section>
+
+      {/* Today's schedule */}
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-muted-foreground font-bold">جدول اليوم</h2>
+          <Button asChild variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+            <Link to="/planner">
+              الأسبوع كاملاً
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
+        {normalizedTodayLessons.length === 0 ? (
+          <Card>
+            <CardContent className="p-6 text-center text-sm text-muted-foreground">
+              لا توجد حصص مجدولة لهذا اليوم.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {normalizedTodayLessons.map((l) => (
+              <TodayLessonCard key={l.id} entry={l} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Pending tasks */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground font-bold">
+          مهام قيد الإنجاز
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <PendingCard
+            to="/corrections"
+            title="واجبات للتصحيح"
+            count={0}
+            icon={ClipboardList}
+            tone="orange"
+          />
+          <PendingCard
+            to="/corrections"
+            title="اختبارات للتصحيح"
+            count={0}
+            icon={FlaskConical}
+            tone="red"
+          />
+          <PendingCard
+            to="/notifications"
+            title="إعلانات للنشر"
+            count={0}
+            icon={Megaphone}
+            tone="green"
+          />
+          <PendingCard
+            to="/reports"
+            title="تقارير للإرسال"
+            count={0}
+            icon={BarChart3}
+            tone="blue"
+          />
+        </div>
+      </section>
+
+      {/* Weekly statistics */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground font-bold">
+          إحصائيات الأسبوع
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatMini label="تحاضير أُنشئت" value={stats?.lessonPlans ?? 0} icon={CheckCircle2} />
+          <StatMini label="واجبات أُنشئت" value={stats?.worksheets ?? 0} icon={ClipboardList} />
+          <StatMini label="اختبارات أُنشئت" value={stats?.quizzes ?? 0} icon={FlaskConical} />
+          <StatMini
+            label="الدرس القادم"
+            value={nextLesson ? `حصة ${nextLesson.period}: ${nextLesson.lessonTitle}` : "لا يوجد"}
+            icon={BarChart3}
+            isText
+          />
+        </div>
+      </section>
+
+      {/* Smart AI assistant */}
+      <Card className="border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
+        <CardContent className="p-4">
+          <Link to="/ai" className="flex items-center gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+              <Bot className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">المساعد الذكي</p>
+              <p className="truncate text-xs text-muted-foreground">ما الذي تودّ تحضيره اليوم؟</p>
+            </div>
+            <Sparkles className="h-4 w-4 text-primary" />
+          </Link>
+        </CardContent>
+      </Card>
+    </PageShell>
+  );
+}
+
+// ---------- pieces ----------
+
+type Tone = "violet" | "teal" | "orange" | "red" | "blue" | "green";
+
+const TONE: Record<Tone, string> = {
+  violet: "bg-violet-500/10 text-violet-600 dark:text-violet-300",
+  teal: "bg-teal-500/10 text-teal-600 dark:text-teal-300",
+  orange: "bg-orange-500/10 text-orange-600 dark:text-orange-300",
+  red: "bg-red-500/10 text-red-600 dark:text-red-300",
+  blue: "bg-blue-500/10 text-blue-600 dark:text-blue-300",
+  green: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+};
+
+function QuickAction({
+  to,
+  title,
+  icon: Icon,
+  tone,
+  highlight,
+  search,
+}: {
+  to: string;
+  title: string;
+  icon: LucideIcon;
+  tone: Tone;
+  highlight?: boolean;
+  search?: {
+    stage?: "primary" | "intermediate" | "secondary";
+    grade?: string;
+    subject?: string;
+    title?: string;
+  };
+}) {
+  return (
+    <Link
+      to={to}
+      search={search}
+      className={cn(
+        "group flex flex-col items-start gap-3 rounded-2xl border bg-card p-4 transition hover:border-primary/40 hover:shadow-sm",
+        highlight ? "border-primary/40" : "border-border",
+      )}
+    >
+      <span className={cn("grid h-10 w-10 place-items-center rounded-xl", TONE[tone])}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="text-sm font-semibold leading-snug">{title}</span>
+    </Link>
+  );
+}
+
+function TodayLessonCard({
+  entry,
+}: {
+  entry: {
+    id: string;
+    period: number;
+    grade?: string;
+    className?: string;
+    klass?: string;
+    lessonTitle: string;
+    subject: string;
+  };
+}) {
+  const displayGrade = entry.className || entry.grade || "";
+  const shortGrade = displayGrade.replace(/^الصف\s+/, "");
+  const displayKlass = entry.klass || "";
+
+  const searchParams = {
+    stage: displayGrade.includes("متوسط")
+      ? ("intermediate" as const)
+      : displayGrade.includes("ثانوي")
+        ? ("secondary" as const)
+        : ("primary" as const),
+    grade: displayGrade,
+    subject: entry.subject,
+    title: entry.lessonTitle,
+  };
+
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+          <span className="text-sm font-bold">{entry.period}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-[10px]">
+              {shortGrade || "مادة مخصصة"}
+            </Badge>
+            {displayKlass ? (
+              <span className="text-[10px] text-muted-foreground">{displayKlass}</span>
+            ) : null}
+          </div>
+          <p className="mt-1 truncate text-sm font-semibold">{entry.lessonTitle}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="خطة الدرس" asChild>
+            <Link to="/ai-lesson-plan" search={searchParams as never}>
+              <BookOpen className="h-4 w-4 text-emerald-600" />
+            </Link>
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="الواجب" asChild>
+            <Link to="/ai-worksheet" search={searchParams as never}>
+              <FileText className="h-4 w-4 text-orange-500" />
+            </Link>
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="اختبار قصير" asChild>
+            <Link to="/ai-quiz" search={searchParams as never}>
+              <FlaskConical className="h-4 w-4 text-indigo-600" />
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PendingCard({
+  to,
+  title,
+  count,
+  icon: Icon,
+  tone,
+}: {
+  to: string;
+  title: string;
+  count: number;
+  icon: LucideIcon;
+  tone: Tone;
+}) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 transition hover:border-primary/40 hover:shadow-sm"
+    >
+      <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", TONE[tone])}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs text-muted-foreground">{title}</p>
+        <p className="text-lg font-bold leading-tight">{count}</p>
+      </div>
+    </Link>
+  );
+}
+
+function StatMini({
+  label,
+  value,
+  icon: Icon,
+  isText,
+}: {
+  label: string;
+  value: number | string;
+  icon: LucideIcon;
+  isText?: boolean;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-3 h-full flex flex-col justify-between">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Icon className="h-3.5 w-3.5" />
+          <span className="truncate text-[11px]">{label}</span>
+        </div>
+        {isText ? (
+          <p
+            className="mt-1 text-xs font-semibold text-foreground truncate max-w-full"
+            title={String(value)}
+          >
+            {value}
+          </p>
+        ) : (
+          <p className="mt-1 text-2xl font-bold">{value}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+

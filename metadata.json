@@ -1,0 +1,6 @@
+{
+  "name": "منظم ومحضر الدروس",
+  "description": "منصة ذكية متكاملة للمعلمين لتنظيم وإعداد الدروس، وتصميم المناهج والأنشطة الدراسية، مع أدوات متقدمة لتوفير الوقت وتحسين العملية التعليمية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
