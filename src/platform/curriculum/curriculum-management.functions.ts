@@ -327,8 +327,8 @@ export const publishCurriculum = createServerFn({ method: "POST" })
 
     if (fetchErr || !file) throw new Error("Curriculum file not found.");
     if (!file.subject || !file.grade || !file.semester) {
-  throw new Error("Curriculum file is missing subject, grade, or semester.");
-}
+      throw new Error("Curriculum file is missing subject, grade, or semester.");
+    }
 
     // Archive all other active or published curriculum files for the same subject, grade, and semester
     const { error: archiveErr } = await supabaseAdmin
@@ -392,4 +392,3 @@ export const deleteCurriculumDraft = createServerFn({ method: "POST" })
 
     return { success: true };
   });
-

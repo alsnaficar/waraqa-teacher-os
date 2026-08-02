@@ -4,17 +4,17 @@ export const ar = {
     tagline: "منصة المعلم الذكية",
   },
   nav: {
-  dashboard: "الرئيسية",
-  curriculum: "المناهج",
-  planner: "المخطط الأسبوعي",
-  ai: "استوديو الذكاء الاصطناعي",
-  notifications: "الإشعارات",
-  subscription: "الاشتراك",
-  settings: "الإعدادات",
-  signOut: "تسجيل الخروج",
-  signIn: "تسجيل الدخول",
-  signUp: "إنشاء حساب",
-},
+    dashboard: "الرئيسية",
+    curriculum: "المناهج",
+    planner: "المخطط الأسبوعي",
+    ai: "استوديو الذكاء الاصطناعي",
+    notifications: "الإشعارات",
+    subscription: "الاشتراك",
+    settings: "الإعدادات",
+    signOut: "تسجيل الخروج",
+    signIn: "تسجيل الدخول",
+    signUp: "إنشاء حساب",
+  },
   landing: {
     heroTitle: "علّم بذكاء. خطّط بسرعة. أبدع بلا حدود.",
     heroSubtitle:
@@ -83,4 +83,3 @@ export const ar = {
     open: "فتح",
   },
 } as const;
-

@@ -222,4 +222,3 @@ export class ActivitiesAdapter implements GeneratorAdapter<ActivitiesInput> {
     };
   }
 }
-

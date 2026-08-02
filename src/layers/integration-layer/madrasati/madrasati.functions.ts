@@ -8,12 +8,8 @@ import {
   type CalculatedLessonEntry,
 } from "@/features/planner/services/planner-engine";
 export const MadrasatiSyncInput = z.object({
-  email: z
-    .string()
-    .email("الرجاء إدخال بريد إلكتروني صحيح من منصة مدرستي"),
-  password: z
-    .string()
-    .min(6, "كلمة المرور يجب أن تكون من 6 خانات على الأقل"),
+  email: z.string().email("الرجاء إدخال بريد إلكتروني صحيح من منصة مدرستي"),
+  password: z.string().min(6, "كلمة المرور يجب أن تكون من 6 خانات على الأقل"),
   autoSync: z.boolean().default(true),
 });
 export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
@@ -297,9 +293,9 @@ export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
     // 2. Perform schedule generation & planner_entries sync in DB
     try {
       const calculatedEntries: CalculatedLessonEntry[] = await generateSchedule(
-  "لغتي الخالدة",
-  "الصف الأول المتوسط"
-);
+        "لغتي الخالدة",
+        "الصف الأول المتوسط",
+      );
       if (calculatedEntries.length > 0) {
         await syncScheduleToDatabase(calculatedEntries, "لغتي الخالدة");
       }
@@ -316,4 +312,3 @@ export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
       assignments: teacherAssignments,
     };
   });
-

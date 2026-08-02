@@ -76,4 +76,3 @@ function MiniStat({
     </Card>
   );
 }
-

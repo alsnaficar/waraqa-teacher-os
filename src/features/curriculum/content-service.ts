@@ -187,4 +187,3 @@ export type {
   LessonContentQuery,
   LessonSection,
 } from "./content-types";
-

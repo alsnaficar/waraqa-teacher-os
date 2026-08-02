@@ -294,11 +294,10 @@ export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
 
     // 2. Perform schedule generation & planner_entries sync in DB
     try {
-      const calculatedEntries: CalculatedLessonEntry[] =
-  await generateSchedule(
-    "لغتي الخالدة",
-    "الصف الأول المتوسط"
-  );
+      const calculatedEntries: CalculatedLessonEntry[] = await generateSchedule(
+        "لغتي الخالدة",
+        "الصف الأول المتوسط",
+      );
       if (calculatedEntries.length > 0) {
         await syncScheduleToDatabase(calculatedEntries, "لغتي الخالدة");
       }
@@ -315,4 +314,3 @@ export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
       assignments: teacherAssignments,
     };
   });
-

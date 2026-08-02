@@ -45,4 +45,3 @@ export interface ScheduleProvider {
   getWeek(options: GetWeekOptions): Promise<ScheduleEntry[]>;
   getDay(options: GetDayOptions): Promise<ScheduleEntry[]>;
 }
-

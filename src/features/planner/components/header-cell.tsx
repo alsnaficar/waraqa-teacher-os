@@ -11,4 +11,3 @@ export function HeaderCell({ children }: HeaderCellProps) {
     </div>
   );
 }
-

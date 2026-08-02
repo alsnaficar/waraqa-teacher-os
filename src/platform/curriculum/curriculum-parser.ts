@@ -86,4 +86,3 @@ export async function parseCurriculumFile(file: File): Promise<ParsedLesson[]> {
   if (name.endsWith(".pdf")) return parsePdf(file);
   throw new Error("صيغة الملف غير مدعومة");
 }
-

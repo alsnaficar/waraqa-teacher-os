@@ -87,22 +87,22 @@ export class AIOrchestrator {
 
     // Safely attempt to build curriculum context if fields are present
     const inputObj = validatedInput as {
-  stage?: "primary" | "intermediate" | "secondary";
-  semester?: string;
-  grade: string;
-  subject: string;
-  title: string;
-};
+      stage?: "primary" | "intermediate" | "secondary";
+      semester?: string;
+      grade: string;
+      subject: string;
+      title: string;
+    };
 
-if (inputObj.grade && inputObj.subject && inputObj.title) {
-  try {
-    const { promptPrefix, used } = await buildCurriculumContext({
-      stage: inputObj.stage,
-      semester: inputObj.semester,
-      grade: inputObj.grade,
-      subject: inputObj.subject,
-      lessonTitle: inputObj.title,
-    });
+    if (inputObj.grade && inputObj.subject && inputObj.title) {
+      try {
+        const { promptPrefix, used } = await buildCurriculumContext({
+          stage: inputObj.stage,
+          semester: inputObj.semester,
+          grade: inputObj.grade,
+          subject: inputObj.subject,
+          lessonTitle: inputObj.title,
+        });
         curriculumPrefix = promptPrefix || "";
         curriculumContextUsed = used;
       } catch (err) {
@@ -205,4 +205,3 @@ if (inputObj.grade && inputObj.subject && inputObj.title) {
 
 // Export single shared instance of the orchestrator
 export const aiOrchestrator = new AIOrchestrator();
-

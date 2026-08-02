@@ -282,4 +282,3 @@ function ActivityIdeasPage() {
     </PageShell>
   );
 }
-

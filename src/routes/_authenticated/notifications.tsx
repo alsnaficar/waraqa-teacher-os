@@ -21,4 +21,3 @@ function NotificationsPage() {
     </PageShell>
   );
 }
-

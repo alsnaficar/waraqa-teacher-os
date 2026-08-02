@@ -20,4 +20,3 @@ export function AIResultViewer({ content, className = "" }: AIResultViewerProps)
     </div>
   );
 }
-

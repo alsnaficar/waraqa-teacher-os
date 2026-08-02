@@ -129,4 +129,3 @@ export const generateActivityIdeas = createServerFn({ method: "POST" })
 
     return { id: row.id, content: result.content, createdAt: row.createdAt };
   });
-

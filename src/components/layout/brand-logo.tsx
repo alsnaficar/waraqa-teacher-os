@@ -16,10 +16,10 @@ export function BrandLogo({
   customHeight,
 }: BrandLogoProps) {
   const logoHeights = {
-  sm: "h-8 md:h-9",
-  md: "h-12 md:h-14",
-  lg: "h-24 md:h-28",
-};
+    sm: "h-8 md:h-9",
+    md: "h-12 md:h-14",
+    lg: "h-24 md:h-28",
+  };
 
   const heightClass = customHeight || logoHeights[size];
 

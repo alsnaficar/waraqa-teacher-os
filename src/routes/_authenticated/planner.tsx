@@ -84,24 +84,18 @@ export default function PlannerPage() {
         let activeSubject = "العلوم";
 
         if (profile) {
-         const classes = profile.classes as
-  | {
-      assignments?: Assignment[];
-    }
-  | null;
+          const classes = profile.classes as {
+            assignments?: Assignment[];
+          } | null;
 
-if (
-  classes &&
-  Array.isArray(classes.assignments) &&
-  classes.assignments.length > 0
-) {
-  const asm = classes.assignments[0];
-  activeGrade = asm.grade || activeGrade;
-  activeSubject = asm.subject || activeSubject;
-} else if (profile.grade && profile.subject) {
-  activeGrade = profile.grade;
-  activeSubject = profile.subject;
-}
+          if (classes && Array.isArray(classes.assignments) && classes.assignments.length > 0) {
+            const asm = classes.assignments[0];
+            activeGrade = asm.grade || activeGrade;
+            activeSubject = asm.subject || activeSubject;
+          } else if (profile.grade && profile.subject) {
+            activeGrade = profile.grade;
+            activeSubject = profile.subject;
+          }
         }
 
         setGrade(activeGrade);
@@ -195,4 +189,3 @@ if (
     </PageShell>
   );
 }
-

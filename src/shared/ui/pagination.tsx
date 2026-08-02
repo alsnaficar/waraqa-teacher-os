@@ -96,4 +96,3 @@ export {
   PaginationNext,
   PaginationEllipsis,
 };
-

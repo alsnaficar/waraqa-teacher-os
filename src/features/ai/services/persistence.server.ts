@@ -29,4 +29,3 @@ export async function saveAiGeneration(
   }
   return { id: data.id, createdAt: data.created_at };
 }
-

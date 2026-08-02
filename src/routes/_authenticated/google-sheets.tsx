@@ -221,21 +221,21 @@ function GoogleSheetsIntegrationPage() {
   // Mutation: Export Supabase → Sheets (specific target or all)
   const exportMutation = useMutation({
     mutationFn: (args: {
-  target:
-    | "all"
-    | "curriculum"
-    | "planner"
-    | "distribution"
-    | "objectives"
-    | "outcomes"
-    | "assessment"
-    | "activities"
-    | "calendar";
-  isDryRun: boolean;
-}) =>
-  exportDataToGoogleSheets({
-    data: args,
-  }),
+      target:
+        | "all"
+        | "curriculum"
+        | "planner"
+        | "distribution"
+        | "objectives"
+        | "outcomes"
+        | "assessment"
+        | "activities"
+        | "calendar";
+      isDryRun: boolean;
+    }) =>
+      exportDataToGoogleSheets({
+        data: args,
+      }),
     onSuccess: (res, variables) => {
       const targetLabel = getTargetLabel(variables.target);
       const modeText = variables.isDryRun ? "محاكاة (Dry Run)" : "تصدير فعلي";
@@ -1190,4 +1190,3 @@ function GoogleSheetsIntegrationPage() {
     </PageShell>
   );
 }
-

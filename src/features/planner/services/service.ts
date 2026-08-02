@@ -40,4 +40,3 @@ export type {
   ScheduleProvider,
   ScheduleProviderId,
 } from "../types";
-

@@ -8,4 +8,3 @@ export function PageShell({ children, className }: { children: ReactNode; classN
     </div>
   );
 }
-

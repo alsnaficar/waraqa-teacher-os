@@ -319,4 +319,3 @@ export function AIGenerationForm({
     </div>
   );
 }
-

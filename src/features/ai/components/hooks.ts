@@ -228,4 +228,3 @@ export function useAIGeneration<TForm extends Record<string, unknown>>({
     validateAndGenerate,
   };
 }
-

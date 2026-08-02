@@ -303,4 +303,3 @@ export function LessonCard({ lesson, onChangeLesson }: LessonCardProps) {
     </div>
   );
 }
-

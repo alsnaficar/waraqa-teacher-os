@@ -29,4 +29,3 @@ export function StatCard({
     </Card>
   );
 }
-

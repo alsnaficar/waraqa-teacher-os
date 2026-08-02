@@ -1141,4 +1141,3 @@ export async function copyToClipboard(text: string): Promise<void> {
     toast.error("تعذر النسخ");
   }
 }
-

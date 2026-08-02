@@ -59,4 +59,3 @@ export function getLessonCatalog(_params: {
   // changing callers.
   return DEFAULT_UNITS;
 }
-

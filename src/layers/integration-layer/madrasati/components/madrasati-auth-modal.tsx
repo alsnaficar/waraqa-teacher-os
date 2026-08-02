@@ -140,9 +140,7 @@ export function MadrasatiAuthModal({ open, onOpenChange, onSyncSuccess }: Madras
                   type="email"
                   placeholder="name@school.madrasati.sa"
                   value={email}
-               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-  setEmail(e.target.value)
-}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                   className="pr-10 text-left placeholder:text-right h-11"
                   required
                 />
@@ -160,9 +158,7 @@ export function MadrasatiAuthModal({ open, onOpenChange, onSyncSuccess }: Madras
                   type="password"
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-  setEmail(e.target.value)
-}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                   className="pr-10 text-left placeholder:text-right h-11"
                   required
                 />
@@ -173,9 +169,9 @@ export function MadrasatiAuthModal({ open, onOpenChange, onSyncSuccess }: Madras
               <Checkbox
                 id="autoSync"
                 checked={autoSync}
-  onCheckedChange={(checked: boolean | "indeterminate") =>
-  setAutoSync(checked === true)
-}
+                onCheckedChange={(checked: boolean | "indeterminate") =>
+                  setAutoSync(checked === true)
+                }
               />
               <Label
                 htmlFor="autoSync"
@@ -235,4 +231,3 @@ export function MadrasatiAuthModal({ open, onOpenChange, onSyncSuccess }: Madras
     </Dialog>
   );
 }
-

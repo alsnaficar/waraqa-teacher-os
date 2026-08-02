@@ -180,4 +180,3 @@ export class MockScheduleProvider implements ScheduleProvider {
     return buildWeek(gregorianDate).filter((e) => e.gregorianDate === iso);
   }
 }
-

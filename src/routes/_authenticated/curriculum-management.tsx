@@ -139,12 +139,12 @@ function CurriculumManagementPage() {
 
   // Extract PDF Mutation
   const extractMutation = useMutation({
-  mutationFn: (base64: string) =>
-    extractCurriculumFromPdf({
-      data: { pdfBase64: base64 },
-    }),
+    mutationFn: (base64: string) =>
+      extractCurriculumFromPdf({
+        data: { pdfBase64: base64 },
+      }),
 
-  onSuccess: (data) => {
+    onSuccess: (data) => {
       setIsExtracting(false);
 
       const lessonsData = Array.isArray(data?.lessons) ? data.lessons : [];
@@ -185,12 +185,12 @@ function CurriculumManagementPage() {
 
   // Save Draft Mutation
   const saveDraftMutation = useMutation({
-  mutationFn: (data: CurriculumData) =>
-    saveCurriculumDraft({
-      data,
-    }),
+    mutationFn: (data: CurriculumData) =>
+      saveCurriculumDraft({
+        data,
+      }),
 
-  onSuccess: () => {
+    onSuccess: () => {
       toast.success("تم حفظ المنهج كمسودة بنجاح!");
       setActiveTab("list");
       setReviewData(null);
@@ -205,9 +205,10 @@ function CurriculumManagementPage() {
 
   // Publish Mutation
   const publishMutation = useMutation({
-    mutationFn: (fileId: string) => publishCurriculum({
-  data: { fileId },
-}),
+    mutationFn: (fileId: string) =>
+      publishCurriculum({
+        data: { fileId },
+      }),
     onSuccess: () => {
       toast.success("تم نشر المنهج وجعله متاحاً لجميع المعلمين!");
       refetchFiles();
@@ -221,9 +222,10 @@ function CurriculumManagementPage() {
 
   // Archive Mutation
   const archiveMutation = useMutation({
-    mutationFn: (fileId: string) => archiveCurriculum({
-  data: { fileId },
-}),
+    mutationFn: (fileId: string) =>
+      archiveCurriculum({
+        data: { fileId },
+      }),
     onSuccess: () => {
       toast.success("تم أرشفة المنهج.");
       refetchFiles();
@@ -237,9 +239,10 @@ function CurriculumManagementPage() {
 
   // Delete Draft Mutation
   const deleteMutation = useMutation({
-    mutationFn: (fileId: string) => deleteCurriculumDraft({
-  data: { fileId },
-}),
+    mutationFn: (fileId: string) =>
+      deleteCurriculumDraft({
+        data: { fileId },
+      }),
     onSuccess: () => {
       toast.success("تم حذف المسودة بنجاح.");
       refetchFiles();
@@ -266,8 +269,8 @@ function CurriculumManagementPage() {
     toast.info("جاري تحميل تفاصيل المنهج...");
     try {
       const lessons = await getAdminCurriculumLessons({
-  data: { fileId: file.id },
-})
+        data: { fileId: file.id },
+      });
       setReviewData({
         id: file.id,
         originalName: file.original_name,
@@ -706,12 +709,12 @@ function CurriculumManagementPage() {
                     toast.promise(
                       (async () => {
                         const { fileId } = await saveCurriculumDraft({
-  data: reviewData,
-});
+                          data: reviewData,
+                        });
 
-await publishCurriculum({
-  data: { fileId },
-});
+                        await publishCurriculum({
+                          data: { fileId },
+                        });
                       })(),
                       {
                         loading: "جاري حفظ ونشر المنهج الجديد...",
@@ -1038,13 +1041,13 @@ await publishCurriculum({
                   onClick={async () => {
                     toast.promise(
                       (async () => {
-                       const { fileId } = await saveCurriculumDraft({
-  data: reviewData,
-});
+                        const { fileId } = await saveCurriculumDraft({
+                          data: reviewData,
+                        });
 
-await publishCurriculum({
-  data: { fileId },
-});
+                        await publishCurriculum({
+                          data: { fileId },
+                        });
                       })(),
                       {
                         loading: "جاري حفظ ونشر المنهج الجديد...",
@@ -1068,4 +1071,3 @@ await publishCurriculum({
     </PageShell>
   );
 }
-

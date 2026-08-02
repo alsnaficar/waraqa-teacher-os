@@ -229,4 +229,3 @@ export function MadrasatiAuthModal({ open, onOpenChange, onSyncSuccess }: Madras
     </Dialog>
   );
 }
-

@@ -117,4 +117,3 @@ export const fetchDriveScheduleRows = createServerFn({ method: "GET" }).handler(
     }
   },
 );
-

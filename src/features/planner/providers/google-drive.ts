@@ -165,4 +165,3 @@ export class GoogleDriveScheduleProvider implements ScheduleProvider {
     return filtered.length ? filtered : this.fallback.getDay(options);
   }
 }
-

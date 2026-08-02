@@ -43,7 +43,7 @@ export interface GeneratorAdapter<TInput = unknown> {
   type: AIGeneratorType;
 
   // Zod validation schema for the adapter's input
-inputSchema: z.ZodSchema<TInput>;
+  inputSchema: z.ZodSchema<TInput>;
   // Prepare system and user prompts
   getSystemInstruction(input: TInput): string;
   getUserPrompt(input: TInput, context?: string): string;
@@ -51,4 +51,3 @@ inputSchema: z.ZodSchema<TInput>;
   // Normalize AI response
   normalizeResponse(rawContent: string, input: TInput): NormalizationResult;
 }
-

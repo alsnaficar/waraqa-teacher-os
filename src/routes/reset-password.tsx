@@ -63,4 +63,3 @@ function ResetPasswordPage() {
     </div>
   );
 }
-

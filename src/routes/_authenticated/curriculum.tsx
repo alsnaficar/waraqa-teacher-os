@@ -119,4 +119,3 @@ function CurriculumPage() {
     </PageShell>
   );
 }
-

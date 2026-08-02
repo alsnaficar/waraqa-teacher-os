@@ -45,4 +45,3 @@ export interface CurriculumProvider {
   readonly id: CurriculumContentProviderId;
   getLessonContent(query: LessonContentQuery): Promise<LessonContent | null>;
 }
-

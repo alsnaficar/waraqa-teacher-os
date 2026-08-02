@@ -174,9 +174,9 @@ export async function saveTimetable(timetable: TimetableSlot[]): Promise<void> {
 
   const currentClasses = (profile?.classes as Record<string, unknown>) || {};
   const updatedClasses = {
-  ...currentClasses,
-  timetable,
-} as unknown as import("@/platform/database/supabase/types").Json;
+    ...currentClasses,
+    timetable,
+  } as unknown as import("@/platform/database/supabase/types").Json;
 
   const { error } = await supabase
     .from("profiles")
@@ -451,9 +451,7 @@ export async function generateSchedule(
   const skippedIds = new Set(
     overrides.filter((o) => o.type === "skip" && o.lessonId).map((o) => o.lessonId!),
   );
-  const nonSkippedLessons = activeLessons.filter(
-  (l) => !l.id || !skippedIds.has(l.id),
-);
+  const nonSkippedLessons = activeLessons.filter((l) => !l.id || !skippedIds.has(l.id));
 
   // Flatten the lessons based on periods count.
   // For example, if a lesson takes 2 periods, it gets split into:
@@ -671,4 +669,3 @@ export async function recalculateAndSyncPlanner(
   await syncScheduleToDatabase(calculated, subject || calculated[0]?.subject);
   return calculated;
 }
-

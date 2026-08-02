@@ -168,4 +168,3 @@ export const generateLessonPreparation = createServerFn({ method: "POST" })
       );
     }
   });
-

@@ -38,4 +38,3 @@ export async function generateContent(params: {
     throw error;
   }
 }
-

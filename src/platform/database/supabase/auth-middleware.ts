@@ -103,4 +103,3 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
     });
   },
 );
-

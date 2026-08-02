@@ -82,7 +82,7 @@ function WorksheetPage() {
   const search = Route.useSearch();
 
   const mutation = useMutation({
-   mutationFn: (input: z.input<typeof FormSchema>) => generate({ data: input }),
+    mutationFn: (input: z.input<typeof FormSchema>) => generate({ data: input }),
   });
 
   const {
@@ -193,8 +193,8 @@ function WorksheetPage() {
                 onCopy={handleCopy}
                 onDownload={handleDownload}
                 onRegenerate={() => {
-  void validateAndGenerate();
-}}
+                  void validateAndGenerate();
+                }}
                 isPending={mutation.isPending}
                 copied={copied}
                 exporting={exporting}
@@ -244,4 +244,3 @@ function WorksheetPage() {
     </PageShell>
   );
 }
-

@@ -55,4 +55,3 @@ export function formatHijriFull(d: Date): string {
     return d.toLocaleDateString("ar");
   }
 }
-

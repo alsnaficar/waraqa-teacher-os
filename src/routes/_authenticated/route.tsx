@@ -34,4 +34,3 @@ function AuthenticatedLayout() {
     </SidebarProvider>
   );
 }
-

@@ -21,4 +21,3 @@ export async function callDirectAi(params: {
 
   return { content, model };
 }
-

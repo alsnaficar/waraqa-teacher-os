@@ -201,4 +201,3 @@ export function validateCurriculum(value: CurriculumSelection): CurriculumSelect
   if (!value.semester) errors.semester = "الفصل مطلوب";
   return Object.keys(errors).length ? errors : null;
 }
-

@@ -188,4 +188,3 @@ export const generateQuizAndAssignment = createServerFn({ method: "POST" })
       );
     }
   });
-

@@ -393,11 +393,11 @@ function QuizPage() {
                         نسخ النص
                       </Button>
                       <Button
-  variant="default"
-  size="sm"
-  onClick={handleDownload}
-  className="h-9 bg-primary hover:bg-primary/95 text-white"
->
+                        variant="default"
+                        size="sm"
+                        onClick={handleDownload}
+                        className="h-9 bg-primary hover:bg-primary/95 text-white"
+                      >
                         <Download className="ml-1.5 h-3.5 w-3.5" />
                         تصدير Word (نسختين)
                       </Button>
@@ -744,4 +744,3 @@ function QuizPage() {
     </PageShell>
   );
 }
-

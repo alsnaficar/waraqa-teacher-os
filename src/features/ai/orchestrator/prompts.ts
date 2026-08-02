@@ -218,4 +218,3 @@ export const buildActivitiesPrompt = (input: ActivitiesPromptInput, context?: st
     .filter(Boolean)
     .join("\n");
 };
-

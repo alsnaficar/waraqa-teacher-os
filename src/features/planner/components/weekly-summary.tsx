@@ -39,4 +39,3 @@ export function WeeklySummaryCard({ lessons }: { lessons: Lesson[] }) {
     </Card>
   );
 }
-

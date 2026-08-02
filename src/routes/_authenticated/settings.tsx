@@ -71,41 +71,40 @@ function SettingsPage() {
         .maybeSingle();
       if (!active) return;
       if (data) {
-  const classes = (data.classes as Record<string, unknown>) || {};
-  setClassesObj(classes);
+        const classes = (data.classes as Record<string, unknown>) || {};
+        setClassesObj(classes);
 
-  let loadedAssignments: Assignment[] = [];
+        let loadedAssignments: Assignment[] = [];
 
-  if (Array.isArray((classes as { assignments?: unknown }).assignments)) {
-    loadedAssignments = (classes as { assignments: Assignment[] }).assignments;
-  } else if (data.subject || data.grade) {
-  const grade = data.grade || "";
-  const subject = data.subject || "";
+        if (Array.isArray((classes as { assignments?: unknown }).assignments)) {
+          loadedAssignments = (classes as { assignments: Assignment[] }).assignments;
+        } else if (data.subject || data.grade) {
+          const grade = data.grade || "";
+          const subject = data.subject || "";
 
-  const stage =
-    grade.includes("متوسط")
-      ? "intermediate"
-      : grade.includes("ثانوي")
-        ? "secondary"
-        : "primary";
+          const stage = grade.includes("متوسط")
+            ? "intermediate"
+            : grade.includes("ثانوي")
+              ? "secondary"
+              : "primary";
 
-  loadedAssignments = [
-    {
-      stage,
-      grade,
-      subject,
-      klasses: ["أ"],
-    },
-  ];
-}
+          loadedAssignments = [
+            {
+              stage,
+              grade,
+              subject,
+              klasses: ["أ"],
+            },
+          ];
+        }
 
-setForm({
-  full_name: data.full_name ?? "",
-  avatar_url: data.avatar_url ?? "",
-  locale: data.locale ?? "ar",
-  whatsapp: data.whatsapp ?? "",
-  assignments: loadedAssignments,
-});
+        setForm({
+          full_name: data.full_name ?? "",
+          avatar_url: data.avatar_url ?? "",
+          locale: data.locale ?? "ar",
+          whatsapp: data.whatsapp ?? "",
+          assignments: loadedAssignments,
+        });
       }
       setLoading(false);
     })();
@@ -167,10 +166,10 @@ setForm({
 
     const firstAssignment = form.assignments[0];
     const updatedClasses = {
-  ...classesObj,
-  assignments: form.assignments,
-  teacher_assignments: form.assignments,
-} as unknown as Json;
+      ...classesObj,
+      assignments: form.assignments,
+      teacher_assignments: form.assignments,
+    } as unknown as Json;
 
     let { error } = await supabase
       .from("profiles")
@@ -509,4 +508,3 @@ setForm({
     </PageShell>
   );
 }
-
