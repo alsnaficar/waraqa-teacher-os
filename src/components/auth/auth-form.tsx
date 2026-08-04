@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { motion } from "motion/react";
@@ -8,6 +8,48 @@ import { Button } from "@/shared/ui/button";
 import { supabase, isSupabaseConfigured } from "@/platform/database/supabase/client";
 import { ar } from "@/i18n/ar";
 import { BrandLogo } from "@/components/layout/brand-logo";
+
+type PasswordStrength = "weak" | "medium" | "strong";
+
+function validatePasswordPolicy(password: string) {
+  const rules = [
+    { id: "length", label: ar.auth.passwordRequirements.length, passed: password.length >= 8 },
+    {
+      id: "uppercase",
+      label: ar.auth.passwordRequirements.uppercase,
+      passed: /[A-Z]/.test(password),
+    },
+    {
+      id: "lowercase",
+      label: ar.auth.passwordRequirements.lowercase,
+      passed: /[a-z]/.test(password),
+    },
+    { id: "number", label: ar.auth.passwordRequirements.number, passed: /\d/.test(password) },
+    {
+      id: "special",
+      label: ar.auth.passwordRequirements.special,
+      passed: /[^A-Za-z0-9]/.test(password),
+    },
+  ];
+
+  const passedCount = rules.filter((rule) => rule.passed).length;
+  const isValid = passedCount === rules.length;
+  let strength: PasswordStrength = "weak";
+
+  if (isValid) {
+    strength = "strong";
+  } else if (passedCount >= 3) {
+    strength = "medium";
+  }
+
+  const strengthLabel = {
+    weak: ar.auth.passwordWeak,
+    medium: ar.auth.passwordMedium,
+    strong: ar.auth.passwordStrong,
+  }[strength];
+
+  return { isValid, rules, strength, strengthLabel };
+}
 
 export function AuthForm({
   onSuccess,
@@ -24,6 +66,8 @@ export function AuthForm({
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
   const navigate = useNavigate();
+  const passwordValidation = useMemo(() => validatePasswordPolicy(password), [password]);
+  const isPasswordValid = mode === "signup" ? passwordValidation.isValid : true;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,6 +79,11 @@ export function AuthForm({
         );
       }
       if (mode === "signup") {
+        if (!isPasswordValid) {
+          toast.error(ar.auth.passwordInvalid);
+          return;
+        }
+
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -197,10 +246,67 @@ export function AuthForm({
               onChange={(e) => setPassword(e.target.value)}
               placeholder="كلمة المرور"
               required
-              minLength={6}
-              className="w-full h-12 bg-white/40 dark:bg-zinc-800/40 backdrop-blur-md border border-white/40 dark:border-zinc-700/40 rounded-2xl pr-12 pl-4 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500/50 transition-all shadow-sm text-left"
+              minLength={8}
+              className={`w-full h-12 bg-white/40 dark:bg-zinc-800/40 backdrop-blur-md border rounded-2xl pr-12 pl-4 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 transition-all shadow-sm text-left ${
+                mode === "signup" && password.length > 0
+                  ? passwordValidation.isValid
+                    ? "border-emerald-400/60 focus:border-emerald-500"
+                    : "border-amber-400/60 focus:border-amber-500"
+                  : "border-white/40 dark:border-zinc-700/40 focus:border-teal-500/50"
+              }`}
             />
           </div>
+
+          {mode === "signup" && (
+            <div className="rounded-2xl border border-zinc-200/70 bg-white/70 px-3 py-3 text-xs text-zinc-600 dark:border-zinc-700/50 dark:bg-zinc-800/40 dark:text-zinc-300">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-medium">{ar.auth.passwordStrength}</span>
+                <span
+                  className={`font-semibold ${
+                    passwordValidation.strength === "strong"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : passwordValidation.strength === "medium"
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-rose-600 dark:text-rose-400"
+                  }`}
+                >
+                  {passwordValidation.strengthLabel}
+                </span>
+              </div>
+
+              <div className="mb-3 h-2 w-full rounded-full bg-zinc-200 dark:bg-zinc-700">
+                <div
+                  className={`h-2 rounded-full transition-all ${
+                    passwordValidation.strength === "strong"
+                      ? "w-full bg-emerald-500"
+                      : passwordValidation.strength === "medium"
+                        ? "w-2/3 bg-amber-500"
+                        : "w-1/3 bg-rose-500"
+                  }`}
+                />
+              </div>
+
+              <ul className="grid gap-1.5 sm:grid-cols-2">
+                {passwordValidation.rules.map((rule) => (
+                  <li
+                    key={rule.id}
+                    className={`flex items-center gap-2 ${
+                      rule.passed
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-zinc-500 dark:text-zinc-400"
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        rule.passed ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"
+                      }`}
+                    />
+                    <span>{rule.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {mode === "signin" && (
@@ -216,8 +322,8 @@ export function AuthForm({
 
         <Button
           type="submit"
-          disabled={loading}
-          className="w-full h-12 rounded-2xl text-base font-medium text-white shadow-[0_8px_24px_0_rgba(15,118,110,0.25)] hover:shadow-[0_12px_28px_rgba(15,118,110,0.35)] hover:-translate-y-[2px] transition-all duration-300 bg-gradient-to-r from-teal-600 to-emerald-500 border border-white/20 dark:border-white/10 mt-2"
+          disabled={loading || (mode === "signup" && !isPasswordValid)}
+          className="w-full h-12 rounded-2xl text-base font-medium text-white shadow-[0_8px_24px_0_rgba(15,118,110,0.25)] hover:shadow-[0_12px_28px_rgba(15,118,110,0.35)] hover:-translate-y-[2px] transition-all duration-300 bg-gradient-to-r from-teal-600 to-emerald-500 border border-white/20 dark:border-white/10 mt-2 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {mode === "signup" ? "إنشاء الحساب" : "تسجيل الدخول"}
         </Button>

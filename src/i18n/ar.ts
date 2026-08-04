@@ -46,6 +46,18 @@ export const ar = {
     forgotPassword: "هل نسيت كلمة المرور؟",
     switchToSignUp: "ليس لديك حساب؟ أنشئ حساباً",
     switchToSignIn: "لديك حساب؟ سجّل الدخول",
+    passwordStrength: "قوة كلمة المرور",
+    passwordWeak: "ضعيفة",
+    passwordMedium: "متوسطة",
+    passwordStrong: "قوية",
+    passwordInvalid: "كلمة المرور لا تستوفي متطلبات الأمان",
+    passwordRequirements: {
+      length: "8 أحرف على الأقل",
+      uppercase: "حرف كبير واحد على الأقل",
+      lowercase: "حرف صغير واحد على الأقل",
+      number: "رقم واحد على الأقل",
+      special: "رمز خاص واحد على الأقل",
+    },
   },
   common: {
     comingSoon: "قريباً",
