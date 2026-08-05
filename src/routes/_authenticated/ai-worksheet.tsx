@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { getLessonContext } from "@/features/lesson-context/services/context-engine";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -120,6 +122,34 @@ function WorksheetPage() {
 
   const { copy, copied } = useAIClipboard();
   const { downloadDocx, exporting } = useAIExport();
+  
+  useEffect(() => {
+  if (search.title) return;
+
+  async function loadContext() {
+    const context = await getLessonContext();
+
+    if (!context) return;
+
+    const stage =
+      context.grade.includes("متوسط")
+        ? "intermediate"
+        : context.grade.includes("ثانوي")
+          ? "secondary"
+          : "primary";
+
+    setCurriculum({
+      stage,
+      grade: context.grade,
+      subject: context.subject,
+      semester: "",
+    });
+
+    setTitle(context.title);
+  }
+
+  void loadContext();
+}, [search.title, setCurriculum, setTitle]);
 
   const handleCopy = async () => {
     await copy(editedContent);
