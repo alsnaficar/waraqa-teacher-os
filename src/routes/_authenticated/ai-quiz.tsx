@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getLessonContext } from "@/features/lesson-context/services/context-engine";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -108,6 +109,34 @@ function QuizPage() {
   const mutation = useMutation({
     mutationFn: (input: z.infer<typeof FormSchema>) => generate({ data: input }),
   });
+   
+  useEffect(() => {
+  if (search.title) return;
+
+  async function loadContext() {
+    const context = await getLessonContext();
+
+    if (!context) return;
+
+    const stage =
+      context.grade.includes("متوسط")
+        ? "intermediate"
+        : context.grade.includes("ثانوي")
+          ? "secondary"
+          : "primary";
+
+    setCurriculum({
+      stage,
+      grade: context.grade,
+      subject: context.subject,
+      semester: "",
+    });
+
+    setTitle(context.title);
+  }
+
+  void loadContext();
+}, [search.title]);
 
   function validateAndRun() {
     const curriculumErrors = validateCurriculum(curriculum) ?? {};
