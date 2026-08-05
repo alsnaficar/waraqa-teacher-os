@@ -189,20 +189,29 @@ function HomePage() {
         subscription="active"
       />
 
-      <DashboardSummary />
+              <DashboardSummary
+          todayLessons={normalizedTodayLessons.length}
+          weekLessons={scheduleData?.length ?? 0}
+          completedLessons={
+            scheduleData?.filter((l) => l.status === "Completed").length ?? 0
+          }
+          remainingLessons={
+            scheduleData?.filter((l) => l.status !== "Completed").length ?? 0
+          }
+        />
 
-      <DashboardNotifications />
+        <DashboardNotifications />
 
-      <TodayLessonsSection
-        lessons={normalizedTodayLessons}
-      />
+        <TodayLessonsSection
+          lessons={normalizedTodayLessons}
+        />
 
-      <QuickActions />
+        <QuickActions />
 
-      <PendingTasks />
-    </div>
-  </PageShell>
-);
+        <PendingTasks />
+      </div>
+    </PageShell>
+  );
 }
 
 // ---------- pieces ----------
