@@ -1,3 +1,4 @@
+import { getLessonContext } from "@/features/lesson-context/services/context-engine";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -216,58 +217,35 @@ function LessonPlanPage() {
       return;
     }
 
-    async function loadTodayLesson() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+   async function loadTodayLesson() {
+  try {
+    const context = await getLessonContext();
 
-        const today = new Date();
-        const todayISO = today.toISOString().slice(0, 10);
+    if (!context) return;
 
-        const { data: entries, error } = await supabase
-          .from("planner_entries")
-          .select("notes")
-          .eq("user_id", user.id)
-          .not("week_start_date", "eq", CONFIG_ACADEMIC_CALENDAR_DATE)
-          .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE);
+    const computedStage: "primary" | "intermediate" | "secondary" =
+      context.grade.includes("متوسط")
+        ? "intermediate"
+        : context.grade.includes("ثانوي")
+          ? "secondary"
+          : "primary";
 
-        if (error || !entries) return;
+    setCurriculum({
+      stage: computedStage,
+      grade: context.grade,
+      subject: context.subject,
+      semester: "",
+    });
 
-        const todayEntry = entries
-          .map((e) => {
-            try {
-              return JSON.parse(e.notes || "{}");
-            } catch {
-              return {};
-            }
-          })
-          .find((notes) => notes.suggestedDate === todayISO && notes.status !== "Skipped");
+    setLessonName(context.title);
 
-        if (todayEntry && todayEntry.lessonTitle) {
-          const g = todayEntry.className || "";
-          let computedStage: "primary" | "intermediate" | "secondary" = "primary";
-          if (g.includes("متوسط")) {
-            computedStage = "intermediate";
-          } else if (g.includes("ثانوي")) {
-            computedStage = "secondary";
-          }
-
-          setCurriculum({
-            stage: computedStage,
-            grade: todayEntry.className || "",
-            subject: todayEntry.subject || "",
-            semester: todayEntry.semester || "",
-          });
-          setLessonName(todayEntry.lessonTitle);
-          setObjectives(todayEntry.objectives || "");
-          toast.success(`تم تحميل درس اليوم المجدول تلقائياً: ${todayEntry.lessonTitle}`);
-        }
-      } catch (err) {
-        console.warn("Failed to auto-load today's lesson:", err);
-      }
-    }
+    toast.success(
+      `تم تحميل درس اليوم المجدول تلقائياً: ${context.title}`,
+    );
+  } catch (err) {
+    console.warn("Failed to auto-load today's lesson:", err);
+  }
+}
 
     loadTodayLesson();
   }, [search.title]);
