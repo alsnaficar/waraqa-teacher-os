@@ -1,3 +1,4 @@
+import { getTodayLessons } from "@/features/lesson-engine/services/lesson-engine";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardSummary } from "@/components/dashboard/dashboard-summary";
 import { DashboardNotifications } from "@/components/dashboard/dashboard-notifications";
@@ -93,16 +94,14 @@ function HomePage() {
     queryKey: ["dashboard-schedule"],
     staleTime: 30_000,
     queryFn: async () => {
-      try {
-        const { generateSchedule } = await import("@/features/planner/services/planner-engine");
-        const entries = await generateSchedule();
-        return entries;
-      } catch (err) {
-        console.error("Failed to load schedule for dashboard:", err);
+  try {
+    return await getTodayLessons();
+  } catch (err) {
+    console.error("Failed to load lessons for dashboard:", err);
         return [];
-      }
-    },
-  });
+    }
+  },
+});
 
   const [mockLessons, setMockLessons] = useState<ScheduleEntry[]>([]);
   useEffect(() => {
