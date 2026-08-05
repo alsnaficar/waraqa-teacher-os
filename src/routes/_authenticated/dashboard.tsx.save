@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+wimport { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Sparkles,
@@ -213,6 +213,39 @@ function HomePage() {
         </CardContent>
       </Card>
 
+      {/* Quick actions */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground font-bold">
+          إجراءات سريعة
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <QuickAction
+            to="/ai-lesson-plan"
+            search={lessonPlanSearch}
+            title="تحضير درس اليوم"
+            icon={Sparkles}
+            tone="violet"
+            highlight
+          />
+          <QuickAction
+            to="/ai-quiz"
+            search={lessonPlanSearch}
+            title="إنشاء اختبار سريع"
+            icon={FlaskConical}
+            tone="red"
+            highlight
+          />
+          <QuickAction
+            to="/ai-worksheet"
+            search={lessonPlanSearch}
+            title="ورقة عمل جديدة"
+            icon={FileText}
+            tone="orange"
+          />
+          <QuickAction to="/planner" title="جدول الحصص كاملاً" icon={CalendarDays} tone="blue" />
+        </div>
+      </section>
+
       {/* Today's schedule */}
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -238,6 +271,77 @@ function HomePage() {
           </div>
         )}
       </section>
+
+      {/* Pending tasks */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground font-bold">
+          مهام قيد الإنجاز
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <PendingCard
+            to="/corrections"
+            title="واجبات للتصحيح"
+            count={0}
+            icon={ClipboardList}
+            tone="orange"
+          />
+          <PendingCard
+            to="/corrections"
+            title="اختبارات للتصحيح"
+            count={0}
+            icon={FlaskConical}
+            tone="red"
+          />
+          <PendingCard
+            to="/notifications"
+            title="إعلانات للنشر"
+            count={0}
+            icon={Megaphone}
+            tone="green"
+          />
+          <PendingCard
+            to="/reports"
+            title="تقارير للإرسال"
+            count={0}
+            icon={BarChart3}
+            tone="blue"
+          />
+        </div>
+      </section>
+
+      {/* Weekly statistics */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground font-bold">
+          إحصائيات الأسبوع
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatMini label="تحاضير أُنشئت" value={stats?.lessonPlans ?? 0} icon={CheckCircle2} />
+          <StatMini label="واجبات أُنشئت" value={stats?.worksheets ?? 0} icon={ClipboardList} />
+          <StatMini label="اختبارات أُنشئت" value={stats?.quizzes ?? 0} icon={FlaskConical} />
+          <StatMini
+            label="الدرس القادم"
+            value={nextLesson ? `حصة ${nextLesson.period}: ${nextLesson.lessonTitle}` : "لا يوجد"}
+            icon={BarChart3}
+            isText
+          />
+        </div>
+      </section>
+
+      {/* Smart AI assistant */}
+      <Card className="border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent">
+        <CardContent className="p-4">
+          <Link to="/ai" className="flex items-center gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+              <Bot className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">المساعد الذكي</p>
+              <p className="truncate text-xs text-muted-foreground">ما الذي تودّ تحضيره اليوم؟</p>
+            </div>
+            <Sparkles className="h-4 w-4 text-primary" />
+          </Link>
+        </CardContent>
+      </Card>
     </PageShell>
   );
 }
@@ -414,7 +518,7 @@ function StatMini({
             {value}
           </p>
         ) : (
-          <p className="mt-1 text-2xl font-bold">{value}</p>
+          <   p className="mt-1 text-2xl font-bold">{value}</p>
         )}
       </CardContent>
     </Card>

@@ -238,9 +238,6 @@ function HomePage() {
           </div>
         )}
       </section>
-    </PageShell>
-  );
-}
 
 // ---------- pieces ----------
 
@@ -414,7 +411,7 @@ function StatMini({
             {value}
           </p>
         ) : (
-          <p className="mt-1 text-2xl font-bold">{value}</p>
+          <   p className="mt-1 text-2xl font-bold">{value}</p>
         )}
       </CardContent>
     </Card>

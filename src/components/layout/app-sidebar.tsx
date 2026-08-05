@@ -1,15 +1,13 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  BookOpen,
   CalendarDays,
-  Sparkles,
-  Bell,
+  ClipboardCheck,
   Settings,
-  ShieldCheck,
-  FileSpreadsheet,
-  CreditCard,
+ShieldCheck,
+FileSpreadsheet,
 } from "lucide-react";
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/platform/database/supabase/client";
 import { BrandLogo } from "./brand-logo";
@@ -29,11 +27,8 @@ import { ar } from "@/i18n/ar";
 
 const items = [
   { title: ar.nav.dashboard, url: "/dashboard", icon: LayoutDashboard },
-  { title: ar.nav.curriculum, url: "/curriculum", icon: BookOpen },
-  { title: ar.nav.planner, url: "/planner", icon: CalendarDays },
-  { title: ar.nav.ai, url: "/ai", icon: Sparkles },
-  { title: ar.nav.notifications, url: "/notifications", icon: Bell },
-  { title: ar.nav.subscription, url: "/subscription", icon: CreditCard },
+  { title: "الجدول", url: "/planner", icon: CalendarDays },
+  { title: "التصحيح", url: "/grading", icon: ClipboardCheck },
   { title: ar.nav.settings, url: "/settings", icon: Settings },
 ] as const;
 
