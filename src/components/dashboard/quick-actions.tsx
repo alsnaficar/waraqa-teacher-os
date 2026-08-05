@@ -17,28 +17,28 @@ export function QuickActions() {
         <div className="grid grid-cols-2 gap-3">
 
           <Button asChild className="h-14">
-            <Link to="/ai-lesson-plan" search={search}>
+            <Link to="/ai-lesson-plan">
               <BookOpen className="ml-2 h-5 w-5" />
               حضّر حصة اليوم
             </Link>
           </Button>
 
           <Button asChild variant="secondary" className="h-14">
-            <Link to="/ai-worksheet" search={search}>
+           <Link to="/ai-worksheet">
               <FileText className="ml-2 h-5 w-5" />
               ورقة عمل
             </Link>
           </Button>
 
           <Button asChild variant="secondary" className="h-14">
-            <Link to="/ai-quiz" search={search}>
+            <Link to="/ai-quiz">
               <ClipboardCheck className="ml-2 h-5 w-5" />
               اختبار سريع
             </Link>
           </Button>
 
           <Button asChild variant="outline" className="h-14">
-            <Link to="/ai-activity-ideas" search={search}>
+            <Link to="/ai-activity-ideas">
               <Lightbulb className="ml-2 h-5 w-5" />
               نشاط صفي
             </Link>

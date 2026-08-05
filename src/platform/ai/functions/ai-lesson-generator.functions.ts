@@ -17,6 +17,9 @@ const LessonPrepInput = z.object({
   lessonName: z.string().min(1, "اسم الدرس مطلوب"),
   objectives: z.string().optional().default(""),
   unit: z.string().optional().default(""),
+
+  lessonId: z.string().nullable().optional(),
+  suggestedDate: z.string().optional(),
 });
 
 export const generateLessonPreparation = createServerFn({ method: "POST" })
@@ -34,7 +37,8 @@ export const generateLessonPreparation = createServerFn({ method: "POST" })
     - الصف الدراسي: ${data.grade}
     - اسم الدرس: ${data.lessonName}
     ${data.unit ? `- الوحدة الدراسية: ${data.unit}` : ""}
-    ${data.objectives ? `- الأهداف الإضافية المدخلة من المعلم: ${data.objectives}` : ""}
+${data.suggestedDate ? `- تاريخ تنفيذ الدرس: ${data.suggestedDate}` : ""}
+${data.objectives ? `- الأهداف الإضافية المدخلة من المعلم: ${data.objectives}` : ""}
 
     يرجى تقديم التحضير بهيكل عالي الجودة وصيغة JSON مطابقة تماماً للمخطط الهيكلي المطلوب (responseSchema).
     تأكد من أن تكون العبارات مكتوبة بأسلوب تربوي رصين ومناسب ومكتمل بدون أي اختصارات أو نصوص مؤقتة.
@@ -148,10 +152,19 @@ export const generateLessonPreparation = createServerFn({ method: "POST" })
         kind: "lesson_plan",
         prompt: `تحضير مباشر لدرس: ${data.lessonName}`,
         output: {
-          content: parsedOutput,
-          input: data,
-          model: modelName,
-        },
+  content: parsedOutput,
+  input: data,
+  model: modelName,
+
+  lessonContext: {
+    lessonId: data.lessonId ?? null,
+    suggestedDate: data.suggestedDate ?? null,
+    lessonName: data.lessonName,
+    subject: data.subject,
+    grade: data.grade,
+    unit: data.unit ?? "",
+  },
+},
       });
 
       return {
@@ -168,3 +181,4 @@ export const generateLessonPreparation = createServerFn({ method: "POST" })
       );
     }
   });
+

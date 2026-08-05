@@ -1,4 +1,4 @@
-export type DeliveryMode = "classroom" | "remote";
+import type { DeliveryMode } from "../models";
 
 export interface LessonSlot {
   id: string;

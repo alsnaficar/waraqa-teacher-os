@@ -203,7 +203,8 @@ function LessonPlanPage() {
   const [objectives, setObjectives] = useState("");
   const [unit, setUnit] = useState("");
   const [duration, setDuration] = useState("45 دقيقة");
-
+const [lessonId, setLessonId] = useState<string | null>(null);
+const [suggestedDate, setSuggestedDate] = useState("");
   const [viewMode, setViewMode] = useState<"interactive" | "markdown">("interactive");
   const [editedMarkdown, setEditedMarkdown] = useState("");
   const [copied, setCopied] = useState(false);
@@ -238,7 +239,8 @@ function LessonPlanPage() {
     });
 
     setLessonName(context.title);
-
+     setLessonId(context.lessonId);
+setSuggestedDate(context.suggestedDate);
     toast.success(
       `تم تحميل درس اليوم المجدول تلقائياً: ${context.title}`,
     );
@@ -249,15 +251,17 @@ function LessonPlanPage() {
 
     loadTodayLesson();
   }, [search.title]);
-
-  const mutation = useMutation({
+   const mutation = useMutation({
     mutationFn: async (input: {
-      subject: string;
-      grade: string;
-      lessonName: string;
-      objectives?: string;
-      unit?: string;
-    }) => {
+  subject: string;
+  grade: string;
+  lessonName: string;
+  objectives?: string;
+  unit?: string;
+  lessonId?: string | null;
+  suggestedDate?: string;
+}) => {
+
       const result = await generate({ data: input });
       return result;
     },
@@ -292,14 +296,15 @@ function LessonPlanPage() {
 
     setValidationErrors({});
     mutation.mutate({
-      subject: curriculum.subject,
-      grade: curriculum.grade,
-      lessonName,
-      objectives: objectives || undefined,
-      unit: unit || undefined,
-    });
-  };
-
+  subject: curriculum.subject,
+  grade: curriculum.grade,
+  lessonName,
+  objectives: objectives || undefined,
+  unit: unit || undefined,
+  lessonId,
+  suggestedDate,
+});
+   };
   const handleCopy = async () => {
     const contentToCopy =
       viewMode === "markdown"
