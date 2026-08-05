@@ -1,3 +1,9 @@
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { DashboardSummary } from "@/components/dashboard/dashboard-summary";
+import { DashboardNotifications } from "@/components/dashboard/dashboard-notifications";
+import { TodayLessonsSection } from "@/components/dashboard/today-lessons-section";
+import { QuickActions } from "@/components/dashboard/quick-actions";
+import { PendingTasks } from "@/components/dashboard/pending-tasks";
 import { TodayLessonCard } from "@/components/dashboard/today-lesson-card";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
@@ -174,73 +180,29 @@ function HomePage() {
   }, [activeLesson]);
 
   return (
-    <PageShell>
-      {/* Greeting */}
-      <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
-        <CardContent className="p-5">
-          <div className="flex items-start gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
-              <User className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-primary">أهلاً بك</p>
-              <h1 className="mt-0.5 truncate text-xl font-bold sm:text-2xl">
-                {profile?.name ?? "..."}
-              </h1>
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <CalendarDays className="h-3.5 w-3.5" />
-                {hijri}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-300"
-                >
-                  <School className="mr-1 h-4 w-4" />
-                  غير مرتبط بمنصة مدرستي
-                </Badge>
+  <PageShell>
+    <div className="space-y-6">
+      <DashboardHeader
+        teacherName={profile?.name ?? "المعلم"}
+        hijriDate={hijri}
+        connected={false}
+        subscription="active"
+      />
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.open("/connect-school", "_blank")}
-                >
-                  <School className="mr-2 h-4 w-4" />
-                  ربط المدرسة
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <DashboardSummary />
 
-      {/* Today's schedule */}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-muted-foreground font-bold">جدول اليوم</h2>
-          <Button asChild variant="ghost" size="sm" className="h-7 gap-1 text-xs">
-            <Link to="/planner">
-              الأسبوع كاملاً
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </div>
-        {normalizedTodayLessons.length === 0 ? (
-          <Card>
-            <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              لا توجد حصص مجدولة لهذا اليوم.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            {normalizedTodayLessons.map((l) => (
-              <TodayLessonCard key={l.id} entry={l} />
-            ))}
-          </div>
-        )}
-      </section>
-    </PageShell>
-  );
+      <DashboardNotifications />
+
+      <TodayLessonsSection
+        lessons={normalizedTodayLessons}
+      />
+
+      <QuickActions />
+
+      <PendingTasks />
+    </div>
+  </PageShell>
+);
 }
 
 // ---------- pieces ----------
