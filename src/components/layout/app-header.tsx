@@ -2,7 +2,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Bell, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-	
+
 import { Button } from "@/shared/ui/button";
 import { BackButton } from "@/shared/components/back-button";
 import { supabase } from "@/platform/database/supabase/client";

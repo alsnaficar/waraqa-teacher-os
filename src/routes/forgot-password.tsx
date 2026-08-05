@@ -12,10 +12,7 @@ import { supabase } from "@/platform/database/supabase/client";
 
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({
-    meta: [
-      { title: "استعادة كلمة المرور | ورقة" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "استعادة كلمة المرور | ورقة" }, { name: "robots", content: "noindex" }],
   }),
   component: ForgotPasswordPage,
 });
@@ -46,7 +43,7 @@ function ForgotPasswordPage() {
     }
 
     toast.success(
-      "إذا كان البريد الإلكتروني مسجلاً، فسيتم إرسال رابط إعادة تعيين كلمة المرور إليه."
+      "إذا كان البريد الإلكتروني مسجلاً، فسيتم إرسال رابط إعادة تعيين كلمة المرور إليه.",
     );
   }
 
@@ -56,9 +53,7 @@ function ForgotPasswordPage() {
         <CardContent className="space-y-4 p-6">
           <BackButton />
 
-          <h1 className="text-2xl font-bold">
-            استعادة كلمة المرور
-          </h1>
+          <h1 className="text-2xl font-bold">استعادة كلمة المرور</h1>
 
           <p className="text-sm text-muted-foreground">
             أدخل بريدك الإلكتروني وسنرسل لك رابطًا لإعادة تعيين كلمة المرور.
@@ -66,9 +61,7 @@ function ForgotPasswordPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">
-                البريد الإلكتروني
-              </Label>
+              <Label htmlFor="email">البريد الإلكتروني</Label>
 
               <Input
                 id="email"
@@ -81,14 +74,8 @@ function ForgotPasswordPage() {
               />
             </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading}
-            >
-              {loading
-                ? "جاري الإرسال..."
-                : "إرسال رابط إعادة التعيين"}
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "جاري الإرسال..." : "إرسال رابط إعادة التعيين"}
             </Button>
           </form>
         </CardContent>
@@ -96,4 +83,3 @@ function ForgotPasswordPage() {
     </div>
   );
 }
-

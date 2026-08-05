@@ -191,23 +191,23 @@ function HomePage() {
                 {hijri}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-300"
-                >
-                  <School className="mr-1 h-4 w-4" />
-                  غير مرتبط بمنصة مدرستي
-                </Badge>
+  <Badge
+    variant="outline"
+    className="border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-300"
+  >
+    <School className="mr-1 h-4 w-4" />
+    غير مرتبط بمنصة مدرستي
+  </Badge>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.open("/connect-school", "_blank")}
-                >
-                  <School className="mr-2 h-4 w-4" />
-                  ربط المدرسة
-                </Button>
-              </div>
+  <Button
+    size="sm"
+    variant="outline"
+    onClick={() => window.open("/connect-school", "_blank")}
+  >
+    <School className="mr-2 h-4 w-4" />
+    ربط المدرسة
+  </Button>
+</div>
             </div>
           </div>
         </CardContent>
@@ -420,3 +420,4 @@ function StatMini({
     </Card>
   );
 }
+

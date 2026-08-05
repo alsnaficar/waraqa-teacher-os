@@ -1,7 +1,4 @@
-import {
-  NotificationEngine,
-  ScheduleEngine,
-} from "@/core";
+import { NotificationEngine, ScheduleEngine } from "@/core";
 
 export interface DashboardSummary {
   todayLessons: number;
@@ -18,7 +15,7 @@ export class DashboardService {
 
   getSummary(): DashboardSummary {
     const lessons = this.schedule.all();
-    const prepared = lessons.filter(l => l.prepared).length;
+    const prepared = lessons.filter((l) => l.prepared).length;
 
     return {
       todayLessons: lessons.length,

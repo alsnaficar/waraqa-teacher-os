@@ -30,13 +30,10 @@ export interface AIProviderAdapter {
   generate(request: AIRequest): Promise<AIResponse>;
 }
 export class AIEngine {
-  constructor(
-    private readonly providers: Record<AIProvider, AIProviderAdapter>,
-  ) {}
+  constructor(private readonly providers: Record<AIProvider, AIProviderAdapter>) {}
 
   async execute(request: AIRequest): Promise<AIResponse> {
-    const provider =
-      request.provider ?? this.selectProvider(request.task);
+    const provider = request.provider ?? this.selectProvider(request.task);
 
     return this.providers[provider].generate({
       ...request,
@@ -61,4 +58,3 @@ export class AIEngine {
     }
   }
 }
-

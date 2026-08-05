@@ -1,11 +1,5 @@
 export type TemplateType =
-  | "lesson-plan"
-  | "worksheet"
-  | "quiz"
-  | "activity"
-  | "enrichment"
-  | "strategies"
-  | "teaching-aids";
+  "lesson-plan" | "worksheet" | "quiz" | "activity" | "enrichment" | "strategies" | "teaching-aids";
 
 export interface TemplateContext {
   stage: string;
@@ -23,9 +17,7 @@ export interface PromptTemplate {
 }
 
 export class TemplateEngine {
-  constructor(
-    private readonly templates: Record<TemplateType, PromptTemplate>,
-  ) {}
+  constructor(private readonly templates: Record<TemplateType, PromptTemplate>) {}
 
   get(type: TemplateType): PromptTemplate {
     return this.templates[type];

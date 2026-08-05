@@ -20,13 +20,12 @@ function AuthenticatedLayout() {
   useAcademicCalendar();
 
   return (
-  <>
-    <AppHeader />
-    <div className="flex-1 pb-32 w-full min-h-0">
-      <Outlet />
-    </div>
-    <BottomNav />
-  </>
-);
+    <>
+      <AppHeader />
+      <div className="flex-1 pb-32 w-full min-h-0">
+        <Outlet />
+      </div>
+      <BottomNav />
+    </>
+  );
 }
-

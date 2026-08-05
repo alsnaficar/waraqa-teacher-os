@@ -16,9 +16,7 @@ export interface MadrasatiProvider {
 }
 
 export class MadrasatiEngine {
-  constructor(
-    private readonly provider: MadrasatiProvider,
-  ) {}
+  constructor(private readonly provider: MadrasatiProvider) {}
 
   async syncProfile(): Promise<TeacherProfile> {
     await this.provider.connect();

@@ -312,13 +312,12 @@ export function AuthForm({
         {mode === "signin" && (
           <div className="flex justify-end">
             <button
-  type="button"
-  onClick={() =>navigate({ to: "/forgot-password" })}
-  className="text-xs font-medium text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors hover:underline underline-offset-4"
->
-  نسيت كلمة المرور؟
-</button>           
-
+              type="button"
+              onClick={() => navigate({ to: "/forgot-password" })}
+              className="text-xs font-medium text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors hover:underline underline-offset-4"
+            >
+              نسيت كلمة المرور؟
+            </button>
           </div>
         )}
 

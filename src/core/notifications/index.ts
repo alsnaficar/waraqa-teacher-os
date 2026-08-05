@@ -1,9 +1,5 @@
 export type NotificationType =
-  | "lesson-reminder"
-  | "worksheet-reminder"
-  | "quiz-reminder"
-  | "madrasati-sync"
-  | "teams-meeting";
+  "lesson-reminder" | "worksheet-reminder" | "quiz-reminder" | "madrasati-sync" | "teams-meeting";
 
 export interface NotificationItem {
   id: string;

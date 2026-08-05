@@ -1,9 +1,5 @@
 export type ErrorCode =
-  | "MADRASATI_CONNECTION"
-  | "TEAMS_CONNECTION"
-  | "AI_ENGINE"
-  | "PDF_PARSE"
-  | "UNKNOWN";
+  "MADRASATI_CONNECTION" | "TEAMS_CONNECTION" | "AI_ENGINE" | "PDF_PARSE" | "UNKNOWN";
 
 export interface AppError {
   code: ErrorCode;
