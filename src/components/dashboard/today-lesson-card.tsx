@@ -47,15 +47,11 @@ export function TodayLessonCard({ entry }: TodayLessonCardProps) {
             </Badge>
 
             {displayKlass && (
-              <span className="text-[10px] text-muted-foreground">
-                {displayKlass}
-              </span>
+              <span className="text-[10px] text-muted-foreground">{displayKlass}</span>
             )}
           </div>
 
-          <p className="mt-1 truncate text-sm font-semibold">
-            {entry.lessonTitle}
-          </p>
+          <p className="mt-1 truncate text-sm font-semibold">{entry.lessonTitle}</p>
         </div>
 
         <div className="flex items-center gap-1">
@@ -81,4 +77,3 @@ export function TodayLessonCard({ entry }: TodayLessonCardProps) {
     </Card>
   );
 }
-

@@ -47,14 +47,10 @@ export function DashboardSummary({
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <Icon className="h-5 w-5 text-primary" />
-                <span className="text-2xl font-bold">
-                  {card.value}
-                </span>
+                <span className="text-2xl font-bold">{card.value}</span>
               </div>
 
-              <div className="mt-3 text-sm text-muted-foreground">
-                {card.title}
-              </div>
+              <div className="mt-3 text-sm text-muted-foreground">{card.title}</div>
             </CardContent>
           </Card>
         );
@@ -62,4 +58,3 @@ export function DashboardSummary({
     </div>
   );
 }
-

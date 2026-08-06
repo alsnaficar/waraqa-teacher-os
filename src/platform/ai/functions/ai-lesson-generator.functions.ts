@@ -152,19 +152,19 @@ ${data.objectives ? `- الأهداف الإضافية المدخلة من ال�
         kind: "lesson_plan",
         prompt: `تحضير مباشر لدرس: ${data.lessonName}`,
         output: {
-  content: parsedOutput,
-  input: data,
-  model: modelName,
+          content: parsedOutput,
+          input: data,
+          model: modelName,
 
-  lessonContext: {
-    lessonId: data.lessonId ?? null,
-    suggestedDate: data.suggestedDate ?? null,
-    lessonName: data.lessonName,
-    subject: data.subject,
-    grade: data.grade,
-    unit: data.unit ?? "",
-  },
-},
+          lessonContext: {
+            lessonId: data.lessonId ?? null,
+            suggestedDate: data.suggestedDate ?? null,
+            lessonName: data.lessonName,
+            subject: data.subject,
+            grade: data.grade,
+            unit: data.unit ?? "",
+          },
+        },
       });
 
       return {
@@ -181,4 +181,3 @@ ${data.objectives ? `- الأهداف الإضافية المدخلة من ال�
       );
     }
   });
-

@@ -94,14 +94,14 @@ function HomePage() {
     queryKey: ["dashboard-schedule"],
     staleTime: 30_000,
     queryFn: async () => {
-  try {
-    return await getTodayLessons();
-  } catch (err) {
-    console.error("Failed to load lessons for dashboard:", err);
+      try {
+        return await getTodayLessons();
+      } catch (err) {
+        console.error("Failed to load lessons for dashboard:", err);
         return [];
-    }
-  },
-});
+      }
+    },
+  });
 
   const [mockLessons, setMockLessons] = useState<ScheduleEntry[]>([]);
   useEffect(() => {
@@ -179,31 +179,25 @@ function HomePage() {
   }, [activeLesson]);
 
   return (
-  <PageShell>
-    <div className="space-y-6">
-      <DashboardHeader
-        teacherName={profile?.name ?? "المعلم"}
-        hijriDate={hijri}
-        connected={false}
-        subscription="active"
-      />
+    <PageShell>
+      <div className="space-y-6">
+        <DashboardHeader
+          teacherName={profile?.name ?? "المعلم"}
+          hijriDate={hijri}
+          connected={false}
+          subscription="active"
+        />
 
-              <DashboardSummary
+        <DashboardSummary
           todayLessons={normalizedTodayLessons.length}
           weekLessons={scheduleData?.length ?? 0}
-          completedLessons={
-            scheduleData?.filter((l) => l.status === "Completed").length ?? 0
-          }
-          remainingLessons={
-            scheduleData?.filter((l) => l.status !== "Completed").length ?? 0
-          }
+          completedLessons={scheduleData?.filter((l) => l.status === "Completed").length ?? 0}
+          remainingLessons={scheduleData?.filter((l) => l.status !== "Completed").length ?? 0}
         />
 
         <DashboardNotifications />
 
-        <TodayLessonsSection
-          lessons={normalizedTodayLessons}
-        />
+        <TodayLessonsSection lessons={normalizedTodayLessons} />
 
         <QuickActions />
 

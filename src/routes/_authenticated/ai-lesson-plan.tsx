@@ -203,8 +203,8 @@ function LessonPlanPage() {
   const [objectives, setObjectives] = useState("");
   const [unit, setUnit] = useState("");
   const [duration, setDuration] = useState("45 دقيقة");
-const [lessonId, setLessonId] = useState<string | null>(null);
-const [suggestedDate, setSuggestedDate] = useState("");
+  const [lessonId, setLessonId] = useState<string | null>(null);
+  const [suggestedDate, setSuggestedDate] = useState("");
   const [viewMode, setViewMode] = useState<"interactive" | "markdown">("interactive");
   const [editedMarkdown, setEditedMarkdown] = useState("");
   const [copied, setCopied] = useState(false);
@@ -218,50 +218,48 @@ const [suggestedDate, setSuggestedDate] = useState("");
       return;
     }
 
-   async function loadTodayLesson() {
-  try {
-    const context = await getLessonContext();
+    async function loadTodayLesson() {
+      try {
+        const context = await getLessonContext();
 
-    if (!context) return;
+        if (!context) return;
 
-    const computedStage: "primary" | "intermediate" | "secondary" =
-      context.grade.includes("متوسط")
-        ? "intermediate"
-        : context.grade.includes("ثانوي")
-          ? "secondary"
-          : "primary";
+        const computedStage: "primary" | "intermediate" | "secondary" = context.grade.includes(
+          "متوسط",
+        )
+          ? "intermediate"
+          : context.grade.includes("ثانوي")
+            ? "secondary"
+            : "primary";
 
-    setCurriculum({
-      stage: computedStage,
-      grade: context.grade,
-      subject: context.subject,
-      semester: "",
-    });
+        setCurriculum({
+          stage: computedStage,
+          grade: context.grade,
+          subject: context.subject,
+          semester: "",
+        });
 
-    setLessonName(context.title);
-     setLessonId(context.lessonId);
-setSuggestedDate(context.suggestedDate);
-    toast.success(
-      `تم تحميل درس اليوم المجدول تلقائياً: ${context.title}`,
-    );
-  } catch (err) {
-    console.warn("Failed to auto-load today's lesson:", err);
-  }
-}
+        setLessonName(context.title);
+        setLessonId(context.lessonId);
+        setSuggestedDate(context.suggestedDate);
+        toast.success(`تم تحميل درس اليوم المجدول تلقائياً: ${context.title}`);
+      } catch (err) {
+        console.warn("Failed to auto-load today's lesson:", err);
+      }
+    }
 
     loadTodayLesson();
   }, [search.title]);
-   const mutation = useMutation({
+  const mutation = useMutation({
     mutationFn: async (input: {
-  subject: string;
-  grade: string;
-  lessonName: string;
-  objectives?: string;
-  unit?: string;
-  lessonId?: string | null;
-  suggestedDate?: string;
-}) => {
-
+      subject: string;
+      grade: string;
+      lessonName: string;
+      objectives?: string;
+      unit?: string;
+      lessonId?: string | null;
+      suggestedDate?: string;
+    }) => {
       const result = await generate({ data: input });
       return result;
     },
@@ -296,15 +294,15 @@ setSuggestedDate(context.suggestedDate);
 
     setValidationErrors({});
     mutation.mutate({
-  subject: curriculum.subject,
-  grade: curriculum.grade,
-  lessonName,
-  objectives: objectives || undefined,
-  unit: unit || undefined,
-  lessonId,
-  suggestedDate,
-});
-   };
+      subject: curriculum.subject,
+      grade: curriculum.grade,
+      lessonName,
+      objectives: objectives || undefined,
+      unit: unit || undefined,
+      lessonId,
+      suggestedDate,
+    });
+  };
   const handleCopy = async () => {
     const contentToCopy =
       viewMode === "markdown"

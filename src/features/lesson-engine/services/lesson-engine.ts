@@ -8,9 +8,7 @@ export async function getTodayLessons(): Promise<CalculatedLessonEntry[]> {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  return schedule.filter(
-    (lesson) => lesson.suggestedDate === today,
-  );
+  return schedule.filter((lesson) => lesson.suggestedDate === today);
 }
 
 export async function getCurrentLesson(): Promise<CalculatedLessonEntry | null> {
@@ -24,9 +22,5 @@ export async function getNextLesson(): Promise<CalculatedLessonEntry | null> {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  return (
-    schedule.find((lesson) => lesson.suggestedDate > today) ??
-    null
-  );
+  return schedule.find((lesson) => lesson.suggestedDate > today) ?? null;
 }
-

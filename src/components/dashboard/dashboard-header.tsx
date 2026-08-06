@@ -28,9 +28,7 @@ export function DashboardHeader({
           <div className="flex-1">
             <p className="text-xs text-primary">أهلاً بك</p>
 
-            <h1 className="text-2xl font-bold">
-              {teacherName}
-            </h1>
+            <h1 className="text-2xl font-bold">{teacherName}</h1>
 
             <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
               <CalendarDays className="h-4 w-4" />
@@ -38,19 +36,14 @@ export function DashboardHeader({
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
-
               <Badge variant={connected ? "default" : "outline"}>
                 <School className="mr-1 h-4 w-4" />
                 {connected ? "مدرستي مرتبطة" : "مدرستي غير مرتبطة"}
               </Badge>
 
-              <Badge
-                variant={subscription === "active" ? "default" : "destructive"}
-              >
+              <Badge variant={subscription === "active" ? "default" : "destructive"}>
                 <CreditCard className="mr-1 h-4 w-4" />
-                {subscription === "active"
-                  ? "الاشتراك فعال"
-                  : "الاشتراك منتهي"}
+                {subscription === "active" ? "الاشتراك فعال" : "الاشتراك منتهي"}
               </Badge>
 
               {!connected && (
@@ -69,4 +62,3 @@ export function DashboardHeader({
     </Card>
   );
 }
-

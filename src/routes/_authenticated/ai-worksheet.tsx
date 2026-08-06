@@ -122,34 +122,33 @@ function WorksheetPage() {
 
   const { copy, copied } = useAIClipboard();
   const { downloadDocx, exporting } = useAIExport();
-  
+
   useEffect(() => {
-  if (search.title) return;
+    if (search.title) return;
 
-  async function loadContext() {
-    const context = await getLessonContext();
+    async function loadContext() {
+      const context = await getLessonContext();
 
-    if (!context) return;
+      if (!context) return;
 
-    const stage =
-      context.grade.includes("متوسط")
+      const stage = context.grade.includes("متوسط")
         ? "intermediate"
         : context.grade.includes("ثانوي")
           ? "secondary"
           : "primary";
 
-    setCurriculum({
-      stage,
-      grade: context.grade,
-      subject: context.subject,
-      semester: "",
-    });
+      setCurriculum({
+        stage,
+        grade: context.grade,
+        subject: context.subject,
+        semester: "",
+      });
 
-    setTitle(context.title);
-  }
+      setTitle(context.title);
+    }
 
-  void loadContext();
-}, [search.title, setCurriculum, setTitle]);
+    void loadContext();
+  }, [search.title, setCurriculum, setTitle]);
 
   const handleCopy = async () => {
     await copy(editedContent);

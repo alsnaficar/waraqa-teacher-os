@@ -87,30 +87,29 @@ function ActivityIdeasPage() {
   });
 
   useEffect(() => {
-  async function loadContext() {
-    const context = await getLessonContext();
+    async function loadContext() {
+      const context = await getLessonContext();
 
-    if (!context) return;
+      if (!context) return;
 
-    const stage =
-      context.grade.includes("متوسط")
+      const stage = context.grade.includes("متوسط")
         ? "intermediate"
         : context.grade.includes("ثانوي")
           ? "secondary"
           : "primary";
 
-    setCurriculum({
-      stage,
-      grade: context.grade,
-      subject: context.subject,
-      semester: "",
-    });
+      setCurriculum({
+        stage,
+        grade: context.grade,
+        subject: context.subject,
+        semester: "",
+      });
 
-    setTitle(context.title);
-  }
+      setTitle(context.title);
+    }
 
-  void loadContext();
-}, []);
+    void loadContext();
+  }, []);
 
   function validateAndRun() {
     const curriculumErrors = validateCurriculum(curriculum) ?? {};

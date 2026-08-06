@@ -29,4 +29,3 @@ export async function getLessonContext(): Promise<LessonContext | null> {
     period: lesson.period,
   };
 }
-
