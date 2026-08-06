@@ -1,7 +1,4 @@
-export type AcademicTerm =
-  | "first"
-  | "second"
-  | "third";
+export type AcademicTerm = "first" | "second" | "third";
 
 export type CalendarEventType =
   | "school-start"

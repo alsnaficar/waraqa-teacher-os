@@ -2,17 +2,10 @@ import { AppProvider } from "../providers/app.provider";
 import { EmailProvider } from "../providers/email.provider";
 import { WhatsAppProvider } from "../providers/whatsapp.provider";
 
-import type {
-  NotificationChannel,
-  NotificationPayload,
-  NotificationProvider,
-} from "../types";
+import type { NotificationChannel, NotificationPayload, NotificationProvider } from "../types";
 
 export class NotificationService {
-  private readonly providers: Record<
-    NotificationChannel,
-    NotificationProvider
-  > = {
+  private readonly providers: Record<NotificationChannel, NotificationProvider> = {
     app: new AppProvider(),
     whatsapp: new WhatsAppProvider(),
     email: new EmailProvider(),

@@ -1,14 +1,7 @@
-export type NotificationChannel =
-  | "app"
-  | "whatsapp"
-  | "email";
+export type NotificationChannel = "app" | "whatsapp" | "email";
 
 export type NotificationType =
-  | "lesson-reminder"
-  | "homework-reminder"
-  | "exam-reminder"
-  | "weekly-plan"
-  | "custom";
+  "lesson-reminder" | "homework-reminder" | "exam-reminder" | "weekly-plan" | "custom";
 
 export interface NotificationPayload {
   type: NotificationType;

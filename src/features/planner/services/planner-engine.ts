@@ -1,4 +1,9 @@
+import { getHolidayDates } from "@/features/calendar/services/calendar.service";
 import { supabase } from "@/platform/database/supabase/client";
+import {
+  getActiveAcademicYear,
+  getCurrentAcademicTerm,
+} from "@/features/calendar/services/calendar.service";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 
 export interface AcademicCalendarConfig {
@@ -81,109 +86,34 @@ const DEFAULT_TIMETABLE: TimetableSlot[] = [
   { dayOfWeek: 4, period: 4, className: "أول متوسط - 1" }, // Thu Period 4
 ];
 
-/**
- * Loads the active academic calendar config from the DB.
- * Uses a special database row in planner_entries to maintain single source of truth without schema edits.
- */
 export async function loadCalendarConfig(): Promise<AcademicCalendarConfig> {
-  try {
-    const { data, error } = await supabase
-      .from("planner_entries")
-      .select("notes")
-      .eq("week_start_date", CONFIG_ACADEMIC_CALENDAR_DATE)
-      .maybeSingle();
+  const year = await getActiveAcademicYear();
+  const term = await getCurrentAcademicTerm();
 
-    if (error || !data?.notes) {
-      return DEFAULT_CALENDAR;
-    }
-    return JSON.parse(data.notes) as AcademicCalendarConfig;
-  } catch (err) {
-    console.warn("Failed to load calendar config, using default:", err);
+  if (!year || !term) {
     return DEFAULT_CALENDAR;
   }
+
+  return {
+    academicYear: year.name,
+    semesterId: term.id,
+    semesterStart: term.starts_at,
+    semesterEnd: term.ends_at,
+    teachingWeeksCount: 15,
+    periodsPerDay: 7,
+    workingDays: [0, 1, 2, 3, 4],
+    holidays: (await getHolidayDates()).map((event) => ({
+      date: event.starts_at,
+      label: event.title,
+    })),
+    examWeeks: [],
+  };
 }
 
-/**
- * Saves the academic calendar config globally to Supabase.
- */
-export async function saveCalendarConfig(config: AcademicCalendarConfig): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
-
-  // Upsert config into planner_entries with special identifier
-  const { error } = await supabase.from("planner_entries").upsert({
-    id: "00000000-0000-0000-0000-000000000000", // Fixed UUID for config
-    user_id: user.id,
-    week_start_date: CONFIG_ACADEMIC_CALENDAR_DATE,
-    day_of_week: -1,
-    period: -1,
-    subject: "CONFIG",
-    notes: JSON.stringify(config),
-  });
-
-  if (error) throw error;
-}
-
-/**
- * Loads the weekly timetable configuration for the current teacher.
- */
-export async function loadTimetable(): Promise<TimetableSlot[]> {
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return DEFAULT_TIMETABLE;
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("classes")
-      .eq("id", user.id)
-      .single();
-
-    if (error || !data?.classes) {
-      return DEFAULT_TIMETABLE;
-    }
-
-    const classesJson = data.classes as Record<string, unknown> | null;
-    if (classesJson && Array.isArray(classesJson.timetable)) {
-      return classesJson.timetable as TimetableSlot[];
-    }
-    return DEFAULT_TIMETABLE;
-  } catch (err) {
-    console.warn("Failed to load timetable, using default:", err);
-    return DEFAULT_TIMETABLE;
-  }
-}
-
-/**
- * Saves the weekly timetable configuration for the current teacher.
- */
-export async function saveTimetable(timetable: TimetableSlot[]): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("classes")
-    .eq("id", user.id)
-    .single();
-
-  const currentClasses = (profile?.classes as Record<string, unknown>) || {};
-  const updatedClasses = {
-    ...currentClasses,
-    timetable,
-  } as unknown as import("@/platform/database/supabase/types").Json;
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({ classes: updatedClasses })
-    .eq("id", user.id);
-
-  if (error) throw error;
+export async function saveCalendarConfig(_config: AcademicCalendarConfig): Promise<void> {
+  console.warn(
+    "saveCalendarConfig() is deprecated. Academic calendar is now managed from academic_years, academic_terms and calendar_events.",
+  );
 }
 
 /**
@@ -203,7 +133,10 @@ export async function loadUserOverrides(): Promise<ScheduleOverride[]> {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (error || !data?.notes) return [];
+    if (error || !data?.notes) {
+      return [];
+    }
+
     return JSON.parse(data.notes) as ScheduleOverride[];
   } catch (err) {
     console.warn("Failed to load overrides:", err);
@@ -224,13 +157,9 @@ export async function saveUserOverrides(overrides: ScheduleOverride[]): Promise<
     id: "11111111-1111-1111-1111-111111111111", // Fixed UUID for user overrides
     user_id: user.id,
     week_start_date: CONFIG_SCHEDULE_OVERRIDES_DATE,
-    day_of_week: -1,
-    period: -1,
     subject: "OVERRIDES",
     notes: JSON.stringify(overrides),
   });
-
-  if (error) throw error;
 }
 
 /**
@@ -412,7 +341,8 @@ export async function generateSchedule(
 
   for (const day of schoolDates) {
     // Skip holidays and exam weeks
-    if (day.isHoliday || day.isExamWeek) continue;
+    if (day.isHoliday) continue;
+    // سنضيف دعم أسابيع الاختبارات من calendar_events لاحقًا
 
     // Find timetable slots for this day of week
     const slotsForDay = timetable.filter((t) => t.dayOfWeek === day.dayOfWeek);
@@ -466,7 +396,11 @@ export async function generateSchedule(
     remainingPeriods: number;
     isCustom: boolean;
   }
-
+  const config = await loadCalendarConfig();
+  config.holidays = (await getHolidayDates()).map((event) => ({
+    date: event.starts_at,
+    label: event.title,
+  }));
   const flatLessons: FlatLesson[] = [];
   let lessonOrderCounter = 1;
 
