@@ -1,3 +1,4 @@
+import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import {
   generateSchedule,
   type CalculatedLessonEntry,
@@ -85,7 +86,24 @@ static async generateSessionsForDate(
     return [];
   }
 
-  const rows = todayPlanner.map((lesson) => ({
+  const timetable = await TeacherTimetableService.getTimetable();
+
+const rows = todayPlanner
+  .filter((lesson) =>
+    timetable.some(
+      (t) =>
+        t.dayOfWeek === lesson.dayOfWeek &&
+        t.period === lesson.period,
+    ),
+  )
+  .map((lesson) => ({
+    teacher_id: user.id,
+    session_date: lesson.date,
+    day_of_week: lesson.dayOfWeek,
+    period_number: lesson.period,
+    lesson_locked: false,
+    status: "scheduled",
+  }));
     teacher_id: user.id,
     session_date: lesson.date,
     day_of_week: lesson.dayOfWeek,

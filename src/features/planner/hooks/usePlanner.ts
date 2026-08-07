@@ -1,3 +1,5 @@
+import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
+import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import { useEffect, useState } from "react";
 import { supabase } from "@/platform/database/supabase/client";
 import {
@@ -31,7 +33,26 @@ export function usePlanner(): UsePlannerResult {
 
   async function loadPlanner() {
     setLoading(true);
+     const timetable = await TeacherTimetableService.getTimetable();
+      const today = new Date().toISOString().slice(0, 10);
 
+await LessonSessionService.generateSessionsForDate(today);
+
+const sessions = await LessonSessionService.getSessionsByDate(today);
+
+if (sessions.length > 0) {
+  setEntries(
+    sessions as never[],
+  );
+
+  setLoading(false);
+  return;
+}
+if (timetable.length === 0) {
+  setEntries([]);
+  setLoading(false);
+  return;
+}
     try {
       const {
         data: { user },
