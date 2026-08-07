@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
-import { BookOpen, FileText, ClipboardCheck, Lightbulb } from "lucide-react";
+import { BookOpen, FileText, ClipboardCheck, Lightbulb, CalendarRange } from "lucide-react";
 
 export function QuickActions() {
   return (
@@ -10,6 +10,15 @@ export function QuickActions() {
         <h2 className="mb-4 font-bold text-lg">الإجراءات السريعة</h2>
 
         <div className="grid grid-cols-2 gap-3">
+          {/* Starting from the session carries the subject, grade, class and
+              lesson into the AI tools instead of opening an empty form. */}
+          <Button asChild variant="secondary" className="col-span-2 h-14">
+            <Link to="/lesson-sessions">
+              <CalendarRange className="ml-2 h-5 w-5" />
+              حصص اليوم
+            </Link>
+          </Button>
+
           <Button asChild className="h-14">
             <Link to="/ai-lesson-plan">
               <BookOpen className="ml-2 h-5 w-5" />

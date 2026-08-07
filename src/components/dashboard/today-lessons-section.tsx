@@ -1,9 +1,7 @@
-import { TodayLessonCard } from "./today-lesson-card";
-
-import type { CalculatedLessonEntry } from "@/features/planner/services/planner-engine";
+import { TodayLessonCard, type TodayLessonCardProps } from "./today-lesson-card";
 
 interface Props {
-  lessons: CalculatedLessonEntry[];
+  lessons: Array<TodayLessonCardProps["entry"]>;
 }
 
 export function TodayLessonsSection({ lessons }: Props) {

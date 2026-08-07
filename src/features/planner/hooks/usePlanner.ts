@@ -1,6 +1,5 @@
-import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
-import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
 import { supabase } from "@/platform/database/supabase/client";
 import {
   generateSchedule,
@@ -8,7 +7,6 @@ import {
   syncScheduleToDatabase,
   type CalculatedLessonEntry,
 } from "../services/planner-engine";
-import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
 
 type Assignment = {
   stage: string;
@@ -25,64 +23,47 @@ export interface UsePlannerResult {
   refresh(): Promise<void>;
 }
 
+/**
+ * Loads the teacher's calculated curriculum distribution for the whole term.
+ *
+ * Day-level teaching state lives in `useLessonSessions`; this hook only covers
+ * the planner projection.
+ */
 export function usePlanner(): UsePlannerResult {
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<CalculatedLessonEntry[]>([]);
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
 
-  async function loadPlanner() {
+  const loadPlanner = useCallback(async () => {
     setLoading(true);
-     const timetable = await TeacherTimetableService.getTimetable();
-      const today = new Date().toISOString().slice(0, 10);
 
-await LessonSessionService.generateSessionsForDate(today);
-
-const sessions = await LessonSessionService.getSessionsByDate(today);
-
-if (sessions.length > 0) {
-  setEntries(
-    sessions as never[],
-  );
-
-  setLoading(false);
-  return;
-}
-if (timetable.length === 0) {
-  setEntries([]);
-  setLoading(false);
-  return;
-}
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) return;
+      if (!user) {
+        setEntries([]);
+        return;
+      }
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("*")
+        .select("grade, subject, classes")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
-      let activeGrade = "الأول متوسط";
-      let activeSubject = "العلوم";
+      let activeGrade = profile?.grade ?? "";
+      let activeSubject = profile?.subject ?? "";
 
-      if (profile) {
-        const classes = profile.classes as {
-          assignments?: Assignment[];
-        } | null;
+      const classes = profile?.classes as { assignments?: Assignment[] } | null;
 
-        if (classes && Array.isArray(classes.assignments) && classes.assignments.length > 0) {
-          const asm = classes.assignments[0];
+      if (classes && Array.isArray(classes.assignments) && classes.assignments.length > 0) {
+        const assignment = classes.assignments[0];
 
-          activeGrade = asm.grade || activeGrade;
-          activeSubject = asm.subject || activeSubject;
-        } else if (profile.grade && profile.subject) {
-          activeGrade = profile.grade;
-          activeSubject = profile.subject;
-        }
+        activeGrade = assignment.grade || activeGrade;
+        activeSubject = assignment.subject || activeSubject;
       }
 
       setGrade(activeGrade);
@@ -92,23 +73,20 @@ if (timetable.length === 0) {
 
       if (calculated.length > 0) {
         setEntries(calculated);
-
         await syncScheduleToDatabase(calculated, activeSubject);
       } else {
-        const generated = await recalculateAndSyncPlanner(activeSubject, activeGrade);
-
-        setEntries(generated);
+        setEntries(await recalculateAndSyncPlanner(activeSubject, activeGrade));
       }
     } catch (error) {
       console.error("Failed to load planner:", error);
     } finally {
       setLoading(false);
     }
-  }
-
- useEffect(() => {
-    void loadPlanner();
   }, []);
+
+  useEffect(() => {
+    void loadPlanner();
+  }, [loadPlanner]);
 
   return {
     loading,

@@ -1,29 +1,60 @@
-import { useEffect, useState } from "react";
-import { LessonSessionService } from "../services/lesson-session.service";
-import type { LessonSession } from "../types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 
-export function useLessonSessions() {
-  const [loading, setLoading] = useState(true);
-  const [sessions, setSessions] = useState<LessonSession[]>([]);
+import { LessonSessionService, todayIso } from "../services/lesson-session.service";
+import type { LessonSessionGenerationResult } from "../types";
 
-  async function refresh() {
-    setLoading(true);
+export const lessonSessionsQueryKey = (date: string) => ["lesson-sessions", date] as const;
 
-    try {
-      const data = await LessonSessionService.getTodaySessions();
-      setSessions(data);
-    } finally {
-      setLoading(false);
-    }
-  }
+/**
+ * Loads the lesson sessions for a date and exposes the preparation lifecycle.
+ *
+ * Sessions are created on demand the first time a date is opened, so a teacher
+ * never has to trigger generation manually for a normal school day.
+ */
+export function useLessonSessions(date: string = todayIso()) {
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    void refresh();
-  }, []);
+  const query = useQuery<LessonSessionGenerationResult>({
+    queryKey: lessonSessionsQueryKey(date),
+    staleTime: 30_000,
+    queryFn: () => LessonSessionService.ensureSessionsForDate(date),
+  });
+
+  const invalidate = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: lessonSessionsQueryKey(date) });
+  }, [queryClient, date]);
+
+  const regenerate = useMutation({
+    mutationFn: () => LessonSessionService.generateSessionsForDate(date),
+    onSuccess: invalidate,
+  });
+
+  const prepare = useMutation({
+    mutationFn: (id: string) => LessonSessionService.prepareSession(id),
+    onSuccess: invalidate,
+  });
+
+  const resetPreparation = useMutation({
+    mutationFn: (id: string) => LessonSessionService.resetPreparation(id),
+    onSuccess: invalidate,
+  });
+
+  const complete = useMutation({
+    mutationFn: (id: string) => LessonSessionService.completeSession(id),
+    onSuccess: invalidate,
+  });
 
   return {
-    loading,
-    sessions,
-    refresh,
+    date,
+    sessions: query.data?.sessions ?? [],
+    skipped: query.data?.skipped ?? null,
+    loading: query.isPending,
+    error: query.error,
+    refresh: invalidate,
+    regenerate,
+    prepare,
+    resetPreparation,
+    complete,
   };
 }

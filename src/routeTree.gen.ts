@@ -27,6 +27,7 @@ import { Route as AuthenticatedCurriculumManagementRouteImport } from './routes/
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedGoogleSheetsRouteImport } from './routes/_authenticated/google-sheets'
 import { Route as AuthenticatedGradingRouteImport } from './routes/_authenticated/grading'
+import { Route as AuthenticatedLessonSessionsRouteImport } from './routes/_authenticated/lesson-sessions'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPlannerRouteImport } from './routes/_authenticated/planner'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
@@ -129,6 +130,12 @@ const AuthenticatedGradingRoute = AuthenticatedGradingRouteImport.update({
   path: '/grading',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLessonSessionsRoute =
+  AuthenticatedLessonSessionsRouteImport.update({
+    id: '/lesson-sessions',
+    path: '/lesson-sessions',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedNotificationsRoute =
   AuthenticatedNotificationsRouteImport.update({
     id: '/notifications',
@@ -175,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/google-sheets': typeof AuthenticatedGoogleSheetsRoute
   '/grading': typeof AuthenticatedGradingRoute
+  '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -199,6 +207,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/google-sheets': typeof AuthenticatedGoogleSheetsRoute
   '/grading': typeof AuthenticatedGradingRoute
+  '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -225,6 +234,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/google-sheets': typeof AuthenticatedGoogleSheetsRoute
   '/_authenticated/grading': typeof AuthenticatedGradingRoute
+  '/_authenticated/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/planner': typeof AuthenticatedPlannerRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
@@ -251,6 +261,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/google-sheets'
     | '/grading'
+    | '/lesson-sessions'
     | '/notifications'
     | '/planner'
     | '/reports'
@@ -275,6 +286,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/google-sheets'
     | '/grading'
+    | '/lesson-sessions'
     | '/notifications'
     | '/planner'
     | '/reports'
@@ -300,6 +312,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/google-sheets'
     | '/_authenticated/grading'
+    | '/_authenticated/lesson-sessions'
     | '/_authenticated/notifications'
     | '/_authenticated/planner'
     | '/_authenticated/reports'
@@ -445,6 +458,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGradingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/lesson-sessions': {
+      id: '/_authenticated/lesson-sessions'
+      path: '/lesson-sessions'
+      fullPath: '/lesson-sessions'
+      preLoaderRoute: typeof AuthenticatedLessonSessionsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/notifications': {
       id: '/_authenticated/notifications'
       path: '/notifications'
@@ -495,6 +515,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGoogleSheetsRoute: typeof AuthenticatedGoogleSheetsRoute
   AuthenticatedGradingRoute: typeof AuthenticatedGradingRoute
+  AuthenticatedLessonSessionsRoute: typeof AuthenticatedLessonSessionsRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedPlannerRoute: typeof AuthenticatedPlannerRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
@@ -515,6 +536,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGoogleSheetsRoute: AuthenticatedGoogleSheetsRoute,
   AuthenticatedGradingRoute: AuthenticatedGradingRoute,
+  AuthenticatedLessonSessionsRoute: AuthenticatedLessonSessionsRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedPlannerRoute: AuthenticatedPlannerRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,

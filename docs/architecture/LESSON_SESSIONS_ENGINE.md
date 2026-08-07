@@ -2,7 +2,20 @@
 
 ## Status
 
-Draft v1.0
+v1.0 — implemented.
+
+| Piece | Where |
+| --- | --- |
+| Table + RLS | `supabase/migrations/20260807000100_create_lesson_sessions.sql`, `20260807000300_lesson_sessions_hardening.sql` |
+| Service | `src/features/lesson-sessions/services/lesson-session.service.ts` |
+| Hook | `src/features/lesson-sessions/hooks/useLessonSessions.ts` |
+| Screen | `src/routes/_authenticated/lesson-sessions.tsx` (`/lesson-sessions`) |
+| Academic scope | `src/features/calendar/services/academic-calendar.ts` |
+| Timetable source | `src/features/teacher-timetable/services/teacher-timetable.service.ts` |
+
+Dependency direction is one-way: Madrasati -> Teacher Timetable -> Lesson Session.
+Timetable is a leaf that only touches Supabase, so nothing above it may import
+back into it.
 
 ---
 
@@ -64,6 +77,16 @@ Lesson Session
 - Unlock only by deleting preparation.
 - AI always uses current lesson session.
 - No duplicated data.
+
+How these are enforced:
+
+- `prepareSession` sets `status = 'prepared'`, `lesson_locked = true`, `prepared_at`.
+- `resetPreparation` is the only path back to `lesson_locked = false`.
+- `changeLesson` throws `LessonSessionLockedError` while the lesson is locked.
+- Generation never overwrites an existing session, so re-running it preserves
+  work the teacher has already done.
+- A unique index on `(teacher_id, session_date, period_number)` makes generation
+  idempotent.
 
 ---
 

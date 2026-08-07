@@ -1,42 +1,34 @@
 import { useEffect, useState } from "react";
 import { MadrasatiService } from "../services/madrasati.service";
-import type {
-  MadrasatiTeacherProfile,
-  MadrasatiTimetableLesson,
-} from "../types";
+import type { MadrasatiTeacherProfile, MadrasatiTimetableLesson } from "../types";
 
 export function useMadrasati() {
   const [loading, setLoading] = useState(true);
 
   const [connected, setConnected] = useState(false);
 
-  const [profile, setProfile] =
-    useState<MadrasatiTeacherProfile | null>(null);
+  const [profile, setProfile] = useState<MadrasatiTeacherProfile | null>(null);
 
-  const [timetable, setTimetable] = useState<
-    MadrasatiTimetableLesson[]
-  >([]);
+  const [timetable, setTimetable] = useState<MadrasatiTimetableLesson[]>([]);
 
   async function refresh() {
     setLoading(true);
 
     try {
-      
-const connection = await MadrasatiService.isConnected();
+      const connection = await MadrasatiService.isConnected();
 
-setConnected(connection);
+      setConnected(connection);
 
-if (!connection) {
-  setProfile(null);
-  setTimetable([]);
-  return;
-}
+      if (!connection) {
+        setProfile(null);
+        setTimetable([]);
+        return;
+      }
 
-await MadrasatiService.syncEverything();
+      await MadrasatiService.syncEverything();
 
-setProfile(await MadrasatiService.getTeacherProfile());
-
-setTimetable(await MadrasatiService.getTeacherTimetable());
+      setProfile(await MadrasatiService.getTeacherProfile());
+      setTimetable(await MadrasatiService.getTeacherTimetable());
     } finally {
       setLoading(false);
     }

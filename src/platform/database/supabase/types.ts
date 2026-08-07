@@ -71,6 +71,69 @@ export type Database = {
         };
         Relationships: [];
       };
+      calendar_events: {
+        Row: {
+          academic_year_id: string | null;
+          created_at: string;
+          ends_at: string;
+          event_type: string;
+          id: string;
+          is_remote: boolean;
+          is_teaching_day: boolean;
+          notes: string | null;
+          semester_id: string | null;
+          starts_at: string;
+          title: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          academic_year_id?: string | null;
+          created_at?: string;
+          ends_at: string;
+          event_type?: string;
+          id?: string;
+          is_remote?: boolean;
+          is_teaching_day?: boolean;
+          notes?: string | null;
+          semester_id?: string | null;
+          starts_at: string;
+          title: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          academic_year_id?: string | null;
+          created_at?: string;
+          ends_at?: string;
+          event_type?: string;
+          id?: string;
+          is_remote?: boolean;
+          is_teaching_day?: boolean;
+          notes?: string | null;
+          semester_id?: string | null;
+          starts_at?: string;
+          title?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_academic_year_id_fkey";
+            columns: ["academic_year_id"];
+            isOneToOne: false;
+            referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_events_semester_id_fkey";
+            columns: ["semester_id"];
+            isOneToOne: false;
+            referencedRelation: "semesters";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       classes: {
         Row: {
           created_at: string;
@@ -299,6 +362,99 @@ export type Database = {
         };
         Relationships: [];
       };
+      lesson_sessions: {
+        Row: {
+          academic_year_id: string;
+          class_id: string | null;
+          completed_at: string | null;
+          created_at: string;
+          curriculum_lesson_id: string;
+          day_of_week: number;
+          grade_id: string | null;
+          id: string;
+          lesson_locked: boolean;
+          period_number: number;
+          prepared_at: string | null;
+          semester_id: string;
+          session_date: string;
+          status: string;
+          teacher_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          academic_year_id: string;
+          class_id?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          curriculum_lesson_id: string;
+          day_of_week: number;
+          grade_id?: string | null;
+          id?: string;
+          lesson_locked?: boolean;
+          period_number: number;
+          prepared_at?: string | null;
+          semester_id: string;
+          session_date: string;
+          status?: string;
+          teacher_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          academic_year_id?: string;
+          class_id?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          curriculum_lesson_id?: string;
+          day_of_week?: number;
+          grade_id?: string | null;
+          id?: string;
+          lesson_locked?: boolean;
+          period_number?: number;
+          prepared_at?: string | null;
+          semester_id?: string;
+          session_date?: string;
+          status?: string;
+          teacher_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lesson_sessions_academic_year_id_fkey";
+            columns: ["academic_year_id"];
+            isOneToOne: false;
+            referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lesson_sessions_class_id_fkey";
+            columns: ["class_id"];
+            isOneToOne: false;
+            referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lesson_sessions_curriculum_lesson_id_fkey";
+            columns: ["curriculum_lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "curriculum_lessons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lesson_sessions_grade_id_fkey";
+            columns: ["grade_id"];
+            isOneToOne: false;
+            referencedRelation: "grades";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lesson_sessions_semester_id_fkey";
+            columns: ["semester_id"];
+            isOneToOne: false;
+            referencedRelation: "semesters";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       notifications: {
         Row: {
           body: string | null;
@@ -484,6 +640,54 @@ export type Database = {
           name?: string;
           updated_at?: string;
           user_id?: string;
+        };
+        Relationships: [];
+      };
+      teacher_timetable: {
+        Row: {
+          active: boolean;
+          class_name: string;
+          classroom: string | null;
+          created_at: string;
+          day_of_week: number;
+          ends_at: string | null;
+          grade: string;
+          id: string;
+          period: number;
+          starts_at: string | null;
+          subject: string;
+          teacher_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          active?: boolean;
+          class_name: string;
+          classroom?: string | null;
+          created_at?: string;
+          day_of_week: number;
+          ends_at?: string | null;
+          grade: string;
+          id?: string;
+          period: number;
+          starts_at?: string | null;
+          subject: string;
+          teacher_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          active?: boolean;
+          class_name?: string;
+          classroom?: string | null;
+          created_at?: string;
+          day_of_week?: number;
+          ends_at?: string | null;
+          grade?: string;
+          id?: string;
+          period?: number;
+          starts_at?: string | null;
+          subject?: string;
+          teacher_id?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };

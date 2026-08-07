@@ -1,4 +1,5 @@
 import { getTodayLessons } from "@/features/lesson-engine/services/lesson-engine";
+import { useLessonSessions } from "@/features/lesson-sessions/hooks/useLessonSessions";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardSummary } from "@/components/dashboard/dashboard-summary";
 import { DashboardNotifications } from "@/components/dashboard/dashboard-notifications";
@@ -130,7 +131,22 @@ function HomePage() {
     return realToday.length > 0 ? realToday : mockLessons;
   }, [scheduleData, mockLessons, today]);
 
+  // Lesson sessions are the source of truth for what is actually being taught
+  // today; the planner projection is only a fallback before they are generated.
+  const { sessions: todaySessions } = useLessonSessions();
+
   const normalizedTodayLessons = useMemo(() => {
+    if (todaySessions.length > 0) {
+      return todaySessions.map((session) => ({
+        id: session.id,
+        period: session.periodNumber,
+        grade: session.grade,
+        klass: session.className,
+        lessonTitle: session.lessonTitle,
+        subject: session.subject,
+      }));
+    }
+
     return todaysLessons.map((l) => {
       const displayGrade = ("className" in l ? l.className : "grade" in l ? l.grade : "") || "";
       const displayKlass = ("klass" in l ? l.klass : "") || "";
@@ -143,7 +159,7 @@ function HomePage() {
         subject: l.subject,
       };
     });
-  }, [todaysLessons]);
+  }, [todaySessions, todaysLessons]);
 
   // Find next upcoming lesson
   const nextLesson = useMemo(() => {

@@ -1,144 +1,396 @@
+import { resolveAcademicScope } from "@/features/calendar/services/academic-calendar";
+import { generateSchedule } from "@/features/planner/services/planner-engine";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
+import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
+import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
+import type { Database } from "@/platform/database/supabase/types";
 import {
-  generateSchedule,
-  type CalculatedLessonEntry,
-} from "@/features/planner/services/planner-engine";
-import { supabase } from "@/platform/database/supabase/client";
-import type { LessonSession } from "../types";
+  LessonSessionLockedError,
+  type LessonSession,
+  type LessonSessionGenerationResult,
+  type LessonSessionStatus,
+  type LessonSessionView,
+} from "../types";
 
+type SessionRow = Database["public"]["Tables"]["lesson_sessions"]["Row"];
+type SessionInsert = Database["public"]["Tables"]["lesson_sessions"]["Insert"];
+type SessionUpdate = Database["public"]["Tables"]["lesson_sessions"]["Update"];
+
+const SESSION_STATUSES: readonly LessonSessionStatus[] = [
+  "scheduled",
+  "prepared",
+  "completed",
+  "cancelled",
+];
+
+function toStatus(value: string): LessonSessionStatus {
+  return (SESSION_STATUSES as readonly string[]).includes(value)
+    ? (value as LessonSessionStatus)
+    : "scheduled";
+}
+
+function toSession(row: SessionRow): LessonSession {
+  return {
+    id: row.id,
+    teacherId: row.teacher_id,
+    academicYearId: row.academic_year_id,
+    semesterId: row.semester_id,
+    gradeId: row.grade_id,
+    classId: row.class_id,
+    curriculumLessonId: row.curriculum_lesson_id,
+    sessionDate: row.session_date,
+    dayOfWeek: row.day_of_week,
+    periodNumber: row.period_number,
+    lessonLocked: row.lesson_locked,
+    status: toStatus(row.status),
+    preparedAt: row.prepared_at,
+    completedAt: row.completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function dayOfWeekFor(date: string): number {
+  return new Date(`${date}T00:00:00Z`).getUTCDay();
+}
+
+/**
+ * Owns the Lesson Session lifecycle.
+ *
+ * A session is created by projecting the teacher timetable onto the curriculum
+ * distribution produced by the planner engine. Once a teacher prepares a
+ * session the lesson is locked, and it can only be changed after the
+ * preparation is deleted — see docs/architecture/LESSON_SESSIONS_ENGINE.md.
+ */
 export class LessonSessionService {
-  static async getTodaySessions(): Promise<LessonSession[]> {
-    const today = new Date().toISOString().slice(0, 10);
+  static async getSessionsByDate(
+    date: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession[]> {
+    const resolved = await resolveUserContext(context);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    if (!resolved) return [];
 
-    if (!user) return [];
-
-    const { data, error } = await supabase
+    const { data, error } = await resolved.client
       .from("lesson_sessions")
       .select("*")
-      .eq("teacher_id", user.id)
-      .eq("session_date", today)
+      .eq("teacher_id", resolved.userId)
+      .eq("session_date", date)
       .order("period_number");
 
     if (error) throw error;
 
-    return (data ?? []) as LessonSession[];
+    return (data ?? []).map(toSession);
   }
 
-  static async getTodaySessions(): Promise<LessonSession[]> {
-  const today = new Date().toISOString().slice(0, 10);
-
-  return this.getSessionsByDate(today);
-}
-
-static async getSessionsByDate(
-  date: string,
-): Promise<LessonSession[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return [];
-
-  const { data, error } = await supabase
-    .from("lesson_sessions")
-    .select("*")
-    .eq("teacher_id", user.id)
-    .eq("session_date", date)
-    .order("period_number");
-
-  if (error) throw error;
-
-  return (data ?? []) as LessonSession[];
-}
-
-static async hasTodaySessions(): Promise<boolean> {
-  const sessions = await this.getTodaySessions();
-
-  return sessions.length > 0;
-}
-
-static async generateSessionsForDate(
-  date: string,
-): Promise<LessonSession[]> {
-  const existing = await this.getSessionsByDate(date);
-
-  if (existing.length > 0) {
-    return existing;
+  static async getTodaySessions(context?: SupabaseUserContext): Promise<LessonSession[]> {
+    return this.getSessionsByDate(todayIso(), context);
   }
 
-  const planner: CalculatedLessonEntry[] = await generateSchedule();
+  static async hasTodaySessions(context?: SupabaseUserContext): Promise<boolean> {
+    const sessions = await this.getTodaySessions(context);
 
-  const targetDate = date;
-
-  const todayPlanner = planner.filter(
-    (lesson) => lesson.date === targetDate,
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return [];
+    return sessions.length > 0;
   }
 
-  const timetable = await TeacherTimetableService.getTimetable();
+  static async getSessionById(
+    id: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    const resolved = await resolveUserContext(context);
 
-const rows = todayPlanner
-  .filter((lesson) =>
-    timetable.some(
-      (t) =>
-        t.dayOfWeek === lesson.dayOfWeek &&
-        t.period === lesson.period,
-    ),
-  )
-  .map((lesson) => ({
-    teacher_id: user.id,
-    session_date: lesson.date,
-    day_of_week: lesson.dayOfWeek,
-    period_number: lesson.period,
-    lesson_locked: false,
-    status: "scheduled",
-  }));
-    teacher_id: user.id,
-    session_date: lesson.date,
-    day_of_week: lesson.dayOfWeek,
-    period_number: lesson.period,
-    lesson_locked: false,
-    status: "scheduled",
-  }));
+    if (!resolved) return null;
 
-  if (rows.length === 0) {
-    return [];
+    const { data, error } = await resolved.client
+      .from("lesson_sessions")
+      .select("*")
+      .eq("id", id)
+      .eq("teacher_id", resolved.userId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return data ? toSession(data) : null;
   }
 
-  const { error } = await supabase
-    .from("lesson_sessions")
-    .insert(rows);
+  /**
+   * Joins sessions with the curriculum lesson and timetable slot they point at,
+   * so the UI can render titles and class labels without extra round trips.
+   */
+  static async getSessionViewsByDate(
+    date: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSessionView[]> {
+    const resolved = await resolveUserContext(context);
 
-  if (error) {
-    throw error;
+    if (!resolved) return [];
+
+    const sessions = await this.getSessionsByDate(date, resolved);
+
+    if (sessions.length === 0) return [];
+
+    const timetable = await TeacherTimetableService.getTimetable(resolved);
+
+    const lessonIds = [...new Set(sessions.map((session) => session.curriculumLessonId))];
+
+    const { data: lessons, error } = await resolved.client
+      .from("curriculum_lessons")
+      .select("id, title, objectives, notes")
+      .in("id", lessonIds);
+
+    if (error) throw error;
+
+    const lessonById = new Map((lessons ?? []).map((lesson) => [lesson.id, lesson]));
+
+    return sessions.map((session) => {
+      const lesson = lessonById.get(session.curriculumLessonId);
+      const slot = timetable.find(
+        (entry) => entry.dayOfWeek === session.dayOfWeek && entry.period === session.periodNumber,
+      );
+
+      const unitTitle = lesson ? deserializeLessonNotes(lesson.notes).unitName || null : null;
+
+      return {
+        ...session,
+        lessonTitle: lesson?.title ?? "درس غير معروف",
+        lessonObjectives: lesson?.objectives ?? null,
+        unitTitle,
+        subject: slot?.subject ?? "",
+        grade: slot?.grade ?? "",
+        className: slot?.className ?? "",
+        classroom: slot?.classroom ?? null,
+        startsAt: slot?.startsAt ?? null,
+        endsAt: slot?.endsAt ?? null,
+      };
+    });
   }
 
-  return this.getSessionsByDate(targetDate);
-}
-
-  static async prepareSession(id: string): Promise<void> {
-    throw new Error("Not implemented");
+  static async getTodaySessionViews(context?: SupabaseUserContext): Promise<LessonSessionView[]> {
+    return this.getSessionViewsByDate(todayIso(), context);
   }
 
-  static async resetPreparation(id: string): Promise<void> {
-    throw new Error("Not implemented");
+  /**
+   * Creates the missing sessions for a date.
+   *
+   * Existing sessions are never overwritten, so re-running this after a teacher
+   * has prepared a lesson preserves their work.
+   */
+  static async generateSessionsForDate(
+    date: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSessionGenerationResult> {
+    const resolved = await resolveUserContext(context);
+
+    if (!resolved) {
+      return { sessions: [], created: 0, skipped: "unauthenticated" };
+    }
+
+    const scope = await resolveAcademicScope(date, resolved);
+
+    if (!scope) {
+      return { sessions: [], created: 0, skipped: "no-academic-year" };
+    }
+
+    const dayOfWeek = dayOfWeekFor(date);
+    const slots = await TeacherTimetableService.getTimetableForDay(dayOfWeek, resolved);
+
+    if (slots.length === 0) {
+      const timetable = await TeacherTimetableService.getTimetable(resolved);
+
+      return {
+        sessions: await this.getSessionViewsByDate(date, resolved),
+        created: 0,
+        skipped: timetable.length === 0 ? "no-timetable" : "no-slots",
+      };
+    }
+
+    const schedule = await generateSchedule();
+    const plannedForDate = schedule.filter(
+      (entry) => entry.suggestedDate === date && entry.lessonId,
+    );
+
+    if (plannedForDate.length === 0) {
+      return {
+        sessions: await this.getSessionViewsByDate(date, resolved),
+        created: 0,
+        skipped: "no-curriculum",
+      };
+    }
+
+    const existing = await this.getSessionsByDate(date, resolved);
+    const takenPeriods = new Set(existing.map((session) => session.periodNumber));
+
+    const { gradeIdByName, classIdByName } = await this.loadGradeAndClassIds(resolved);
+
+    const rows: SessionInsert[] = [];
+
+    for (const slot of slots) {
+      if (takenPeriods.has(slot.period)) continue;
+
+      const planned = plannedForDate.find(
+        (entry) => entry.period === slot.period && entry.dayOfWeek === dayOfWeek,
+      );
+
+      if (!planned?.lessonId) continue;
+
+      rows.push({
+        teacher_id: resolved.userId,
+        academic_year_id: scope.academicYearId,
+        semester_id: scope.semesterId,
+        grade_id: gradeIdByName.get(slot.grade) ?? null,
+        class_id: classIdByName.get(slot.className) ?? null,
+        curriculum_lesson_id: planned.lessonId,
+        session_date: date,
+        day_of_week: dayOfWeek,
+        period_number: slot.period,
+        lesson_locked: false,
+        status: "scheduled",
+      });
+    }
+
+    if (rows.length > 0) {
+      const { error } = await resolved.client.from("lesson_sessions").upsert(rows, {
+        onConflict: "teacher_id,session_date,period_number",
+        ignoreDuplicates: true,
+      });
+
+      if (error) throw error;
+    }
+
+    const sessions = await this.getSessionViewsByDate(date, resolved);
+
+    return {
+      sessions,
+      created: rows.length,
+      skipped: sessions.length === 0 ? "no-slots" : null,
+    };
+  }
+
+  /**
+   * Returns the sessions for a date, generating them first when none exist yet.
+   */
+  static async ensureSessionsForDate(
+    date: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSessionGenerationResult> {
+    const existing = await this.getSessionViewsByDate(date, context);
+
+    if (existing.length > 0) {
+      return { sessions: existing, created: 0, skipped: null };
+    }
+
+    return this.generateSessionsForDate(date, context);
+  }
+
+  static async prepareSession(
+    id: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    return this.applyUpdate(
+      id,
+      {
+        status: "prepared",
+        lesson_locked: true,
+        prepared_at: new Date().toISOString(),
+      },
+      context,
+    );
+  }
+
+  /**
+   * Deletes the preparation, which is the only way to unlock a lesson.
+   */
+  static async resetPreparation(
+    id: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    return this.applyUpdate(
+      id,
+      {
+        status: "scheduled",
+        lesson_locked: false,
+        prepared_at: null,
+        completed_at: null,
+      },
+      context,
+    );
+  }
+
+  static async completeSession(
+    id: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    return this.applyUpdate(
+      id,
+      {
+        status: "completed",
+        completed_at: new Date().toISOString(),
+      },
+      context,
+    );
+  }
+
+  static async cancelSession(
+    id: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    return this.applyUpdate(id, { status: "cancelled" }, context);
   }
 
   static async changeLesson(
     sessionId: string,
-    lessonId: string,
-  ): Promise<void> {
-    throw new Error("Not implemented");
+    curriculumLessonId: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    const session = await this.getSessionById(sessionId, context);
+
+    if (!session) return null;
+
+    if (session.lessonLocked) {
+      throw new LessonSessionLockedError();
+    }
+
+    return this.applyUpdate(sessionId, { curriculum_lesson_id: curriculumLessonId }, context);
+  }
+
+  private static async applyUpdate(
+    id: string,
+    patch: SessionUpdate,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    const resolved = await resolveUserContext(context);
+
+    if (!resolved) return null;
+
+    const { data, error } = await resolved.client
+      .from("lesson_sessions")
+      .update(patch)
+      .eq("id", id)
+      .eq("teacher_id", resolved.userId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return data ? toSession(data) : null;
+  }
+
+  private static async loadGradeAndClassIds(context: SupabaseUserContext): Promise<{
+    gradeIdByName: Map<string, string>;
+    classIdByName: Map<string, string>;
+  }> {
+    const [{ data: grades }, { data: classes }] = await Promise.all([
+      context.client.from("grades").select("id, name").eq("user_id", context.userId),
+      context.client.from("classes").select("id, name").eq("user_id", context.userId),
+    ]);
+
+    return {
+      gradeIdByName: new Map((grades ?? []).map((grade) => [grade.name, grade.id])),
+      classIdByName: new Map((classes ?? []).map((klass) => [klass.name, klass.id])),
+    };
   }
 }

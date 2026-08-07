@@ -2,46 +2,35 @@
 -- Academic Calendar Foundation
 -- Waraqa Teacher OS
 -- =====================================================
+--
+-- This migration originally also created public.academic_years and
+-- public.calendar_events as globally shared, read-by-everyone tables. Both
+-- definitions have been removed and the rest guarded, for three reasons:
+--
+--   1. Replay. 20260721103657 already creates public.academic_years, so the
+--      unguarded CREATE TABLE here aborted with "relation academic_years
+--      already exists" on every fresh database. Supabase stops at the first
+--      failing migration, so nothing after this file could ever apply.
+--
+--   2. Ownership. The version created here has no user_id and a
+--      `USING (true)` SELECT policy, so it would have let any authenticated
+--      teacher read every other teacher's academic years. The canonical
+--      per-teacher table with owner RLS is the one the app uses.
+--
+--   3. Shadowing. This file sorts before 20260807000400_calendar_events.sql.
+--      Its shared calendar_events would have won on a fresh database and the
+--      per-teacher calendar_events the app actually queries would silently
+--      never be created.
+--
+-- academic_terms and curriculum_distribution are kept: no other migration
+-- provides them. Note that terms consumed by the app come from
+-- public.semesters, which is what lesson_sessions.semester_id references.
 
--- =========================
--- Academic Years
--- =========================
-
-CREATE TABLE public.academic_years (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  name TEXT NOT NULL UNIQUE,
-
-  starts_at DATE NOT NULL,
-
-  ends_at DATE NOT NULL,
-
-  is_active BOOLEAN NOT NULL DEFAULT FALSE,
-
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_academic_years_active
-ON public.academic_years(is_active);
-
-ALTER TABLE public.academic_years
-ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Authenticated users can read academic years"
-ON public.academic_years
-FOR SELECT
-TO authenticated
-USING (true);
-
-GRANT SELECT ON public.academic_years TO authenticated;
-GRANT ALL ON public.academic_years TO service_role;
 -- =========================
 -- Academic Terms
 -- =========================
 
-CREATE TABLE public.academic_terms (
+CREATE TABLE IF NOT EXISTS public.academic_terms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   academic_year_id UUID NOT NULL
@@ -64,11 +53,14 @@ CREATE TABLE public.academic_terms (
     CHECK (sort_order IN (1,2))
 );
 
-CREATE INDEX idx_academic_terms_year
+CREATE INDEX IF NOT EXISTS idx_academic_terms_year
 ON public.academic_terms(academic_year_id);
 
 ALTER TABLE public.academic_terms
 ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can read academic terms"
+ON public.academic_terms;
 
 CREATE POLICY "Authenticated users can read academic terms"
 ON public.academic_terms
@@ -78,80 +70,12 @@ USING (true);
 
 GRANT SELECT ON public.academic_terms TO authenticated;
 GRANT ALL ON public.academic_terms TO service_role;
--- =========================
--- Calendar Events
--- =========================
 
-CREATE TABLE public.calendar_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  academic_year_id UUID NOT NULL
-    REFERENCES public.academic_years(id)
-    ON DELETE CASCADE,
-
-  academic_term_id UUID
-    REFERENCES public.academic_terms(id)
-    ON DELETE SET NULL,
-
-  title TEXT NOT NULL,
-
-  event_type TEXT NOT NULL,
-
-  starts_at DATE NOT NULL,
-
-  ends_at DATE NOT NULL,
-
-  is_teaching_day BOOLEAN NOT NULL DEFAULT FALSE,
-
-  is_remote BOOLEAN NOT NULL DEFAULT FALSE,
-
-  notes TEXT,
-
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-  CONSTRAINT calendar_events_dates_check
-    CHECK (ends_at >= starts_at),
-
-  CONSTRAINT calendar_events_type_check
-    CHECK (
-      event_type IN (
-        'school_start',
-        'school_end',
-        'holiday',
-        'long_weekend',
-        'national_day',
-        'foundation_day',
-        'exam',
-        'remote_learning',
-        'custom'
-      )
-    )
-);
-
-CREATE INDEX idx_calendar_events_year
-ON public.calendar_events(academic_year_id);
-
-CREATE INDEX idx_calendar_events_dates
-ON public.calendar_events(starts_at, ends_at);
-
-ALTER TABLE public.calendar_events
-ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Authenticated users can read calendar events"
-ON public.calendar_events
-FOR SELECT
-TO authenticated
-USING (true);
-
-GRANT SELECT ON public.calendar_events TO authenticated;
-GRANT ALL ON public.calendar_events TO service_role;
 -- =========================
 -- Curriculum Distribution
 -- =========================
 
-CREATE TABLE public.curriculum_distribution (
+CREATE TABLE IF NOT EXISTS public.curriculum_distribution (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   academic_year_id UUID NOT NULL
@@ -194,7 +118,7 @@ CREATE TABLE public.curriculum_distribution (
     CHECK (source_type IN ('pdf','manual'))
 );
 
-CREATE INDEX idx_curriculum_distribution_lookup
+CREATE INDEX IF NOT EXISTS idx_curriculum_distribution_lookup
 ON public.curriculum_distribution (
   academic_year_id,
   academic_term_id,
@@ -203,7 +127,7 @@ ON public.curriculum_distribution (
   subject
 );
 
-CREATE INDEX idx_curriculum_distribution_order
+CREATE INDEX IF NOT EXISTS idx_curriculum_distribution_order
 ON public.curriculum_distribution (
   subject,
   lesson_order
@@ -211,6 +135,9 @@ ON public.curriculum_distribution (
 
 ALTER TABLE public.curriculum_distribution
 ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can read curriculum distribution"
+ON public.curriculum_distribution;
 
 CREATE POLICY "Authenticated users can read curriculum distribution"
 ON public.curriculum_distribution

@@ -5,6 +5,7 @@ import {
   getCurrentAcademicTerm,
 } from "@/features/calendar/services/calendar.service";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
+import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 
 export interface AcademicCalendarConfig {
   academicYear: string;
@@ -86,33 +87,100 @@ const DEFAULT_TIMETABLE: TimetableSlot[] = [
   { dayOfWeek: 4, period: 4, className: "أول متوسط - 1" }, // Thu Period 4
 ];
 
+/**
+ * Reads the timetable slots the Madrasati connector stores on `profiles.classes`.
+ */
+export function parseProfileTimetable(classes: unknown): TimetableSlot[] {
+  if (!classes || typeof classes !== "object") return [];
+
+  const slots = (classes as { timetable?: unknown }).timetable;
+
+  if (!Array.isArray(slots)) return [];
+
+  return slots.flatMap((slot) => {
+    if (!slot || typeof slot !== "object") return [];
+
+    const { dayOfWeek, period, className } = slot as Record<string, unknown>;
+
+    if (typeof dayOfWeek !== "number" || typeof period !== "number") return [];
+
+    return [
+      {
+        dayOfWeek,
+        period,
+        className: typeof className === "string" ? className : "",
+      },
+    ];
+  });
+}
+
+/**
+ * Resolves the teacher's weekly timetable.
+ *
+ * `teacher_timetable` is the source of truth. Profiles written by the Madrasati
+ * connector are used as a fallback for teachers synced before that table
+ * existed, and the built-in default keeps the planner usable during onboarding.
+ */
+export async function loadTimetable(): Promise<TimetableSlot[]> {
+  try {
+    const entries = await TeacherTimetableService.getTimetable();
+
+    if (entries.length > 0) {
+      return entries.map((entry) => ({
+        dayOfWeek: entry.dayOfWeek,
+        period: entry.period,
+        className: entry.className,
+      }));
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("classes")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const fromProfile = parseProfileTimetable(profile?.classes);
+
+      if (fromProfile.length > 0) {
+        return fromProfile;
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to load teacher timetable, falling back to default:", error);
+  }
+
+  return DEFAULT_TIMETABLE;
+}
+
 export async function loadCalendarConfig(): Promise<AcademicCalendarConfig> {
   const year = await getActiveAcademicYear();
   const term = await getCurrentAcademicTerm();
 
-  if (!year || !term) {
+  if (!year || !term || !term.startDate || !term.endDate) {
     return DEFAULT_CALENDAR;
   }
 
   return {
-    academicYear: year.name,
+    academicYear: year.label,
     semesterId: term.id,
-    semesterStart: term.starts_at,
-    semesterEnd: term.ends_at,
+    semesterStart: term.startDate,
+    semesterEnd: term.endDate,
     teachingWeeksCount: 15,
     periodsPerDay: 7,
     workingDays: [0, 1, 2, 3, 4],
-    holidays: (await getHolidayDates()).map((event) => ({
-      date: event.starts_at,
-      label: event.title,
-    })),
+    holidays: await getHolidayDates(),
     examWeeks: [],
   };
 }
 
 export async function saveCalendarConfig(_config: AcademicCalendarConfig): Promise<void> {
   console.warn(
-    "saveCalendarConfig() is deprecated. Academic calendar is now managed from academic_years, academic_terms and calendar_events.",
+    "saveCalendarConfig() is deprecated. Academic calendar is now managed from academic_years, semesters and calendar_events.",
   );
 }
 
@@ -157,9 +225,14 @@ export async function saveUserOverrides(overrides: ScheduleOverride[]): Promise<
     id: "11111111-1111-1111-1111-111111111111", // Fixed UUID for user overrides
     user_id: user.id,
     week_start_date: CONFIG_SCHEDULE_OVERRIDES_DATE,
+    // day_of_week and period are NOT NULL; this marker row is not a real slot.
+    day_of_week: 0,
+    period: 0,
     subject: "OVERRIDES",
     notes: JSON.stringify(overrides),
   });
+
+  if (error) throw error;
 }
 
 /**
@@ -396,10 +469,6 @@ export async function generateSchedule(
     remainingPeriods: number;
     isCustom: boolean;
   }
-  config.holidays = (await getHolidayDates()).map((event) => ({
-    date: event.starts_at,
-    label: event.title,
-  }));
   const flatLessons: FlatLesson[] = [];
   let lessonOrderCounter = 1;
 
