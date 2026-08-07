@@ -1,8 +1,20 @@
+import { MadrasatiService } from "@/features/madrasati/services/madrasati.service";
 import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
 import { supabase } from "@/platform/database/supabase/client";
 import type { TeacherTimetableEntry } from "../types";
 
 export class TeacherTimetableService {
+static async syncFromMadrasatiIfAvailable(): Promise<void> {
+  const connected = await MadrasatiService.isConnected();
+
+  if (!connected) return;
+
+  await MadrasatiService.syncTeacherTimetable();
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  await this.rebuildLessonSessions(today);
+}
   static async getTimetable(): Promise<TeacherTimetableEntry[]> {
     const {
       data: { user },
