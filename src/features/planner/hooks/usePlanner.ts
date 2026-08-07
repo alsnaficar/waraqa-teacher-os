@@ -6,6 +6,7 @@ import {
   syncScheduleToDatabase,
   type CalculatedLessonEntry,
 } from "../services/planner-engine";
+import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
 
 type Assignment = {
   stage: string;
@@ -84,7 +85,7 @@ export function usePlanner(): UsePlannerResult {
     }
   }
 
-  useEffect(() => {
+ useEffect(() => {
     void loadPlanner();
   }, []);
 

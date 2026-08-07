@@ -396,7 +396,6 @@ export async function generateSchedule(
     remainingPeriods: number;
     isCustom: boolean;
   }
-  const config = await loadCalendarConfig();
   config.holidays = (await getHolidayDates()).map((event) => ({
     date: event.starts_at,
     label: event.title,
