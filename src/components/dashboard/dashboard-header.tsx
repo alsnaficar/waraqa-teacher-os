@@ -1,5 +1,7 @@
-import { CalendarDays, School, User, CreditCard } from "lucide-react";
+import { CalendarDays, School, User } from "lucide-react";
 
+import { SubscriptionBadge } from "@/features/billing/components/subscription-badge";
+import type { SubscriptionAccess } from "@/features/billing/types";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -8,7 +10,8 @@ interface DashboardHeaderProps {
   teacherName: string;
   hijriDate: string;
   connected: boolean;
-  subscription: "active" | "expired";
+  subscription: SubscriptionAccess;
+  subscriptionDaysRemaining?: number | null;
 }
 
 export function DashboardHeader({
@@ -16,6 +19,7 @@ export function DashboardHeader({
   hijriDate,
   connected,
   subscription,
+  subscriptionDaysRemaining = null,
 }: DashboardHeaderProps) {
   return (
     <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
@@ -41,10 +45,7 @@ export function DashboardHeader({
                 {connected ? "مدرستي مرتبطة" : "مدرستي غير مرتبطة"}
               </Badge>
 
-              <Badge variant={subscription === "active" ? "default" : "destructive"}>
-                <CreditCard className="mr-1 h-4 w-4" />
-                {subscription === "active" ? "الاشتراك فعال" : "الاشتراك منتهي"}
-              </Badge>
+              <SubscriptionBadge access={subscription} daysRemaining={subscriptionDaysRemaining} />
 
               {!connected && (
                 <Button

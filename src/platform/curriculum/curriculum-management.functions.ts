@@ -61,6 +61,7 @@ export function deserializeLessonNotes(notesStr: string | null) {
       lessonNumber: "",
       outcomes: "",
       activities: "",
+      resources: "",
       assessment: "",
       periods: "1",
       notes: "",
@@ -69,7 +70,18 @@ export function deserializeLessonNotes(notesStr: string | null) {
   try {
     const trimmed = notesStr.trim();
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      return JSON.parse(trimmed);
+      const parsed = JSON.parse(trimmed) as Record<string, string>;
+      return {
+        unitNumber: parsed.unitNumber || "",
+        unitName: parsed.unitName || "",
+        lessonNumber: parsed.lessonNumber || "",
+        outcomes: parsed.outcomes || "",
+        activities: parsed.activities || "",
+        resources: parsed.resources || "",
+        assessment: parsed.assessment || "",
+        periods: parsed.periods || "1",
+        notes: parsed.notes || "",
+      };
     }
   } catch (e) {
     // fallback
@@ -80,6 +92,7 @@ export function deserializeLessonNotes(notesStr: string | null) {
     lessonNumber: "",
     outcomes: "",
     activities: "",
+    resources: "",
     assessment: "",
     periods: "1",
     notes: notesStr,

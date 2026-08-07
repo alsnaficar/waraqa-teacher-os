@@ -148,14 +148,30 @@ export async function getHolidayDates(context?: SupabaseUserContext): Promise<Ca
 
   const { data, error } = await resolved.client
     .from("calendar_events")
-    .select("title, starts_at")
+    .select("title, starts_at, ends_at")
     .eq("user_id", resolved.userId)
     .eq("is_teaching_day", false);
 
   if (error) throw error;
 
-  return (data ?? []).map((event) => ({
-    date: event.starts_at,
-    label: event.title,
-  }));
+  // Expand multi-day holidays so the planner skips every day in the range.
+  const holidays: CalendarHoliday[] = [];
+
+  for (const event of data ?? []) {
+    const start = new Date(`${event.starts_at}T00:00:00Z`);
+    const end = new Date(`${event.ends_at || event.starts_at}T00:00:00Z`);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      holidays.push({
+        date: cursor.toISOString().slice(0, 10),
+        label: event.title,
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  return holidays;
 }

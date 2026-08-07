@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { supabase } from "@/platform/database/supabase/client";
-import {
-  generateSchedule,
-  recalculateAndSyncPlanner,
-  syncScheduleToDatabase,
-  type CalculatedLessonEntry,
-} from "../services/planner-engine";
+import type { CalculatedLessonEntry } from "../services/planner-engine";
+import { loadOrGeneratePlan } from "../services/semester-plan.service";
 
 type Assignment = {
   stage: string;
@@ -24,7 +20,7 @@ export interface UsePlannerResult {
 }
 
 /**
- * Loads the teacher's calculated curriculum distribution for the whole term.
+ * Loads the canonical Semester Plan projection from `planner_entries`.
  *
  * Day-level teaching state lives in `useLessonSessions`; this hook only covers
  * the planner projection.
@@ -61,22 +57,13 @@ export function usePlanner(): UsePlannerResult {
 
       if (classes && Array.isArray(classes.assignments) && classes.assignments.length > 0) {
         const assignment = classes.assignments[0];
-
         activeGrade = assignment.grade || activeGrade;
         activeSubject = assignment.subject || activeSubject;
       }
 
       setGrade(activeGrade);
       setSubject(activeSubject);
-
-      const calculated = await generateSchedule(activeSubject, activeGrade);
-
-      if (calculated.length > 0) {
-        setEntries(calculated);
-        await syncScheduleToDatabase(calculated, activeSubject);
-      } else {
-        setEntries(await recalculateAndSyncPlanner(activeSubject, activeGrade));
-      }
+      setEntries(await loadOrGeneratePlan(activeSubject, activeGrade));
     } catch (error) {
       console.error("Failed to load planner:", error);
     } finally {

@@ -169,6 +169,45 @@ export type Database = {
           },
         ];
       };
+      coupons: {
+        Row: {
+          code: string;
+          created_at: string | null;
+          expires_at: string | null;
+          id: string;
+          is_active: boolean | null;
+          max_usage: number | null;
+          starts_at: string | null;
+          type: string;
+          used_count: number | null;
+          value: number;
+        };
+        Insert: {
+          code: string;
+          created_at?: string | null;
+          expires_at?: string | null;
+          id?: string;
+          is_active?: boolean | null;
+          max_usage?: number | null;
+          starts_at?: string | null;
+          type: string;
+          used_count?: number | null;
+          value: number;
+        };
+        Update: {
+          code?: string;
+          created_at?: string | null;
+          expires_at?: string | null;
+          id?: string;
+          is_active?: boolean | null;
+          max_usage?: number | null;
+          starts_at?: string | null;
+          type?: string;
+          used_count?: number | null;
+          value?: number;
+        };
+        Relationships: [];
+      };
       curricula: {
         Row: {
           created_at: string;
@@ -482,6 +521,81 @@ export type Database = {
         };
         Relationships: [];
       };
+      payment_methods: {
+        Row: {
+          created_at: string | null;
+          id: string;
+          is_active: boolean | null;
+          name: string;
+          provider: string;
+          settings: Json | null;
+        };
+        Insert: {
+          created_at?: string | null;
+          id?: string;
+          is_active?: boolean | null;
+          name: string;
+          provider: string;
+          settings?: Json | null;
+        };
+        Update: {
+          created_at?: string | null;
+          id?: string;
+          is_active?: boolean | null;
+          name?: string;
+          provider?: string;
+          settings?: Json | null;
+        };
+        Relationships: [];
+      };
+      payments: {
+        Row: {
+          amount: number;
+          created_at: string | null;
+          id: string;
+          paid_at: string | null;
+          payment_method_id: string | null;
+          status: string;
+          subscription_id: string;
+          transaction_number: string | null;
+        };
+        Insert: {
+          amount: number;
+          created_at?: string | null;
+          id?: string;
+          paid_at?: string | null;
+          payment_method_id?: string | null;
+          status?: string;
+          subscription_id: string;
+          transaction_number?: string | null;
+        };
+        Update: {
+          amount?: number;
+          created_at?: string | null;
+          id?: string;
+          paid_at?: string | null;
+          payment_method_id?: string | null;
+          status?: string;
+          subscription_id?: string;
+          transaction_number?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payments_payment_method_id_fkey";
+            columns: ["payment_method_id"];
+            isOneToOne: false;
+            referencedRelation: "payment_methods";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payments_subscription_id_fkey";
+            columns: ["subscription_id"];
+            isOneToOne: false;
+            referencedRelation: "subscriptions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       planner_entries: {
         Row: {
           created_at: string;
@@ -515,6 +629,39 @@ export type Database = {
           updated_at?: string;
           user_id?: string;
           week_start_date?: string;
+        };
+        Relationships: [];
+      };
+      plans: {
+        Row: {
+          code: string;
+          created_at: string | null;
+          id: string;
+          is_active: boolean | null;
+          name: string;
+          price: number;
+          starts_with: string;
+          updated_at: string | null;
+        };
+        Insert: {
+          code: string;
+          created_at?: string | null;
+          id?: string;
+          is_active?: boolean | null;
+          name: string;
+          price: number;
+          starts_with: string;
+          updated_at?: string | null;
+        };
+        Update: {
+          code?: string;
+          created_at?: string | null;
+          id?: string;
+          is_active?: boolean | null;
+          name?: string;
+          price?: number;
+          starts_with?: string;
+          updated_at?: string | null;
         };
         Relationships: [];
       };
@@ -642,6 +789,126 @@ export type Database = {
           user_id?: string;
         };
         Relationships: [];
+      };
+      subscription_logs: {
+        Row: {
+          action: string;
+          created_at: string | null;
+          id: string;
+          notes: string | null;
+          performed_by: string | null;
+          subscription_id: string;
+        };
+        Insert: {
+          action: string;
+          created_at?: string | null;
+          id?: string;
+          notes?: string | null;
+          performed_by?: string | null;
+          subscription_id: string;
+        };
+        Update: {
+          action?: string;
+          created_at?: string | null;
+          id?: string;
+          notes?: string | null;
+          performed_by?: string | null;
+          subscription_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "subscription_logs_performed_by_fkey";
+            columns: ["performed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscription_logs_subscription_id_fkey";
+            columns: ["subscription_id"];
+            isOneToOne: false;
+            referencedRelation: "subscriptions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      subscriptions: {
+        Row: {
+          academic_year_id: string | null;
+          created_at: string | null;
+          expires_at: string;
+          id: string;
+          plan_id: string;
+          renewed_from: string | null;
+          semester_id: string | null;
+          starts_at: string;
+          status: string;
+          updated_at: string | null;
+          user_id: string;
+        };
+        Insert: {
+          academic_year_id?: string | null;
+          created_at?: string | null;
+          expires_at: string;
+          id?: string;
+          plan_id: string;
+          renewed_from?: string | null;
+          semester_id?: string | null;
+          starts_at: string;
+          status?: string;
+          updated_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          academic_year_id?: string | null;
+          created_at?: string | null;
+          expires_at?: string;
+          id?: string;
+          plan_id?: string;
+          renewed_from?: string | null;
+          semester_id?: string | null;
+          starts_at?: string;
+          status?: string;
+          updated_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_academic_year_id_fkey";
+            columns: ["academic_year_id"];
+            isOneToOne: false;
+            referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_renewed_from_fkey";
+            columns: ["renewed_from"];
+            isOneToOne: false;
+            referencedRelation: "subscriptions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_semester_id_fkey";
+            columns: ["semester_id"];
+            isOneToOne: false;
+            referencedRelation: "semesters";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       teacher_timetable: {
         Row: {

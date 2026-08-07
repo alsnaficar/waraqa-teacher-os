@@ -58,6 +58,14 @@ export interface CalculatedLessonEntry {
   status: "Upcoming" | "Current" | "Completed" | "Skipped";
   className: string;
   subject: string;
+  /** General objectives — sourced from curriculum_lessons, not duplicated. */
+  objectives: string;
+  /** Teaching resources / activities from curriculum notes JSON. */
+  teachingResources: string;
+  /** Assessment methods from curriculum notes JSON. */
+  assessmentMethods: string;
+  /** Free-form curriculum notes carried into the plan row. */
+  planNotes: string;
 }
 
 // Fallback / default configs to ensure zero-cold-start
@@ -369,6 +377,10 @@ export async function generateSchedule(
     unitTitle: string;
     periodsCount: number;
     orderIndex: number;
+    objectives: string;
+    teachingResources: string;
+    assessmentMethods: string;
+    planNotes: string;
   }> = [];
 
   // 3. Fetch all curriculum lessons for this file
@@ -391,6 +403,10 @@ export async function generateSchedule(
       unitTitle: extra.unitName || "الوحدة الأولى",
       periodsCount: Math.max(1, parseInt(extra.periods || "1", 10)),
       orderIndex: l.order_index,
+      objectives: (l.objectives || extra.outcomes || "").trim(),
+      teachingResources: (extra.activities || extra.resources || "").trim(),
+      assessmentMethods: (extra.assessment || "").trim(),
+      planNotes: (extra.notes || "").trim(),
     };
   });
 
@@ -450,11 +466,17 @@ export async function generateSchedule(
     }
   }
 
-  // Apply SKIP overrides (exclude them from sequential distribution)
+  // Apply SKIP and MOVE overrides: moved lessons are placed only at their
+  // target slot, so they must not also fill the sequential queue.
   const skippedIds = new Set(
     overrides.filter((o) => o.type === "skip" && o.lessonId).map((o) => o.lessonId!),
   );
-  const nonSkippedLessons = activeLessons.filter((l) => !l.id || !skippedIds.has(l.id));
+  const movedIds = new Set(
+    overrides.filter((o) => o.type === "move" && o.lessonId).map((o) => o.lessonId!),
+  );
+  const nonSkippedLessons = activeLessons.filter(
+    (l) => !l.id || (!skippedIds.has(l.id) && !movedIds.has(l.id)),
+  );
 
   // Flatten the lessons based on periods count.
   // For example, if a lesson takes 2 periods, it gets split into:
@@ -468,6 +490,10 @@ export async function generateSchedule(
     periodsCount: number;
     remainingPeriods: number;
     isCustom: boolean;
+    objectives: string;
+    teachingResources: string;
+    assessmentMethods: string;
+    planNotes: string;
   }
   const flatLessons: FlatLesson[] = [];
   let lessonOrderCounter = 1;
@@ -482,6 +508,10 @@ export async function generateSchedule(
         periodsCount: l.periodsCount,
         remainingPeriods: l.periodsCount - p - 1,
         isCustom: false,
+        objectives: l.objectives,
+        teachingResources: l.teachingResources,
+        assessmentMethods: l.assessmentMethods,
+        planNotes: l.planNotes,
       });
     }
     lessonOrderCounter++;
@@ -521,6 +551,10 @@ export async function generateSchedule(
         status: "Upcoming",
         className: slot.className,
         subject: activeSubject,
+        objectives: "",
+        teachingResources: "",
+        assessmentMethods: "",
+        planNotes: "",
       });
       continue;
     }
@@ -551,6 +585,10 @@ export async function generateSchedule(
           status: "Upcoming",
           className: slot.className,
           subject: activeSubject,
+          objectives: originalLesson.objectives,
+          teachingResources: originalLesson.teachingResources,
+          assessmentMethods: originalLesson.assessmentMethods,
+          planNotes: originalLesson.planNotes,
         });
         // Skip placing regular flat lesson on this slot
         continue;
@@ -578,6 +616,10 @@ export async function generateSchedule(
         status: "Upcoming",
         className: slot.className,
         subject: activeSubject,
+        objectives: lesson.objectives,
+        teachingResources: lesson.teachingResources,
+        assessmentMethods: lesson.assessmentMethods,
+        planNotes: lesson.planNotes,
       });
       flatLessonIdx++;
     }

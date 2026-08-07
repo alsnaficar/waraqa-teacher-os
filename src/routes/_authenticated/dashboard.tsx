@@ -1,3 +1,5 @@
+import { SubscriptionBanner } from "@/features/billing/components/subscription-banner";
+import { useSubscription } from "@/features/billing/hooks/useSubscription";
 import { getTodayLessons } from "@/features/lesson-engine/services/lesson-engine";
 import { useLessonSessions } from "@/features/lesson-sessions/hooks/useLessonSessions";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
@@ -135,6 +137,9 @@ function HomePage() {
   // today; the planner projection is only a fallback before they are generated.
   const { sessions: todaySessions } = useLessonSessions();
 
+  const { access: subscriptionAccess, daysRemaining: subscriptionDaysRemaining } =
+    useSubscription();
+
   const normalizedTodayLessons = useMemo(() => {
     if (todaySessions.length > 0) {
       return todaySessions.map((session) => ({
@@ -201,8 +206,11 @@ function HomePage() {
           teacherName={profile?.name ?? "المعلم"}
           hijriDate={hijri}
           connected={false}
-          subscription="active"
+          subscription={subscriptionAccess}
+          subscriptionDaysRemaining={subscriptionDaysRemaining}
         />
+
+        <SubscriptionBanner access={subscriptionAccess} daysRemaining={subscriptionDaysRemaining} />
 
         <DashboardSummary
           todayLessons={normalizedTodayLessons.length}

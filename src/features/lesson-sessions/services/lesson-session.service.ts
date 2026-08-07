@@ -1,5 +1,5 @@
 import { resolveAcademicScope } from "@/features/calendar/services/academic-calendar";
-import { generateSchedule } from "@/features/planner/services/planner-engine";
+import { getPlanEntriesForDate } from "@/features/planner/services/semester-plan.service";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
@@ -61,10 +61,10 @@ function dayOfWeekFor(date: string): number {
 /**
  * Owns the Lesson Session lifecycle.
  *
- * A session is created by projecting the teacher timetable onto the curriculum
- * distribution produced by the planner engine. Once a teacher prepares a
- * session the lesson is locked, and it can only be changed after the
- * preparation is deleted — see docs/architecture/LESSON_SESSIONS_ENGINE.md.
+ * A session is created by projecting the teacher's timetable onto the
+ * **canonical Semester Plan** stored in `planner_entries` (via
+ * `getPlanEntriesForDate`). Once a teacher prepares a session the lesson is
+ * locked — see docs/architecture/LESSON_SESSIONS_ENGINE.md.
  */
 export class LessonSessionService {
   static async getSessionsByDate(
@@ -208,10 +208,8 @@ export class LessonSessionService {
       };
     }
 
-    const schedule = await generateSchedule();
-    const plannedForDate = schedule.filter(
-      (entry) => entry.suggestedDate === date && entry.lessonId,
-    );
+    const schedule = await getPlanEntriesForDate(date);
+    const plannedForDate = schedule.filter((entry) => entry.lessonId);
 
     if (plannedForDate.length === 0) {
       return {
