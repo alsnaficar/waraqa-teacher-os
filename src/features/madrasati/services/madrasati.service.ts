@@ -1,3 +1,4 @@
+import { MadrasatiOAuthService } from "../auth/oauth.service";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import type {
@@ -6,7 +7,36 @@ import type {
 } from "../types";
 
 export class MadrasatiService {
+  static async syncEverything(): Promise<void> {
+  if (!(await this.isConnected())) {
+    return;
+  }
+
+  await this.importTeacherData();
+
+  await TeacherTimetableService.syncFromMadrasatiIfAvailable();
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  await TeacherTimetableService.rebuildLessonSessions(today);
+}
   static async importTeacherData(): Promise<void> {
+  if (!(await this.isConnected())) {
+    return;
+  }
+
+  const profile = await this.getTeacherProfile();
+
+  if (!profile) {
+    return;
+  }
+
+  await this.syncTeacherTimetable();
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  await TeacherTimetableService.rebuildLessonSessions(today);
+}
   if (!(await this.isConnected())) {
     return;
   }
@@ -24,8 +54,23 @@ export class MadrasatiService {
   await TeacherTimetableService.rebuildLessonSessions(today);
 }
   static async getTeacherProfile(): Promise<MadrasatiTeacherProfile | null> {
+  const timetable = await TeacherTimetableService.getTimetable();
+
+  if (timetable.length === 0) {
     return null;
   }
+
+  return {
+    teacherName: "",
+    schoolName: "",
+    schoolId: "",
+    academicYear: "",
+    semester: "",
+    subjects: [...new Set(timetable.map((t) => t.subject))],
+    grades: [...new Set(timetable.map((t) => t.grade))],
+    classes: [...new Set(timetable.map((t) => t.className))],
+  };
+}
 
   static async getTeacherTimetable(): Promise<
     MadrasatiTimetableLesson[]
@@ -45,9 +90,7 @@ export class MadrasatiService {
   }
 
   static async isConnected(): Promise<boolean> {
-  const timetable = await TeacherTimetableService.getTimetable();
-
-  return timetable.length > 0;
+  return MadrasatiOAuthService.isAuthenticated();
 }
 
 static async syncTeacherTimetable(): Promise<void> {

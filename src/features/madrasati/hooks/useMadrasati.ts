@@ -21,15 +21,22 @@ export function useMadrasati() {
     setLoading(true);
 
     try {
-      const connection = await MadrasatiService.isConnected();
+      
+const connection = await MadrasatiService.isConnected();
 
-      setConnected(connection);
+setConnected(connection);
 
-      if (!connection) return;
+if (!connection) {
+  setProfile(null);
+  setTimetable([]);
+  return;
+}
 
-      setProfile(await MadrasatiService.getTeacherProfile());
+await MadrasatiService.syncEverything();
 
-      setTimetable(await MadrasatiService.getTeacherTimetable());
+setProfile(await MadrasatiService.getTeacherProfile());
+
+setTimetable(await MadrasatiService.getTeacherTimetable());
     } finally {
       setLoading(false);
     }
