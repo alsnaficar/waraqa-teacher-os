@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useCallback } from "react";
 
+import { prepareLessonSession } from "@/platform/lesson-sessions/prepare-lesson-session.functions";
 import { LessonSessionService, todayIso } from "../services/lesson-session.service";
 import type { LessonSessionGenerationResult } from "../types";
 
@@ -11,9 +13,11 @@ export const lessonSessionsQueryKey = (date: string) => ["lesson-sessions", date
  *
  * Sessions are created on demand the first time a date is opened, so a teacher
  * never has to trigger generation manually for a normal school day.
+ * Prepare is server-orchestrated (P3 Step 4): generate lesson_plan then mark prepared.
  */
 export function useLessonSessions(date: string = todayIso()) {
   const queryClient = useQueryClient();
+  const prepareFn = useServerFn(prepareLessonSession);
 
   const query = useQuery<LessonSessionGenerationResult>({
     queryKey: lessonSessionsQueryKey(date),
@@ -31,7 +35,7 @@ export function useLessonSessions(date: string = todayIso()) {
   });
 
   const prepare = useMutation({
-    mutationFn: (id: string) => LessonSessionService.prepareSession(id),
+    mutationFn: (id: string) => prepareFn({ data: { lessonSessionId: id } }),
     onSuccess: invalidate,
   });
 

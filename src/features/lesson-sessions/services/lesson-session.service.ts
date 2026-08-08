@@ -6,6 +6,7 @@ import { resolveUserContext, type SupabaseUserContext } from "@/platform/databas
 import type { Database } from "@/platform/database/supabase/types";
 import {
   LessonSessionLockedError,
+  LessonSessionPreparingError,
   type LessonSession,
   type LessonSessionGenerationResult,
   type LessonSessionStatus,
@@ -18,6 +19,7 @@ type SessionUpdate = Database["public"]["Tables"]["lesson_sessions"]["Update"];
 
 const SESSION_STATUSES: readonly LessonSessionStatus[] = [
   "scheduled",
+  "preparing",
   "prepared",
   "completed",
   "cancelled",
@@ -286,28 +288,116 @@ export class LessonSessionService {
     return this.generateSessionsForDate(date, context);
   }
 
-  static async prepareSession(
+  /**
+   * Atomic Prepare claim: scheduled + unlocked → preparing.
+   * Does NOT set lesson_locked (locked means preparation completed).
+   * Returns null when zero rows match (concurrent loser / wrong state).
+   */
+  static async claimPrepareInProgress(
     id: string,
-    context?: SupabaseUserContext,
+    context: SupabaseUserContext,
   ): Promise<LessonSession | null> {
-    return this.applyUpdate(
-      id,
-      {
-        status: "prepared",
-        lesson_locked: true,
-        prepared_at: new Date().toISOString(),
-      },
-      context,
-    );
+    const { data, error } = await context.client
+      .from("lesson_sessions")
+      .update({ status: "preparing" })
+      .eq("id", id)
+      .eq("teacher_id", context.userId)
+      .eq("status", "scheduled")
+      .eq("lesson_locked", false)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return data ? toSession(data) : null;
   }
 
   /**
-   * Deletes the preparation, which is the only way to unlock a lesson.
+   * Finalize after successful lesson_plan persistence:
+   * preparing → prepared + lesson_locked + prepared_at.
+   */
+  static async markPreparedAfterGeneration(
+    id: string,
+    context: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    const { data, error } = await context.client
+      .from("lesson_sessions")
+      .update({
+        status: "prepared",
+        lesson_locked: true,
+        prepared_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("teacher_id", context.userId)
+      .eq("status", "preparing")
+      .eq("lesson_locked", false)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return data ? toSession(data) : null;
+  }
+
+  /**
+   * Roll claim back after AI/provider/persistence failure:
+   * preparing → scheduled (still unlocked).
+   */
+  static async releasePrepareClaim(
+    id: string,
+    context: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    const { data, error } = await context.client
+      .from("lesson_sessions")
+      .update({
+        status: "scheduled",
+        lesson_locked: false,
+        prepared_at: null,
+      })
+      .eq("id", id)
+      .eq("teacher_id", context.userId)
+      .eq("status", "preparing")
+      .eq("lesson_locked", false)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return data ? toSession(data) : null;
+  }
+
+  /**
+   * Unlocks preparation flags.
+   * From prepared or stuck preparing → scheduled.
+   * Does NOT delete historical ai_generations (P3 Step 4).
+   * preparing→scheduled must not alter completed_at (DB trigger F1/F2).
    */
   static async resetPreparation(
     id: string,
     context?: SupabaseUserContext,
   ): Promise<LessonSession | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const session = await this.getSessionById(id, resolved);
+    if (!session) return null;
+
+    if (session.status === "preparing") {
+      return this.applyUpdate(
+        id,
+        {
+          status: "scheduled",
+          lesson_locked: false,
+          prepared_at: null,
+        },
+        resolved,
+      );
+    }
+
+    if (session.status !== "prepared") {
+      return session;
+    }
+
     return this.applyUpdate(
       id,
       {
@@ -316,7 +406,7 @@ export class LessonSessionService {
         prepared_at: null,
         completed_at: null,
       },
-      context,
+      resolved,
     );
   }
 
@@ -324,6 +414,12 @@ export class LessonSessionService {
     id: string,
     context?: SupabaseUserContext,
   ): Promise<LessonSession | null> {
+    const session = await this.getSessionById(id, context);
+    if (!session) return null;
+    if (session.status === "preparing") {
+      throw new LessonSessionPreparingError();
+    }
+
     return this.applyUpdate(
       id,
       {
@@ -338,6 +434,12 @@ export class LessonSessionService {
     id: string,
     context?: SupabaseUserContext,
   ): Promise<LessonSession | null> {
+    const session = await this.getSessionById(id, context);
+    if (!session) return null;
+    if (session.status === "preparing") {
+      throw new LessonSessionPreparingError();
+    }
+
     return this.applyUpdate(id, { status: "cancelled" }, context);
   }
 
@@ -349,6 +451,10 @@ export class LessonSessionService {
     const session = await this.getSessionById(sessionId, context);
 
     if (!session) return null;
+
+    if (session.status === "preparing") {
+      throw new LessonSessionPreparingError();
+    }
 
     if (session.lessonLocked) {
       throw new LessonSessionLockedError();

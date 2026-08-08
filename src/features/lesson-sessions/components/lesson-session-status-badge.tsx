@@ -1,4 +1,4 @@
-import { CalendarClock, CheckCircle2, Lock, XCircle } from "lucide-react";
+import { CalendarClock, CheckCircle2, Loader2, Lock, XCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Badge } from "@/shared/ui/badge";
@@ -13,6 +13,11 @@ const STATUS_META: Record<
     label: "مجدولة",
     icon: CalendarClock,
     className: "bg-slate-500/10 text-slate-600 dark:text-slate-300",
+  },
+  preparing: {
+    label: "جاري التحضير",
+    icon: Loader2,
+    className: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   },
   prepared: {
     label: "محضّرة",

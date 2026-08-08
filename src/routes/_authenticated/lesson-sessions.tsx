@@ -40,15 +40,18 @@ function LessonSessionsPage() {
 
   function handlePrepare(id: string) {
     prepare.mutate(id, {
-      onSuccess: () => toast.success("تم تسجيل تحضير الدرس وقفله."),
-      onError: () => toast.error("تعذّر حفظ التحضير."),
+      onSuccess: () => toast.success("تم توليد تحضير الدرس وقفله."),
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : "تعذّر تحضير الحصة.";
+        toast.error(message);
+      },
     });
   }
 
   function handleReset(id: string) {
     resetPreparation.mutate(id, {
-      onSuccess: () => toast.success("تم حذف التحضير وفتح الدرس للتعديل."),
-      onError: () => toast.error("تعذّر حذف التحضير."),
+      onSuccess: () => toast.success("تم فتح الدرس للتعديل. السجلات السابقة محفوظة."),
+      onError: () => toast.error("تعذّر إعادة تعيين التحضير."),
     });
   }
 

@@ -71,21 +71,26 @@ Lesson Session
 
 # Rules
 
-- One preparation per lesson.
-- Teacher may regenerate preparation.
-- Lesson becomes locked after preparation.
-- Unlock only by deleting preparation.
+- One **current** preparation per prepared lesson (latest completed `lesson_plan`).
+- Teacher may regenerate preparation via **Reset → Prepare** (not a second Prepare).
+- Prepare uses durable claim `status = preparing` before AI (Option A).
+- `lesson_locked = true` means preparation **completed**, never a pre-AI claim.
+- While `preparing`, session identity/curriculum is immutable (DB BEFORE UPDATE trigger).
+- Unlock via `resetPreparation` (clears flags; historical `ai_generations` are kept).
 - AI always uses current lesson session.
-- No duplicated data.
+- Prepare artifact = `ai_generations` row (`kind = lesson_plan`, linked by `lesson_session_id`).
 
-How these are enforced:
+How these are enforced (P3 Step 4):
 
-- `prepareSession` sets `status = 'prepared'`, `lesson_locked = true`, `prepared_at`.
-- `resetPreparation` is the only path back to `lesson_locked = false`.
+- `prepareLessonSession` (server): owned session → atomic claim `scheduled→preparing` →
+  `runSessionBoundGeneration(lesson_plan)` → `preparing→prepared` + `lesson_locked` + `prepared_at`.
+- Concurrent Prepare losers get `ALREADY_PREPARING` / `ALREADY_PREPARED` and never call the provider.
+- AI failure releases claim: `preparing→scheduled`.
+- DB trigger `lesson_sessions_enforce_preparing_state` blocks curriculum/status abuse while preparing.
+- Service guards deny `changeLesson` / `completeSession` / `cancelSession` while preparing.
+- `resetPreparation` returns `prepared|preparing → scheduled` (does not delete generations).
 - `changeLesson` throws `LessonSessionLockedError` while the lesson is locked.
-- Generation never overwrites an existing session, so re-running it preserves
-  work the teacher has already done.
-- A unique index on `(teacher_id, session_date, period_number)` makes generation
+- A unique index on `(teacher_id, session_date, period_number)` makes **session** generation
   idempotent.
 
 ---

@@ -1,4 +1,5 @@
-export type LessonSessionStatus = "scheduled" | "prepared" | "completed" | "cancelled";
+export type LessonSessionStatus =
+  "scheduled" | "preparing" | "prepared" | "completed" | "cancelled";
 
 /**
  * One scheduled lesson for one teacher — the central entity of Waraqa.
@@ -81,5 +82,15 @@ export class LessonSessionLockedError extends Error {
   constructor(message = "الدرس مقفل بعد التحضير. احذف التحضير أولاً لتتمكن من تغييره.") {
     super(message);
     this.name = "LessonSessionLockedError";
+  }
+}
+
+/** Session is claimed for Prepare — conflicting lifecycle mutations are denied. */
+export class LessonSessionPreparingError extends Error {
+  readonly code = "PREPARING" as const;
+
+  constructor(message = "الحصة قيد التحضير حالياً. انتظر انتهاء التوليد أو ألغِ التحضير أولاً.") {
+    super(message);
+    this.name = "LessonSessionPreparingError";
   }
 }

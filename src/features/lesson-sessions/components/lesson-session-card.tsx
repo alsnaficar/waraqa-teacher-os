@@ -40,6 +40,10 @@ export function LessonSessionCard({
   };
 
   const isCompleted = session.status === "completed";
+  const isPreparing = session.status === "preparing";
+  const canPrepare = session.status === "scheduled" && !session.lessonLocked;
+  const canReset =
+    (session.status === "prepared" && session.lessonLocked) || session.status === "preparing";
 
   return (
     <Card>
@@ -112,7 +116,7 @@ export function LessonSessionCard({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {session.lessonLocked ? (
+          {canReset ? (
             <Button
               variant="ghost"
               size="sm"
@@ -121,9 +125,11 @@ export function LessonSessionCard({
               onClick={() => onResetPreparation(session.id)}
             >
               <RotateCcw className="h-4 w-4" />
-              <span>حذف التحضير</span>
+              <span>{isPreparing ? "إلغاء التحضير" : "إعادة التحضير"}</span>
             </Button>
-          ) : (
+          ) : null}
+
+          {canPrepare ? (
             <Button
               variant="secondary"
               size="sm"
@@ -132,11 +138,22 @@ export function LessonSessionCard({
               onClick={() => onPrepare(session.id)}
             >
               <CheckCircle2 className="h-4 w-4" />
-              <span>تم التحضير</span>
+              <span>تحضير الدرس</span>
             </Button>
-          )}
+          ) : null}
 
-          {!isCompleted ? (
+          {isPreparing ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-11 flex-1 min-w-[132px] gap-1.5"
+              disabled
+            >
+              <span>جاري التحضير</span>
+            </Button>
+          ) : null}
+
+          {!isCompleted && !isPreparing ? (
             <Button
               variant="ghost"
               size="sm"
