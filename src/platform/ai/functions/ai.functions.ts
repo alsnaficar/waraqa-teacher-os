@@ -2,12 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
-import { saveAiGeneration } from "@/features/ai/services/persistence.server";
-import { aiOrchestrator } from "@/features/ai/orchestrator";
+import { runSessionBoundGeneration } from "@/features/ai/services/session-bound-generation.server";
 import {
-  loadCurriculumLessonForSession,
-  requireOwnedLessonSession,
-} from "@/features/lesson-sessions/services/require-owned-lesson-session";
+  executeActivityIdeasGeneration,
+  executeWorksheetGeneration,
+} from "@/features/ai/strategies/orchestrator.strategy";
 
 const StageEnum = z.enum(["primary", "intermediate", "secondary"]).optional();
 const SemesterEnum = z.string().optional();
@@ -45,53 +44,44 @@ const WorksheetInput = z.object({
   estimatedTime: z.number().int().min(1).max(180).optional().default(30),
 });
 
+/**
+ * Live worksheet entry — thin wrapper over the unified session-bound pipeline.
+ * Strategy: AIOrchestrator Markdown (unchanged prompts/model).
+ */
 export const generateWorksheet = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => WorksheetInput.parse(data))
   .handler(async ({ data, context }) => {
-    const authContext = { client: context.supabase, userId: context.userId };
-    const session = await requireOwnedLessonSession(data.lessonSessionId, authContext);
-    const curriculumLesson = await loadCurriculumLessonForSession(session, authContext);
-
-    const bound = {
-      stage: data.stage,
-      semester: data.semester,
-      grade: data.grade?.trim() || "الصف",
-      subject: data.subject?.trim() || "المادة",
-      title: data.title?.trim() || curriculumLesson?.title || "الدرس",
-      questionCount: data.questionCount,
-      difficulty: data.difficulty,
-      objectives: data.objectives || curriculumLesson?.objectives || "",
-      homeworkType: data.homeworkType,
-      estimatedTime: data.estimatedTime,
-    };
-
-    const result = await aiOrchestrator.generate("worksheet", bound);
-
-    const row = await saveAiGeneration(context.supabase, {
-      userId: context.userId,
-      kind: "worksheet",
-      prompt: `واجب منزلي: ${bound.title}`,
-      lessonSessionId: session.id,
-      output: {
-        content: result.content,
-        input: { ...bound, lessonSessionId: session.id },
-        model: result.model,
-        curriculumContextUsed: result.curriculumContextUsed,
-        lessonContext: {
-          lessonSessionId: session.id,
-          curriculumLessonId: session.curriculumLessonId,
-          sessionStatus: session.status,
-        },
+    const auth = { client: context.supabase, userId: context.userId };
+    const result = await runSessionBoundGeneration(
+      {
+        lessonSessionId: data.lessonSessionId,
+        kind: "worksheet",
+        auth,
+        supabase: context.supabase,
+        userId: context.userId,
       },
-    });
+      (ctx) =>
+        executeWorksheetGeneration(ctx, {
+          stage: data.stage,
+          semester: data.semester,
+          grade: data.grade,
+          subject: data.subject,
+          title: data.title,
+          questionCount: data.questionCount,
+          difficulty: data.difficulty,
+          objectives: data.objectives,
+          homeworkType: data.homeworkType,
+          estimatedTime: data.estimatedTime,
+        }),
+    );
 
     return {
-      id: row.id,
-      content: result.content,
-      createdAt: row.createdAt,
-      lessonSessionId: session.id,
-      curriculumLessonId: session.curriculumLessonId,
+      id: result.id,
+      content: result.content as string,
+      createdAt: result.createdAt,
+      lessonSessionId: result.lessonSessionId,
+      curriculumLessonId: result.curriculumLessonId,
     };
   });
 
@@ -124,47 +114,39 @@ const ActivityIdeasInput = z.object({
   groupType: z.enum(["individual", "pairs", "group", "whole_class"]),
 });
 
+/**
+ * Live activity_ideas entry — thin wrapper over the unified session-bound pipeline.
+ * Strategy: AIOrchestrator Markdown (unchanged prompts/model).
+ */
 export const generateActivityIdeas = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => ActivityIdeasInput.parse(data))
   .handler(async ({ data, context }) => {
-    const authContext = { client: context.supabase, userId: context.userId };
-    const session = await requireOwnedLessonSession(data.lessonSessionId, authContext);
-    const curriculumLesson = await loadCurriculumLessonForSession(session, authContext);
-
-    const bound = {
-      grade: data.grade?.trim() || "الصف",
-      subject: data.subject?.trim() || "المادة",
-      title: data.title?.trim() || curriculumLesson?.title || "الدرس",
-      count: data.count,
-      duration: data.duration,
-      groupType: data.groupType,
-    };
-
-    const result = await aiOrchestrator.generate("activity_ideas", bound);
-
-    const row = await saveAiGeneration(context.supabase, {
-      userId: context.userId,
-      kind: "activity_ideas",
-      prompt: `أفكار أنشطة: ${bound.title}`,
-      lessonSessionId: session.id,
-      output: {
-        content: result.content,
-        input: { ...bound, lessonSessionId: session.id },
-        model: result.model,
-        lessonContext: {
-          lessonSessionId: session.id,
-          curriculumLessonId: session.curriculumLessonId,
-          sessionStatus: session.status,
-        },
+    const auth = { client: context.supabase, userId: context.userId };
+    const result = await runSessionBoundGeneration(
+      {
+        lessonSessionId: data.lessonSessionId,
+        kind: "activity_ideas",
+        auth,
+        supabase: context.supabase,
+        userId: context.userId,
       },
-    });
+      (ctx) =>
+        executeActivityIdeasGeneration(ctx, {
+          grade: data.grade,
+          subject: data.subject,
+          title: data.title,
+          count: data.count,
+          duration: data.duration,
+          groupType: data.groupType,
+        }),
+    );
 
     return {
-      id: row.id,
-      content: result.content,
-      createdAt: row.createdAt,
-      lessonSessionId: session.id,
-      curriculumLessonId: session.curriculumLessonId,
+      id: result.id,
+      content: result.content as string,
+      createdAt: result.createdAt,
+      lessonSessionId: result.lessonSessionId,
+      curriculumLessonId: result.curriculumLessonId,
     };
   });

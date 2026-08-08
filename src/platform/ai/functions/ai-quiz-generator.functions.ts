@@ -1,20 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { Type } from "@google/genai";
-import { getGemini } from "@/features/ai/providers/gemini";
+
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
-import { saveAiGeneration } from "@/features/ai/services/persistence.server";
-import {
-  loadCurriculumLessonForSession,
-  requireOwnedLessonSession,
-} from "@/features/lesson-sessions/services/require-owned-lesson-session";
+import type { StructuredQuizAndAssignmentData } from "@/platform/ai/docx";
+import { runSessionBoundGeneration } from "@/features/ai/services/session-bound-generation.server";
+import type { GenerationResult } from "@/features/ai/services/session-bound-generation.types";
+import { executeQuizGeneration } from "@/features/ai/strategies/quiz.strategy";
 
-// Lazy-loaded Gemini client setup to prevent boot-time crashes if GEMINI_API_KEY is missing
-function getGeminiClient() {
-  return getGemini();
-}
-
-// Structured Input validation schema
 const QuizGeneratorInput = z.object({
   lessonSessionId: z.string().uuid("lessonSessionId مطلوب"),
   subject: z.string().min(1, "اسم المادة مطلوب").optional(),
@@ -26,194 +18,63 @@ const QuizGeneratorInput = z.object({
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
 });
 
+/** Narrow unified pipeline content to the existing structured quiz shape. */
+function isStructuredQuizContent(content: unknown): content is StructuredQuizAndAssignmentData {
+  return (
+    typeof content === "object" &&
+    content !== null &&
+    !Array.isArray(content) &&
+    "title" in content &&
+    "mcqs" in content &&
+    "trueFalse" in content &&
+    "shortAnswer" in content &&
+    "homeworkAssignment" in content
+  );
+}
+
+function requireStructuredQuizContent(
+  content: GenerationResult["content"],
+): StructuredQuizAndAssignmentData {
+  if (!isStructuredQuizContent(content)) {
+    throw new Error("مخرجات الاختبار غير صالحة.");
+  }
+  return content;
+}
+
+/**
+ * Live quiz entry — thin wrapper over the unified session-bound pipeline.
+ * Strategy: direct Gemini structured JSON (unchanged prompts/model/schema).
+ */
 export const generateQuizAndAssignment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => QuizGeneratorInput.parse(data))
   .handler(async ({ data, context }) => {
-    const authContext = { client: context.supabase, userId: context.userId };
-    const session = await requireOwnedLessonSession(data.lessonSessionId, authContext);
-    const curriculumLesson = await loadCurriculumLessonForSession(session, authContext);
-
-    const subject = data.subject?.trim() || "المادة";
-    const grade = data.grade?.trim() || "الصف";
-    const title = data.title?.trim() || curriculumLesson?.title || "الدرس";
-
-    const ai = getGeminiClient();
-    const modelName = "gemini-2.5-flash";
-
-    const promptText = `
-    أنت مستشار تربوي وخبير في صياغة الاختبارات المدرسية وتقويم الطلاب في المملكة العربية السعودية.
-    صمم حزمة متكاملة تتضمن:
-    1. اختبار قصير (Quiz) باللغة العربية الفصحى السليمة لدرس "${title}" لمادة "${subject}" للصف "${grade}".
-    2. واجب منزلي تطبيقي مبتكر يربط المفاهيم بحياة الطالب اليومية ومحيطه الأسري والعملي والتقني في السعودية.
-
-    المتطلبات التفصيلية:
-    - إجمالي الأسئلة المطلوبة في الاختبار: ${data.questionCount} أسئلة موزعة بشكل متوازن بين الأنواع الثلاثة (اختيار من متعدد، صواب وخطأ، مقالي قصير).
-    - مستوى الصعوبة المطلوب: ${data.difficulty === "easy" ? "سهل (يقيس التذكر والفهم المباشر)" : data.difficulty === "medium" ? "متوسط (يقيس الفهم والتطبيق والتحليل البسيط)" : "صعب/متقدم (يقيس التحليل والتركيب والتفكير الناقد والحل الإبداعي للمشكلات)"}.
-    - الأسئلة متعددة الاختيارات: يجب تقديم 4 خيارات واضحة مع إجابة صحيحة واحدة محددة بدقة، وتوفير "تفسير تربوي" يوضح للمعلم وولي الأمر سبب صحة الإجابة.
-    - أسئلة صواب أو خطأ: عبارات علمية دقيقة مع تحديد الصواب أو الخطأ وتوضيح التصحيح للعبارات الخاطئة بشكل واضح ومفصل.
-    - الأسئلة المقالية القصيرة: أسئلة تتطلب كتابة أو استنتاج، مع توفير "نموذج الإجابة المقترح" للمعلم لتسهيل عملية التصحيح.
-    - الواجب المنزلي التطبيقي: يجب أن يكون نشاطاً حياتياً تطبيقياً ممتعاً يحفز تفكير الطالب، وليس مجرد حل تمارين مكررة، مع إرفاق معايير التقييم والزمن المتوقع لإنجازه.
-
-    يرجى توفير مخرجات منظمة ودقيقة بهيكل JSON المطابق للمخطط المطلوب (responseSchema) دون أي اختصارات أو كلمات مؤقتة.
-    `;
-
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: promptText,
-        config: {
-          systemInstruction: `
-            أنت مساعد ذكي ومستشار قياس وتقويم تربوي متمرس في الأنظمة التعليمية السعودية.
-            تقوم بصياغة أسئلة واختبارات مدرسية وواجبات تطبيقية تعزز الفهم والمهارات الحياتية والتفكير الناقد والتحصيل الدراسي.
-            يجب أن تكون الصياغة باللغة العربية الفصحى التربوية السليمة والخالية من الأخطاء النحوية والإملائية.
-          `,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: {
-                type: Type.STRING,
-                description:
-                  "عنوان الحزمة المناسب (مثال: اختبار قصير وواجب تطبيقي لدرس الكفاءة الحرارية)",
-              },
-              mcqs: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    question: { type: Type.STRING, description: "نص سؤال الاختيار من متعدد" },
-                    options: {
-                      type: Type.ARRAY,
-                      items: { type: Type.STRING },
-                      description: "4 خيارات متوازنة ومصاغة بعناية",
-                    },
-                    correctAnswer: {
-                      type: Type.STRING,
-                      description: "الإجابة الصحيحة المطابقة تماماً لأحد الخيارات الأربعة",
-                    },
-                    explanation: {
-                      type: Type.STRING,
-                      description: "التفسير التربوي أو العلمي للإجابة الصحيحة",
-                    },
-                  },
-                  required: ["question", "options", "correctAnswer", "explanation"],
-                },
-                description: "مجموعة أسئلة الاختيار من متعدد",
-              },
-              trueFalse: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    question: {
-                      type: Type.STRING,
-                      description: "العبارة المطروحة للتقييم بصواب أو خطأ",
-                    },
-                    correctAnswer: {
-                      type: Type.BOOLEAN,
-                      description: "true للصواب أو false للخطأ",
-                    },
-                    correction: {
-                      type: Type.STRING,
-                      description:
-                        "تصحيح العبارة بالتفصيل في حال كانت خاطئة، أو شرح إضافي معزز في حال كانت صواباً",
-                    },
-                  },
-                  required: ["question", "correctAnswer", "correction"],
-                },
-                description: "مجموعة أسئلة صواب أو خطأ",
-              },
-              shortAnswer: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    question: { type: Type.STRING, description: "نص السؤال المقالي القصير" },
-                    sampleAnswer: {
-                      type: Type.STRING,
-                      description: "نموذج الإجابة التربوية المقترحة لمساعدة المعلم في التصحيح",
-                    },
-                  },
-                  required: ["question", "sampleAnswer"],
-                },
-                description: "مجموعة الأسئلة المقالية القصيرة",
-              },
-              homeworkAssignment: {
-                type: Type.OBJECT,
-                properties: {
-                  title: {
-                    type: Type.STRING,
-                    description: "عنوان الواجب المنزلي التطبيقي المبتكر",
-                  },
-                  description: {
-                    type: Type.STRING,
-                    description: "نص تفصيلي لوصف الواجب وكيفية ربطه بالحياة والواقع العملي للطلاب",
-                  },
-                  estimatedTime: {
-                    type: Type.STRING,
-                    description: "الزمن التقديري لإنجازه (مثال: 20 دقيقة)",
-                  },
-                  evaluationCriteria: {
-                    type: Type.STRING,
-                    description: "معايير بسيطة لتقييم أداء الطالب في هذا الواجب",
-                  },
-                },
-                required: ["title", "description", "estimatedTime", "evaluationCriteria"],
-                description: "الواجب المنزلي التطبيقي المرتبط بالحياة اليومية",
-              },
-            },
-            required: ["title", "mcqs", "trueFalse", "shortAnswer", "homeworkAssignment"],
-          },
-        },
-      });
-
-      const responseText = response.text;
-      if (!responseText) {
-        throw new Error("استجابة فارغة من خادم توليد الأسئلة.");
-      }
-
-      const parsedOutput = JSON.parse(responseText.trim());
-
-      const savedRow = await saveAiGeneration(context.supabase, {
-        userId: context.userId,
+    const auth = { client: context.supabase, userId: context.userId };
+    const result = await runSessionBoundGeneration(
+      {
+        lessonSessionId: data.lessonSessionId,
         kind: "quiz",
-        prompt: `اختبار وواجب: ${title}`,
-        lessonSessionId: session.id,
-        output: {
-          content: parsedOutput,
-          input: {
-            lessonSessionId: session.id,
-            subject,
-            grade,
-            title,
-            questionCount: data.questionCount,
-            difficulty: data.difficulty,
-            semester: data.semester,
-            stage: data.stage,
-          },
-          model: modelName,
-          lessonContext: {
-            lessonSessionId: session.id,
-            curriculumLessonId: session.curriculumLessonId,
-            sessionStatus: session.status,
-          },
-        },
-      });
+        auth,
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      (ctx) =>
+        executeQuizGeneration(ctx, {
+          subject: data.subject,
+          grade: data.grade,
+          title: data.title,
+          questionCount: data.questionCount,
+          difficulty: data.difficulty,
+          semester: data.semester,
+          stage: data.stage,
+        }),
+    );
 
-      return {
-        id: savedRow.id,
-        content: parsedOutput,
-        createdAt: savedRow.createdAt,
-        lessonSessionId: session.id,
-        curriculumLessonId: session.curriculumLessonId,
-      };
-    } catch (error) {
-      console.error("خطأ أثناء توليد الاختبار عبر Gemini:", error);
-      throw new Error(
-        error instanceof Error
-          ? error.message
-          : "حدث خطأ غير متوقع أثناء توليد حزمة الاختبار والواجب بالذكاء الاصطناعي.",
-      );
-    }
+    return {
+      id: result.id,
+      content: requireStructuredQuizContent(result.content),
+      createdAt: result.createdAt,
+      lessonSessionId: result.lessonSessionId,
+      curriculumLessonId: result.curriculumLessonId,
+    };
   });
