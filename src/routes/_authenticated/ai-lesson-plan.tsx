@@ -1,4 +1,5 @@
 import { getLessonSessionView } from "@/platform/lesson-sessions/get-lesson-session-view.functions";
+import { getCurrentLessonPreparation } from "@/platform/lesson-sessions/get-current-lesson-preparation.functions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -148,9 +149,14 @@ function LessonPlanPage() {
   const lessonSessionId = search.lessonSessionId;
 
   const getSessionView = useServerFn(getLessonSessionView);
+  const getCurrentPreparation = useServerFn(getCurrentLessonPreparation);
   const [sessionView, setSessionView] = useState<Awaited<ReturnType<typeof getSessionView>> | null>(
     null,
   );
+
+  const [currentPreparation, setCurrentPreparation] = useState<Awaited<
+    ReturnType<typeof getCurrentLessonPreparation>
+  > | null>(null);
 
   const curriculum = {
     stage: sessionView?.grade?.includes("متوسط")
@@ -190,13 +196,37 @@ function LessonPlanPage() {
 
         setSessionView(view);
 
+        const preparation = await getCurrentPreparation({
+          data: { lessonSessionId },
+        });
+
+        if (cancelled) return;
+
+        setCurrentPreparation(preparation);
+
+        if (preparation?.content) {
+          setEditedMarkdown(
+            convertStructuredToMarkdown(
+              view.subject,
+              view.grade,
+              view.lessonTitle,
+              view.unitTitle ?? "",
+              preparation.content as StructuredLessonPrep,
+            ),
+          );
+        }
+
         setLessonName(view.lessonTitle);
         setLessonId(view.curriculumLessonId);
         setObjectives(view.lessonObjectives ?? "");
         setUnit(view.unitTitle ?? "");
         setSuggestedDate(view.sessionDate);
 
-        toast.success(`تم تحميل الحصة: ${view.lessonTitle}`);
+        toast.success(
+          preparation
+            ? `تم تحميل الحصة والتحضير المحفوظ: ${view.lessonTitle}`
+            : `تم تحميل الحصة: ${view.lessonTitle}`,
+        );
       } catch (err) {
         if (!cancelled) {
           console.error("Failed to load lesson session:", err);
@@ -210,7 +240,7 @@ function LessonPlanPage() {
     return () => {
       cancelled = true;
     };
-  }, [lessonSessionId, getSessionView]);
+  }, [lessonSessionId, getSessionView, getCurrentPreparation]);
 
   const mutation = useMutation({
     mutationFn: async (input: {
@@ -243,6 +273,14 @@ function LessonPlanPage() {
     },
   });
 
+  const resetMutation = mutation.reset;
+
+  useEffect(() => {
+    resetMutation();
+    setEditedMarkdown("");
+    setCurrentPreparation(null);
+  }, [lessonSessionId, resetMutation]);
+
   const handleGenerate = () => {
     const errors: Record<string, string> = {};
     if (!curriculum.subject) errors.subject = "المادة الدراسية مطلوبة";
@@ -271,13 +309,13 @@ function LessonPlanPage() {
     const contentToCopy =
       viewMode === "markdown"
         ? editedMarkdown
-        : mutation.data?.content
+        : lessonData
           ? convertStructuredToMarkdown(
               curriculum.subject,
               curriculum.grade,
               lessonName,
               unit,
-              mutation.data.content as StructuredLessonPrep,
+              lessonData,
             )
           : "";
 
@@ -288,7 +326,7 @@ function LessonPlanPage() {
   };
 
   const handleDownload = async () => {
-    if (!mutation.data?.content) return;
+    if (!lessonData) return;
     setExporting(true);
     try {
       await downloadStructuredLessonPrepDocx({
@@ -297,7 +335,7 @@ function LessonPlanPage() {
         grade: curriculum.grade,
         duration,
         unit: unit || "غير محدد",
-        data: mutation.data.content as StructuredLessonPrep,
+        data: lessonData,
         filename: lessonName || "تحضير_درس",
       });
     } finally {
@@ -306,7 +344,9 @@ function LessonPlanPage() {
   };
 
   const isPending = mutation.isPending;
-  const lessonData = mutation.data?.content as StructuredLessonPrep | undefined;
+  const lessonData =
+    (mutation.data?.content as StructuredLessonPrep | undefined) ??
+    (currentPreparation?.content as StructuredLessonPrep | undefined);
 
   if (!lessonSessionId) {
     return <SessionBindingRequiredGate toolLabel="تحضير الدرس" />;
