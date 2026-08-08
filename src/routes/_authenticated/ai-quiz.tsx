@@ -41,8 +41,10 @@ import {
   type CurriculumSelection,
   type CurriculumSelectorErrors,
 } from "@/features/ai/components/curriculum-selector";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 
 const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
   grade: z.string().optional(),
   subject: z.string().optional(),
@@ -90,6 +92,7 @@ const DIFFICULTY_LABEL: Record<"easy" | "medium" | "hard", string> = {
 function QuizPage() {
   const generate = useServerFn(generateQuizAndAssignment);
   const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
 
   const [curriculum, setCurriculum] = useState<CurriculumSelection>({
     stage: search.stage ?? "",
@@ -107,7 +110,12 @@ function QuizPage() {
   const subject = curriculum.subject;
 
   const mutation = useMutation({
-    mutationFn: (input: z.infer<typeof FormSchema>) => generate({ data: input }),
+    mutationFn: (input: z.infer<typeof FormSchema>) => {
+      if (!lessonSessionId) {
+        throw new Error("lessonSessionId مطلوب — افتح الأداة من حصة درس.");
+      }
+      return generate({ data: { ...input, lessonSessionId } });
+    },
   });
 
   useEffect(() => {
@@ -254,6 +262,10 @@ function QuizPage() {
   }
 
   const generatedData = mutation.data?.content as StructuredQuizAndAssignmentData | undefined;
+
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="الاختبار والواجب" />;
+  }
 
   return (
     <PageShell>

@@ -41,6 +41,7 @@ import {
   type CurriculumSelection,
 } from "@/features/ai/components/curriculum-selector";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 import { generateLessonPreparation } from "@/platform/ai/functions/ai-lesson-generator.functions";
 import { downloadStructuredLessonPrepDocx, copyToClipboard } from "@/platform/ai/docx";
 import { supabase } from "@/platform/database/supabase/client";
@@ -52,6 +53,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
 const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
   grade: z.string().optional(),
   subject: z.string().optional(),
@@ -150,6 +152,7 @@ ${data.assessmentAndHomework?.summativeAssessment?.map((item: string) => `- ${it
 function LessonPlanPage() {
   const generate = useServerFn(generateLessonPreparation);
   const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<string>("");
@@ -252,6 +255,7 @@ function LessonPlanPage() {
   }, [search.title]);
   const mutation = useMutation({
     mutationFn: async (input: {
+      lessonSessionId: string;
       subject: string;
       grade: string;
       lessonName: string;
@@ -294,6 +298,7 @@ function LessonPlanPage() {
 
     setValidationErrors({});
     mutation.mutate({
+      lessonSessionId: lessonSessionId!,
       subject: curriculum.subject,
       grade: curriculum.grade,
       lessonName,
@@ -343,6 +348,10 @@ function LessonPlanPage() {
 
   const isPending = mutation.isPending;
   const lessonData = mutation.data?.content as StructuredLessonPrep | undefined;
+
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="تحضير الدرس" />;
+  }
 
   return (
     <PageShell>

@@ -14,6 +14,8 @@ export interface TodayLessonCardProps {
     klass?: string;
     lessonTitle: string;
     subject: string;
+    /** When set, AI deep links are session-bound (P3 Step 2). */
+    lessonSessionId?: string;
   };
 }
 
@@ -22,16 +24,20 @@ export function TodayLessonCard({ entry }: TodayLessonCardProps) {
   const shortGrade = displayGrade.replace(/^الصف\s+/, "");
   const displayKlass = entry.klass || "";
 
-  const searchParams = {
-    stage: displayGrade.includes("متوسط")
-      ? "intermediate"
-      : displayGrade.includes("ثانوي")
-        ? "secondary"
-        : "primary",
-    grade: displayGrade,
-    subject: entry.subject,
-    title: entry.lessonTitle,
-  };
+  const hasSession = Boolean(entry.lessonSessionId);
+  const searchParams = hasSession
+    ? {
+        lessonSessionId: entry.lessonSessionId!,
+        stage: displayGrade.includes("متوسط")
+          ? ("intermediate" as const)
+          : displayGrade.includes("ثانوي")
+            ? ("secondary" as const)
+            : ("primary" as const),
+        grade: displayGrade,
+        subject: entry.subject,
+        title: entry.lessonTitle,
+      }
+    : null;
 
   return (
     <Card>
@@ -55,23 +61,31 @@ export function TodayLessonCard({ entry }: TodayLessonCardProps) {
         </div>
 
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-            <Link to="/ai-lesson-plan" search={searchParams as never}>
-              <BookOpen className="h-4 w-4 text-emerald-600" />
-            </Link>
-          </Button>
+          {searchParams ? (
+            <>
+              <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                <Link to="/ai-lesson-plan" search={searchParams as never}>
+                  <BookOpen className="h-4 w-4 text-emerald-600" />
+                </Link>
+              </Button>
 
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-            <Link to="/ai-worksheet" search={searchParams as never}>
-              <FileText className="h-4 w-4 text-orange-500" />
-            </Link>
-          </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                <Link to="/ai-worksheet" search={searchParams as never}>
+                  <FileText className="h-4 w-4 text-orange-500" />
+                </Link>
+              </Button>
 
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-            <Link to="/ai-quiz" search={searchParams as never}>
-              <FlaskConical className="h-4 w-4 text-indigo-600" />
-            </Link>
-          </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                <Link to="/ai-quiz" search={searchParams as never}>
+                  <FlaskConical className="h-4 w-4 text-indigo-600" />
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+              <Link to="/lesson-sessions">فتح الحصة</Link>
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

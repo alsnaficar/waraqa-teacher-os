@@ -15,8 +15,10 @@ import { useAIGeneration, useAIClipboard, useAIExport } from "@/features/ai/comp
 import { AIGenerationForm } from "@/features/ai/components/ai-generation-form";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
 import { AIExportPanel } from "@/features/ai/components/ai-export-panel";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 
 const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
   grade: z.string().optional(),
   subject: z.string().optional(),
@@ -82,9 +84,15 @@ const HOMEWORK_TYPE_LABEL: Record<"essay" | "mcq" | "true_false" | "mixed", stri
 function WorksheetPage() {
   const generate = useServerFn(generateWorksheet);
   const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
 
   const mutation = useMutation({
-    mutationFn: (input: z.input<typeof FormSchema>) => generate({ data: input }),
+    mutationFn: (input: z.input<typeof FormSchema>) => {
+      if (!lessonSessionId) {
+        throw new Error("lessonSessionId مطلوب — افتح الأداة من حصة درس.");
+      }
+      return generate({ data: { ...input, lessonSessionId } });
+    },
   });
 
   const {
@@ -162,6 +170,10 @@ function WorksheetPage() {
       filename: title || "homework",
     });
   };
+
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="ورقة العمل / الواجب" />;
+  }
 
   return (
     <PageShell>

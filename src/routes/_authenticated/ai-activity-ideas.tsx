@@ -22,8 +22,18 @@ import {
   type CurriculumSelection,
   type CurriculumSelectorErrors,
 } from "@/features/ai/components/curriculum-selector";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
+
+const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
+  stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
+  grade: z.string().optional(),
+  subject: z.string().optional(),
+  title: z.string().optional(),
+});
 
 export const Route = createFileRoute("/_authenticated/ai-activity-ideas")({
+  validateSearch: (s) => SearchSchema.parse(s),
   head: () => ({
     meta: [
       { title: "مولّد أفكار الأنشطة — Waraqa" },
@@ -70,8 +80,16 @@ const GROUP_LABEL: Record<"individual" | "pairs" | "group" | "whole_class", stri
 
 function ActivityIdeasPage() {
   const generate = useServerFn(generateActivityIdeas);
-  const [curriculum, setCurriculum] = useState<CurriculumSelection>(EMPTY_CURRICULUM);
-  const [title, setTitle] = useState("");
+  const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
+
+  const [curriculum, setCurriculum] = useState<CurriculumSelection>({
+    stage: search.stage ?? "",
+    grade: search.grade ?? "",
+    subject: search.subject ?? "",
+    semester: "",
+  });
+  const [title, setTitle] = useState(search.title ?? "");
   const [count, setCount] = useState("5");
   const [duration, setDuration] = useState<"short" | "medium" | "long">("medium");
   const [groupType, setGroupType] = useState<"individual" | "pairs" | "group" | "whole_class">(
@@ -83,10 +101,17 @@ function ActivityIdeasPage() {
   const subject = curriculum.subject;
 
   const mutation = useMutation({
-    mutationFn: (input: z.infer<typeof FormSchema>) => generate({ data: input }),
+    mutationFn: (input: z.infer<typeof FormSchema>) => {
+      if (!lessonSessionId) {
+        throw new Error("lessonSessionId مطلوب — افتح الأداة من حصة درس.");
+      }
+      return generate({ data: { ...input, lessonSessionId } });
+    },
   });
 
   useEffect(() => {
+    if (search.title) return;
+
     async function loadContext() {
       const context = await getLessonContext();
 
@@ -104,12 +129,11 @@ function ActivityIdeasPage() {
         subject: context.subject,
         semester: "",
       });
-
       setTitle(context.title);
     }
 
     void loadContext();
-  }, []);
+  }, [search.title]);
 
   function validateAndRun() {
     const curriculumErrors = validateCurriculum(curriculum) ?? {};
@@ -152,6 +176,12 @@ function ActivityIdeasPage() {
   }
 
   const canSubmit = !mutation.isPending;
+
+  const generated = mutation.data?.content;
+
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="أفكار الأنشطة" />;
+  }
 
   return (
     <PageShell>

@@ -30,8 +30,9 @@ export function LessonSessionCard({
 }: LessonSessionCardProps) {
   const shortGrade = session.grade.replace(/^الصف\s+/, "");
 
-  // The AI tools read the lesson session as their single source of truth.
+  // The AI tools require lessonSessionId (P3 Step 2 Session Binding Contract).
   const aiSearch = {
+    lessonSessionId: session.id,
     stage: stageFor(session.grade),
     grade: session.grade,
     subject: session.subject,

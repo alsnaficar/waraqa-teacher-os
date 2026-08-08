@@ -4,6 +4,10 @@ import { Type } from "@google/genai";
 import { getGemini } from "@/features/ai/providers/gemini";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import { saveAiGeneration } from "@/features/ai/services/persistence.server";
+import {
+  loadCurriculumLessonForSession,
+  requireOwnedLessonSession,
+} from "@/features/lesson-sessions/services/require-owned-lesson-session";
 
 // Lazy-loaded Gemini client setup to prevent boot-time crashes if GEMINI_API_KEY is missing
 function getGeminiClient() {
@@ -12,9 +16,10 @@ function getGeminiClient() {
 
 // Structured Input validation schema
 const QuizGeneratorInput = z.object({
-  subject: z.string().min(1, "اسم المادة مطلوب"),
-  grade: z.string().min(1, "الصف الدراسي مطلوب"),
-  title: z.string().min(1, "عنوان الدرس مطلوب"),
+  lessonSessionId: z.string().uuid("lessonSessionId مطلوب"),
+  subject: z.string().min(1, "اسم المادة مطلوب").optional(),
+  grade: z.string().min(1, "الصف الدراسي مطلوب").optional(),
+  title: z.string().min(1, "عنوان الدرس مطلوب").optional(),
   questionCount: z.number().int().min(1).max(25).default(5),
   difficulty: z.enum(["easy", "medium", "hard"]).default("medium"),
   semester: z.string().optional().default(""),
@@ -25,13 +30,21 @@ export const generateQuizAndAssignment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => QuizGeneratorInput.parse(data))
   .handler(async ({ data, context }) => {
+    const authContext = { client: context.supabase, userId: context.userId };
+    const session = await requireOwnedLessonSession(data.lessonSessionId, authContext);
+    const curriculumLesson = await loadCurriculumLessonForSession(session, authContext);
+
+    const subject = data.subject?.trim() || "المادة";
+    const grade = data.grade?.trim() || "الصف";
+    const title = data.title?.trim() || curriculumLesson?.title || "الدرس";
+
     const ai = getGeminiClient();
     const modelName = "gemini-2.5-flash";
 
     const promptText = `
     أنت مستشار تربوي وخبير في صياغة الاختبارات المدرسية وتقويم الطلاب في المملكة العربية السعودية.
     صمم حزمة متكاملة تتضمن:
-    1. اختبار قصير (Quiz) باللغة العربية الفصحى السليمة لدرس "${data.title}" لمادة "${data.subject}" للصف "${data.grade}".
+    1. اختبار قصير (Quiz) باللغة العربية الفصحى السليمة لدرس "${title}" لمادة "${subject}" للصف "${grade}".
     2. واجب منزلي تطبيقي مبتكر يربط المفاهيم بحياة الطالب اليومية ومحيطه الأسري والعملي والتقني في السعودية.
 
     المتطلبات التفصيلية:
@@ -162,15 +175,29 @@ export const generateQuizAndAssignment = createServerFn({ method: "POST" })
 
       const parsedOutput = JSON.parse(responseText.trim());
 
-      // Save the generated quiz to the planner history using persistence helper
       const savedRow = await saveAiGeneration(context.supabase, {
         userId: context.userId,
         kind: "quiz",
-        prompt: `اختبار وواجب: ${data.title}`,
+        prompt: `اختبار وواجب: ${title}`,
+        lessonSessionId: session.id,
         output: {
           content: parsedOutput,
-          input: data,
+          input: {
+            lessonSessionId: session.id,
+            subject,
+            grade,
+            title,
+            questionCount: data.questionCount,
+            difficulty: data.difficulty,
+            semester: data.semester,
+            stage: data.stage,
+          },
           model: modelName,
+          lessonContext: {
+            lessonSessionId: session.id,
+            curriculumLessonId: session.curriculumLessonId,
+            sessionStatus: session.status,
+          },
         },
       });
 
@@ -178,6 +205,8 @@ export const generateQuizAndAssignment = createServerFn({ method: "POST" })
         id: savedRow.id,
         content: parsedOutput,
         createdAt: savedRow.createdAt,
+        lessonSessionId: session.id,
+        curriculumLessonId: session.curriculumLessonId,
       };
     } catch (error) {
       console.error("خطأ أثناء توليد الاختبار عبر Gemini:", error);

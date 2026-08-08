@@ -149,6 +149,7 @@ function HomePage() {
         klass: session.className,
         lessonTitle: session.lessonTitle,
         subject: session.subject,
+        lessonSessionId: session.id,
       }));
     }
 

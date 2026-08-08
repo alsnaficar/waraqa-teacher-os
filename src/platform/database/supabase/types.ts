@@ -44,32 +44,61 @@ export type Database = {
       ai_generations: {
         Row: {
           created_at: string;
+          grade: string | null;
           id: string;
           kind: string;
+          lesson_id: string | null;
+          lesson_session_id: string | null;
+          lesson_title: string | null;
           output: Json | null;
           prompt: string | null;
           status: string;
+          subject: string | null;
+          updated_at: string | null;
           user_id: string;
+          version: number;
         };
         Insert: {
           created_at?: string;
+          grade?: string | null;
           id?: string;
           kind: string;
+          lesson_id?: string | null;
+          lesson_session_id?: string | null;
+          lesson_title?: string | null;
           output?: Json | null;
           prompt?: string | null;
           status?: string;
+          subject?: string | null;
+          updated_at?: string | null;
           user_id: string;
+          version?: number;
         };
         Update: {
           created_at?: string;
+          grade?: string | null;
           id?: string;
           kind?: string;
+          lesson_id?: string | null;
+          lesson_session_id?: string | null;
+          lesson_title?: string | null;
           output?: Json | null;
           prompt?: string | null;
           status?: string;
+          subject?: string | null;
+          updated_at?: string | null;
           user_id?: string;
+          version?: number;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "ai_generations_lesson_session_id_fkey";
+            columns: ["lesson_session_id"];
+            isOneToOne: false;
+            referencedRelation: "lesson_sessions";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       calendar_events: {
         Row: {

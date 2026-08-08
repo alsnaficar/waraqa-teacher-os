@@ -4,20 +4,25 @@ import { Type } from "@google/genai";
 import { getGemini } from "@/features/ai/providers/gemini";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import { saveAiGeneration } from "@/features/ai/services/persistence.server";
+import {
+  loadCurriculumLessonForSession,
+  requireOwnedLessonSession,
+} from "@/features/lesson-sessions/services/require-owned-lesson-session";
+import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 
-// Define lazy client initializer to avoid crashes if GEMINI_API_KEY is missing on boot
 function getGeminiClient() {
   return getGemini();
 }
 
-// Validation input schema for the lesson prep function
+/** Display/context fields may accompany the session; binding identity is lessonSessionId only. */
 const LessonPrepInput = z.object({
-  subject: z.string().min(1, "اسم المادة مطلوب"),
-  grade: z.string().min(1, "الصف الدراسي مطلوب"),
-  lessonName: z.string().min(1, "اسم الدرس مطلوب"),
+  lessonSessionId: z.string().uuid("lessonSessionId مطلوب"),
+  subject: z.string().min(1, "اسم المادة مطلوب").optional(),
+  grade: z.string().min(1, "الصف الدراسي مطلوب").optional(),
+  lessonName: z.string().optional(),
   objectives: z.string().optional().default(""),
   unit: z.string().optional().default(""),
-
+  /** Ignored for binding — session.curriculumLessonId is authoritative. */
   lessonId: z.string().nullable().optional(),
   suggestedDate: z.string().optional(),
 });
@@ -26,6 +31,19 @@ export const generateLessonPreparation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => LessonPrepInput.parse(data))
   .handler(async ({ data, context }) => {
+    const authContext = { client: context.supabase, userId: context.userId };
+    const session = await requireOwnedLessonSession(data.lessonSessionId, authContext);
+    const curriculumLesson = await loadCurriculumLessonForSession(session, authContext);
+    const notesExtra = deserializeLessonNotes(curriculumLesson?.notes ?? null);
+
+    const subject = data.subject?.trim() || "المادة";
+    const grade = data.grade?.trim() || "الصف";
+    const lessonName = data.lessonName?.trim() || curriculumLesson?.title || "الدرس";
+    const objectives =
+      data.objectives?.trim() || curriculumLesson?.objectives || notesExtra.outcomes || "";
+    const unit = data.unit?.trim() || notesExtra.unitName || "";
+    const suggestedDate = data.suggestedDate?.trim() || session.sessionDate;
+
     const ai = getGeminiClient();
     const modelName = "gemini-2.5-flash";
 
@@ -33,12 +51,12 @@ export const generateLessonPreparation = createServerFn({ method: "POST" })
     أنت خبير تربوي متمكن متخصص في إعداد وتصميم التحاضير الدراسية المتوافقة تماماً مع معايير وزارة التعليم في المملكة العربية السعودية ومنصة "مدرستي".
     مهمتك هي إنشاء تحضير درس نموذجي ومكتمل ومفصل باللغة العربية بناءً على البيانات التالية:
 
-    - المادة الدراسية: ${data.subject}
-    - الصف الدراسي: ${data.grade}
-    - اسم الدرس: ${data.lessonName}
-    ${data.unit ? `- الوحدة الدراسية: ${data.unit}` : ""}
-${data.suggestedDate ? `- تاريخ تنفيذ الدرس: ${data.suggestedDate}` : ""}
-${data.objectives ? `- الأهداف الإضافية المدخلة من المعلم: ${data.objectives}` : ""}
+    - المادة الدراسية: ${subject}
+    - الصف الدراسي: ${grade}
+    - اسم الدرس: ${lessonName}
+    ${unit ? `- الوحدة الدراسية: ${unit}` : ""}
+${suggestedDate ? `- تاريخ تنفيذ الدرس: ${suggestedDate}` : ""}
+${objectives ? `- الأهداف الإضافية المدخلة من المعلم: ${objectives}` : ""}
 
     يرجى تقديم التحضير بهيكل عالي الجودة وصيغة JSON مطابقة تماماً للمخطط الهيكلي المطلوب (responseSchema).
     تأكد من أن تكون العبارات مكتوبة بأسلوب تربوي رصين ومناسب ومكتمل بدون أي اختصارات أو نصوص مؤقتة.
@@ -146,23 +164,34 @@ ${data.objectives ? `- الأهداف الإضافية المدخلة من ال�
 
       const parsedOutput = JSON.parse(responseText.trim());
 
-      // Persist the generated lesson plan in the database for tracking history
       const savedRow = await saveAiGeneration(context.supabase, {
         userId: context.userId,
         kind: "lesson_plan",
-        prompt: `تحضير مباشر لدرس: ${data.lessonName}`,
+        prompt: `تحضير مباشر لدرس: ${lessonName}`,
+        lessonSessionId: session.id,
         output: {
           content: parsedOutput,
-          input: data,
+          input: {
+            lessonSessionId: session.id,
+            subject,
+            grade,
+            lessonName,
+            objectives,
+            unit,
+            suggestedDate,
+          },
           model: modelName,
-
           lessonContext: {
-            lessonId: data.lessonId ?? null,
-            suggestedDate: data.suggestedDate ?? null,
-            lessonName: data.lessonName,
-            subject: data.subject,
-            grade: data.grade,
-            unit: data.unit ?? "",
+            lessonSessionId: session.id,
+            curriculumLessonId: session.curriculumLessonId,
+            // Client-supplied lessonId is never used as binding identity.
+            lessonId: session.curriculumLessonId,
+            suggestedDate,
+            lessonName,
+            subject,
+            grade,
+            unit,
+            sessionStatus: session.status,
           },
         },
       });
@@ -171,6 +200,8 @@ ${data.objectives ? `- الأهداف الإضافية المدخلة من ال�
         id: savedRow.id,
         content: parsedOutput,
         createdAt: savedRow.createdAt,
+        lessonSessionId: session.id,
+        curriculumLessonId: session.curriculumLessonId,
       };
     } catch (error) {
       console.error("خطأ أثناء توليد التحضير عبر Gemini:", error);
