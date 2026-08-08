@@ -18,6 +18,16 @@ export type LessonPlanOptions = {
   suggestedDate?: string;
 };
 
+type LessonPlanAiClient = {
+  models: {
+    generateContent(input: {
+      model: string;
+      contents: string;
+      config?: Parameters<ReturnType<typeof getGemini>["models"]["generateContent"]>[0]["config"];
+    }): Promise<{ text?: string }>;
+  };
+};
+
 /**
  * Direct Gemini structured-JSON strategy for lesson_plan.
  * Preserves existing prompts, model, and responseSchema.
@@ -25,6 +35,7 @@ export type LessonPlanOptions = {
 export async function executeLessonPlanGeneration(
   ctx: SessionBoundGenerationContext,
   options: LessonPlanOptions,
+  aiClient: LessonPlanAiClient = getGemini(),
 ): Promise<GenerationExecuteResult> {
   const { session, curriculumLesson } = ctx;
   const notesExtra = deserializeLessonNotes(curriculumLesson?.notes ?? null);
@@ -64,7 +75,6 @@ export async function executeLessonPlanGeneration(
     .filter(Boolean)
     .join("\n");
 
-  const ai = getGemini();
   const modelName = "gemini-2.5-flash";
 
   const promptText = `
@@ -101,7 +111,7 @@ export async function executeLessonPlanGeneration(
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await aiClient.models.generateContent({
       model: modelName,
       contents: promptText,
       config: {

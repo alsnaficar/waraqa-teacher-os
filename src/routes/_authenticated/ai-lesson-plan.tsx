@@ -1,4 +1,4 @@
-import { getLessonContext } from "@/features/lesson-context/services/context-engine";
+import { getLessonSessionView } from "@/platform/lesson-sessions/get-lesson-session-view.functions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -34,17 +34,10 @@ import { Button } from "@/shared/ui/button";
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
-import { type Assignment } from "@/routes/_authenticated/settings";
-import {
-  CurriculumSelector,
-  type CurriculumSelection,
-} from "@/features/ai/components/curriculum-selector";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
 import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 import { generateLessonPreparation } from "@/platform/ai/functions/ai-lesson-generator.functions";
 import { downloadStructuredLessonPrepDocx, copyToClipboard } from "@/platform/ai/docx";
-import { supabase } from "@/platform/database/supabase/client";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
   CONFIG_SCHEDULE_OVERRIDES_DATE,
@@ -154,53 +147,21 @@ function LessonPlanPage() {
   const search = Route.useSearch();
   const lessonSessionId = search.lessonSessionId;
 
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState<string>("");
+  const getSessionView = useServerFn(getLessonSessionView);
+  const [sessionView, setSessionView] = useState<Awaited<ReturnType<typeof getSessionView>> | null>(
+    null,
+  );
 
-  useEffect(() => {
-    async function fetchAssignments() {
-      const { data: userRes } = await supabase.auth.getUser();
-      if (!userRes.user) return;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("classes, subject, grade")
-        .eq("id", userRes.user.id)
-        .maybeSingle();
-
-      if (profile) {
-        let list: Assignment[] = [];
-        const classes = (profile.classes as Record<string, unknown>) || {};
-        if (Array.isArray(classes.assignments)) {
-          list = classes.assignments as Assignment[];
-        } else if (profile.subject || profile.grade) {
-          const grade = profile.grade || "";
-          const subject = profile.subject || "";
-          const stage = grade.includes("متوسط")
-            ? "intermediate"
-            : grade.includes("ثانوي")
-              ? "secondary"
-              : "primary";
-          list = [
-            {
-              stage,
-              grade,
-              subject,
-              klasses: ["أ"],
-            },
-          ];
-        }
-        setAssignments(list);
-      }
-    }
-    fetchAssignments();
-  }, []);
-
-  const [curriculum, setCurriculum] = useState<CurriculumSelection>({
-    stage: search.stage ?? "",
-    grade: search.grade ?? "",
-    subject: search.subject ?? "",
+  const curriculum = {
+    stage: sessionView?.grade?.includes("متوسط")
+      ? "intermediate"
+      : sessionView?.grade?.includes("ثانوي")
+        ? "secondary"
+        : "primary",
+    grade: sessionView?.grade ?? "",
+    subject: sessionView?.subject ?? "",
     semester: "",
-  });
+  } as const;
 
   const [lessonName, setLessonName] = useState(search.title ?? "");
   const [objectives, setObjectives] = useState("");
@@ -214,45 +175,43 @@ function LessonPlanPage() {
   const [exporting, setExporting] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  // Fetch today's scheduled lesson if initial search lesson title is empty
   useEffect(() => {
-    if (search.title) {
-      setLessonName(search.title);
-      return;
-    }
+    if (!lessonSessionId) return;
 
-    async function loadTodayLesson() {
+    let cancelled = false;
+
+    async function loadSessionView() {
       try {
-        const context = await getLessonContext();
-
-        if (!context) return;
-
-        const computedStage: "primary" | "intermediate" | "secondary" = context.grade.includes(
-          "متوسط",
-        )
-          ? "intermediate"
-          : context.grade.includes("ثانوي")
-            ? "secondary"
-            : "primary";
-
-        setCurriculum({
-          stage: computedStage,
-          grade: context.grade,
-          subject: context.subject,
-          semester: "",
+        const view = await getSessionView({
+          data: { lessonSessionId },
         });
 
-        setLessonName(context.title);
-        setLessonId(context.lessonId);
-        setSuggestedDate(context.suggestedDate);
-        toast.success(`تم تحميل درس اليوم المجدول تلقائياً: ${context.title}`);
+        if (cancelled) return;
+
+        setSessionView(view);
+
+        setLessonName(view.lessonTitle);
+        setLessonId(view.curriculumLessonId);
+        setObjectives(view.lessonObjectives ?? "");
+        setUnit(view.unitTitle ?? "");
+        setSuggestedDate(view.sessionDate);
+
+        toast.success(`تم تحميل الحصة: ${view.lessonTitle}`);
       } catch (err) {
-        console.warn("Failed to auto-load today's lesson:", err);
+        if (!cancelled) {
+          console.error("Failed to load lesson session:", err);
+          toast.error(err instanceof Error ? err.message : "تعذر تحميل بيانات الحصة.");
+        }
       }
     }
 
-    loadTodayLesson();
-  }, [search.title]);
+    loadSessionView();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lessonSessionId, getSessionView]);
+
   const mutation = useMutation({
     mutationFn: async (input: {
       lessonSessionId: string;
@@ -387,48 +346,6 @@ function LessonPlanPage() {
               <CardDescription>أدخل تفاصيل الدرس للحصول على تحضير تفصيلي متناسق.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              {assignments.length > 0 && (
-                <div className="space-y-1.5 border-b pb-4 mb-4">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    اختر من المواد والصفوف المسندة لك لتعبئة البيانات تلقائياً
-                  </Label>
-                  <Select
-                    value={selectedIdx}
-                    onValueChange={(val) => {
-                      setSelectedIdx(val);
-                      const idx = parseInt(val, 10);
-                      const selected = assignments[idx];
-                      if (selected) {
-                        setCurriculum({
-                          stage: selected.stage,
-                          grade: selected.grade,
-                          subject: selected.subject,
-                          semester: curriculum.semester,
-                        });
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-10 text-xs bg-slate-50/50 border-dashed border-slate-200">
-                      <SelectValue placeholder="اختر الإسناد للتعبئة التلقائية..." />
-                    </SelectTrigger>
-                    <SelectContent dir="rtl">
-                      {assignments.map((asm, idx) => (
-                        <SelectItem key={idx} value={String(idx)} className="text-xs">
-                          {asm.subject} - {asm.grade}{" "}
-                          {asm.klasses?.length > 0 ? `(فصول: ${asm.klasses.join(", ")})` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <CurriculumSelector
-                value={curriculum}
-                onChange={setCurriculum}
-                errors={validationErrors}
-              />
-
               <div className="space-y-2">
                 <Label
                   htmlFor="lessonName"

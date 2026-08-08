@@ -173,6 +173,48 @@ export class LessonSessionService {
     });
   }
 
+  static async getSessionViewById(
+    id: string,
+    context?: SupabaseUserContext,
+  ): Promise<LessonSessionView | null> {
+    const resolved = await resolveUserContext(context);
+
+    if (!resolved) return null;
+
+    const session = await this.getSessionById(id, resolved);
+
+    if (!session) return null;
+
+    const timetable = await TeacherTimetableService.getTimetable(resolved);
+
+    const { data: lesson, error } = await resolved.client
+      .from("curriculum_lessons")
+      .select("id, title, objectives, notes")
+      .eq("id", session.curriculumLessonId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const slot = timetable.find(
+      (entry) => entry.dayOfWeek === session.dayOfWeek && entry.period === session.periodNumber,
+    );
+
+    const unitTitle = lesson ? deserializeLessonNotes(lesson.notes).unitName || null : null;
+
+    return {
+      ...session,
+      lessonTitle: lesson?.title ?? "درس غير معروف",
+      lessonObjectives: lesson?.objectives ?? null,
+      unitTitle,
+      subject: slot?.subject ?? "",
+      grade: slot?.grade ?? "",
+      className: slot?.className ?? "",
+      classroom: slot?.classroom ?? null,
+      startsAt: slot?.startsAt ?? null,
+      endsAt: slot?.endsAt ?? null,
+    };
+  }
+
   static async getTodaySessionViews(context?: SupabaseUserContext): Promise<LessonSessionView[]> {
     return this.getSessionViewsByDate(todayIso(), context);
   }
