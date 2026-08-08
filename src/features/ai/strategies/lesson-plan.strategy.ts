@@ -37,6 +37,25 @@ export async function executeLessonPlanGeneration(
   const unit = options.unit?.trim() || notesExtra.unitName || "";
   const suggestedDate = options.suggestedDate?.trim() || session.sessionDate;
 
+  // Official curriculum context is authoritative for lesson content.
+  // Teacher options can enrich the request, but must not replace curriculum data.
+  const curriculumContext = [
+    `عنوان الدرس الرسمي: ${curriculumLesson?.title ?? lessonName}`,
+    curriculumLesson?.objectives
+      ? `الأهداف الرسمية: ${curriculumLesson.objectives}`
+      : "",
+    notesExtra.unitNumber ? `رقم الوحدة: ${notesExtra.unitNumber}` : "",
+    notesExtra.unitName ? `اسم الوحدة: ${notesExtra.unitName}` : "",
+    notesExtra.lessonNumber ? `رقم الدرس: ${notesExtra.lessonNumber}` : "",
+    notesExtra.outcomes ? `نواتج التعلم الرسمية: ${notesExtra.outcomes}` : "",
+    notesExtra.activities ? `الأنشطة الواردة في المنهج: ${notesExtra.activities}` : "",
+    notesExtra.assessment ? `التقويم الوارد في المنهج: ${notesExtra.assessment}` : "",
+    notesExtra.periods ? `عدد الحصص/الفترات: ${notesExtra.periods}` : "",
+    notesExtra.notes ? `ملاحظات المنهج: ${notesExtra.notes}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const ai = getGemini();
   const modelName = "gemini-2.5-flash";
 
@@ -48,12 +67,24 @@ export async function executeLessonPlanGeneration(
     - الصف الدراسي: ${grade}
     - اسم الدرس: ${lessonName}
     ${unit ? `- الوحدة الدراسية: ${unit}` : ""}
-${suggestedDate ? `- تاريخ تنفيذ الدرس: ${suggestedDate}` : ""}
-${objectives ? `- الأهداف الإضافية المدخلة من المعلم: ${objectives}` : ""}
+    ${suggestedDate ? `- تاريخ تنفيذ الدرس: ${suggestedDate}` : ""}
+    ${objectives ? `- الأهداف الإضافية المدخلة من المعلم: ${objectives}` : ""}
+
+    --- بيانات المنهج الرسمية ---
+    ${curriculumContext}
+    --- نهاية بيانات المنهج الرسمية ---
+
+    قواعد مهمة:
+    1. اعتبر بيانات المنهج الرسمية المصدر الأساسي لمحتوى التحضير.
+    2. لا تستبدل عنوان الدرس أو الأهداف أو نواتج التعلم الرسمية بمعلومات عامة من عندك.
+    3. استخدم الأنشطة والتقويم والملاحظات الرسمية عند توفرها.
+    4. يمكنك إثراء التحضير تربوياً عند الحاجة، دون مخالفة محتوى المنهج الرسمي.
+    5. مدخلات المعلم الاختيارية تعتبر إضافات أو تفضيلات، وليست بديلاً عن بيانات المنهج.
+    6. اجعل الناتج جاهزاً للمراجعة والتعديل من قبل المعلم.
 
     يرجى تقديم التحضير بهيكل عالي الجودة وصيغة JSON مطابقة تماماً للمخطط الهيكلي المطلوب (responseSchema).
     تأكد من أن تكون العبارات مكتوبة بأسلوب تربوي رصين ومناسب ومكتمل بدون أي اختصارات أو نصوص مؤقتة.
-    `;
+  `;
 
   try {
     const response = await ai.models.generateContent({
