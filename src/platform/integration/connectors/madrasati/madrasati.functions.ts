@@ -7,6 +7,7 @@ import {
   type CalculatedLessonEntry,
 } from "@/features/planner/services/planner-engine";
 import { ensureSemesterPlan } from "@/features/planner/services/semester-plan-lifecycle";
+import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 
 export const MadrasatiSyncInput = z.object({
   email: z.string().email("الرجاء إدخال بريد إلكتروني صحيح من منصة مدرستي"),
@@ -291,12 +292,33 @@ export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
       console.error("Error updating profile during Madrasati sync:", profileError);
       throw new Error("فشل تحديث ملف المعلم بقاعدة البيانات.");
     }
+    // Promote the imported Madrasati schedule into the canonical timetable.
+    await TeacherTimetableService.saveTimetable(
+      timetable.map((entry) => ({
+        dayOfWeek: entry.dayOfWeek,
+        period: entry.period,
+        subject: "لغتي الخالدة",
+        grade: "الصف الأول المتوسط",
+        className: entry.className,
+        active: true,
+      })),
+      {
+        client: context.supabase,
+        userId: context.userId,
+      },
+    );
 
     // 2. Sync into the teacher's Draft semester plan scope (never subject-only wipe).
     try {
       const subject = "لغتي الخالدة";
       const grade = "الصف الأول المتوسط";
-      const ctx = await ensureSemesterPlan({ subject, grade });
+      const ctx = await ensureSemesterPlan(
+        { subject, grade },
+        {
+          client: context.supabase,
+          userId: context.userId,
+        },
+      );
 
       if (ctx.plan.status !== "draft") {
         logs.push(
@@ -307,13 +329,24 @@ export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
           subject,
           grade,
           ctx.plan.id,
+          {
+            client: context.supabase,
+            userId: context.userId,
+          },
         );
         if (calculatedEntries.length > 0) {
-          await syncScheduleToDatabase(calculatedEntries, {
-            planId: ctx.plan.id,
-            versionId: ctx.version.id,
-            subject,
-          });
+          await syncScheduleToDatabase(
+            calculatedEntries,
+            {
+              planId: ctx.plan.id,
+              versionId: ctx.version.id,
+              subject,
+            },
+            {
+              client: context.supabase,
+              userId: context.userId,
+            },
+          );
           logs.push(
             `تمت مزامنة الجدول التشغيلي مع خطة الفصل (الإصدار ${ctx.plan.current_version}).`,
           );

@@ -35,6 +35,7 @@ import { Card, CardContent } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { Badge } from "@/shared/ui/badge";
 import { getScheduleService, type ScheduleEntry } from "@/features/planner/services/service";
+import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import { supabase } from "@/platform/database/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/shared/utils/utils";
@@ -106,6 +107,14 @@ function HomePage() {
     },
   });
 
+  // The teacher timetable is the authoritative weekly schedule.
+  // Keep it visible even when no curriculum/semester plan exists.
+  const { data: teacherTimetable = [] } = useQuery({
+    queryKey: ["dashboard-teacher-timetable"],
+    staleTime: 30_000,
+    queryFn: () => TeacherTimetableService.getTimetable(),
+  });
+
   const [mockLessons, setMockLessons] = useState<ScheduleEntry[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -123,15 +132,34 @@ function HomePage() {
     };
   }, [today, todayKey]);
 
-  // Extract today's real lessons, fallback to mock if no plan is set up
+  // Resolve today's visible schedule.
+  // Priority: real planner lessons, then the teacher timetable,
+  // then mock data as the final onboarding fallback.
   const todaysLessons = useMemo(() => {
-    if (!scheduleData || scheduleData.length === 0) return mockLessons;
     const todayISO = today.toISOString().slice(0, 10);
-    const realToday = scheduleData
+
+    const realToday = (scheduleData ?? [])
       .filter((e) => e.suggestedDate === todayISO && e.status !== "Skipped")
       .sort((a, b) => a.period - b.period);
-    return realToday.length > 0 ? realToday : mockLessons;
-  }, [scheduleData, mockLessons, today]);
+
+    if (realToday.length > 0) return realToday;
+
+    const timetableToday = teacherTimetable
+      .filter((entry) => entry.dayOfWeek === today.getDay() && entry.active)
+      .sort((a, b) => a.period - b.period)
+      .map((entry) => ({
+        id: entry.id,
+        period: entry.period,
+        grade: entry.grade,
+        className: entry.className,
+        lessonTitle: entry.subject,
+        subject: entry.subject,
+      }));
+
+    if (timetableToday.length > 0) return timetableToday;
+
+    return mockLessons;
+  }, [scheduleData, teacherTimetable, mockLessons, today]);
 
   // Lesson sessions are the source of truth for what is actually being taught
   // today; the planner projection is only a fallback before they are generated.

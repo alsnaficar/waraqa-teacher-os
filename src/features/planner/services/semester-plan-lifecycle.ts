@@ -1,4 +1,5 @@
 import { supabase } from "@/platform/database/supabase/client";
+import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import type { Database, Json } from "@/platform/database/supabase/types";
 import {
   getActiveAcademicYear,
@@ -138,16 +139,20 @@ function assertWritableDraft(plan: SemesterPlanRow): void {
   }
 }
 
-async function requireUserId(): Promise<string> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
-  return user.id;
+async function requireUserId(context?: SupabaseUserContext): Promise<string> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+  return resolved.userId;
 }
 
-export async function getSemesterPlanById(planId: string): Promise<SemesterPlanRow | null> {
-  const { data, error } = await supabase
+export async function getSemesterPlanById(
+  planId: string,
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanRow | null> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) return null;
+
+  const { data, error } = await resolved.client
     .from("semester_plans")
     .select("*")
     .eq("id", planId)
@@ -158,8 +163,12 @@ export async function getSemesterPlanById(planId: string): Promise<SemesterPlanR
 
 export async function getCurrentPlanVersion(
   plan: SemesterPlanRow,
+  context?: SupabaseUserContext,
 ): Promise<SemesterPlanVersionRow | null> {
-  const { data, error } = await supabase
+  const resolved = await resolveUserContext(context);
+  if (!resolved) return null;
+
+  const { data, error } = await resolved.client
     .from("semester_plan_versions")
     .select("*")
     .eq("semester_plan_id", plan.id)
@@ -170,22 +179,28 @@ export async function getCurrentPlanVersion(
 }
 
 /** Locate an existing plan for the teacher/subject/term scope. Does not create. */
-export async function findSemesterPlan(input: {
-  subject: string;
-  academicYearId?: string | null;
-  semesterId?: string | null;
-}): Promise<SemesterPlanContext | null> {
-  const userId = await requireUserId();
+export async function findSemesterPlan(
+  input: {
+    subject: string;
+    academicYearId?: string | null;
+    semesterId?: string | null;
+  },
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanContext | null> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) return null;
+
+  const userId = resolved.userId;
   const subject = input.subject.trim();
   if (!subject) return null;
 
-  const yearId = input.academicYearId ?? (await getActiveAcademicYear())?.id ?? null;
-  const termId = input.semesterId ?? (await getCurrentAcademicTerm())?.id ?? null;
+  const yearId = input.academicYearId ?? (await getActiveAcademicYear(resolved))?.id ?? null;
+  const termId = input.semesterId ?? (await getCurrentAcademicTerm(resolved))?.id ?? null;
 
-  let query = supabase
+  let query = resolved.client
     .from("semester_plans")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", resolved.userId)
     .eq("subject", subject);
 
   if (yearId) query = query.eq("academic_year_id", yearId);
@@ -198,7 +213,7 @@ export async function findSemesterPlan(input: {
   if (findError) throw findError;
   if (!existing) return null;
 
-  const version = await getCurrentPlanVersion(existing);
+  const version = await getCurrentPlanVersion(existing, resolved);
   if (!version) return null;
   return { plan: existing, version };
 }
@@ -207,28 +222,37 @@ export async function findSemesterPlan(input: {
  * Finds or creates the canonical Semester Plan for a teacher subject/term scope.
  * Links any orphan planner_entries for that subject to the current version.
  */
-export async function ensureSemesterPlan(input: {
-  subject: string;
-  grade: string;
-  academicYearId?: string | null;
-  semesterId?: string | null;
-}): Promise<SemesterPlanContext> {
-  const userId = await requireUserId();
+export async function ensureSemesterPlan(
+  input: {
+    subject: string;
+    grade: string;
+    academicYearId?: string | null;
+    semesterId?: string | null;
+  },
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanContext> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const userId = resolved.userId;
   const subject = input.subject.trim();
   if (!subject) throw new Error("المادة مطلوبة لإنشاء خطة الفصل");
 
-  const yearId = input.academicYearId ?? (await getActiveAcademicYear())?.id ?? null;
-  const termId = input.semesterId ?? (await getCurrentAcademicTerm())?.id ?? null;
+  const yearId = input.academicYearId ?? (await getActiveAcademicYear(resolved))?.id ?? null;
+  const termId = input.semesterId ?? (await getCurrentAcademicTerm(resolved))?.id ?? null;
 
-  const existing = await findSemesterPlan({
-    subject,
-    academicYearId: yearId,
-    semesterId: termId,
-  });
+  const existing = await findSemesterPlan(
+    {
+      subject,
+      academicYearId: yearId,
+      semesterId: termId,
+    },
+    resolved,
+  );
 
   if (existing) {
     if (input.grade && existing.plan.grade !== input.grade && existing.plan.status === "draft") {
-      const { error: gradeError } = await supabase
+      const { error: gradeError } = await resolved.client
         .from("semester_plans")
         .update({ grade: input.grade })
         .eq("id", existing.plan.id)
@@ -236,11 +260,11 @@ export async function ensureSemesterPlan(input: {
       if (!gradeError) existing.plan.grade = input.grade;
     }
 
-    await linkOrphanEntriesToPlan(userId, subject, existing.plan.id, existing.version.id);
+    await linkOrphanEntriesToPlan(resolved, subject, existing.plan.id, existing.version.id);
     return existing;
   }
 
-  const { data: created, error: createError } = await supabase
+  const { data: created, error: createError } = await resolved.client
     .from("semester_plans")
     .insert({
       user_id: userId,
@@ -256,7 +280,7 @@ export async function ensureSemesterPlan(input: {
 
   if (createError) throw createError;
 
-  const { data: version, error: versionError } = await supabase
+  const { data: version, error: versionError } = await resolved.client
     .from("semester_plan_versions")
     .insert({
       semester_plan_id: created.id,
@@ -270,23 +294,23 @@ export async function ensureSemesterPlan(input: {
 
   if (versionError) throw versionError;
 
-  await linkOrphanEntriesToPlan(userId, subject, created.id, version.id);
+  await linkOrphanEntriesToPlan(resolved, subject, created.id, version.id);
   return { plan: created, version };
 }
 
 async function linkOrphanEntriesToPlan(
-  userId: string,
+  context: SupabaseUserContext,
   subject: string,
   planId: string,
   versionId: string,
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await context.client
     .from("planner_entries")
     .update({
       semester_plan_id: planId,
       semester_plan_version_id: versionId,
     })
-    .eq("user_id", userId)
+    .eq("user_id", context.userId)
     .eq("subject", subject)
     .is("semester_plan_id", null)
     .not("week_start_date", "eq", CONFIG_ACADEMIC_CALENDAR_DATE)
@@ -298,8 +322,12 @@ async function linkOrphanEntriesToPlan(
 export async function loadPlanEntries(
   planId: string,
   versionId: string,
+  context?: SupabaseUserContext,
 ): Promise<CalculatedLessonEntry[]> {
-  const { data, error } = await supabase
+  const resolved = await resolveUserContext(context);
+  if (!resolved) return [];
+
+  const { data, error } = await resolved.client
     .from("planner_entries")
     .select("notes")
     .eq("semester_plan_id", planId)
@@ -358,8 +386,12 @@ export function parseVersionSnapshot(snapshot: Json): SemesterPlanSnapshot {
 export async function loadHistoricalVersionEntries(
   planId: string,
   versionNumber: number,
+  context?: SupabaseUserContext,
 ): Promise<{ version: SemesterPlanVersionRow; entries: CalculatedLessonEntry[] }> {
-  const { data: version, error } = await supabase
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const { data: version, error } = await resolved.client
     .from("semester_plan_versions")
     .select("*")
     .eq("semester_plan_id", planId)
@@ -381,44 +413,78 @@ async function callPlanRpc(
     | "archive_semester_plan"
     | "create_semester_plan_version",
   planId: string,
+  context?: SupabaseUserContext,
 ): Promise<SemesterPlanRow> {
-  const { data, error } = await supabase.rpc(fn, { p_plan_id: planId });
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const { data, error } = await resolved.client.rpc(fn, { p_plan_id: planId });
   if (error) throw error;
   if (!data) throw new Error("تعذر تحديث حالة الخطة");
   return data as SemesterPlanRow;
 }
 
-export async function approveSemesterPlan(planId: string): Promise<SemesterPlanContext> {
-  const plan = await callPlanRpc("approve_semester_plan", planId);
-  const version = await getCurrentPlanVersion(plan);
+export async function approveSemesterPlan(
+  planId: string,
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanContext> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const plan = await callPlanRpc("approve_semester_plan", planId, resolved);
+  const version = await getCurrentPlanVersion(plan, resolved);
   if (!version) throw new Error("إصدار خطة الفصل غير موجود");
   return { plan, version };
 }
 
-export async function startSemesterPlanExecution(planId: string): Promise<SemesterPlanContext> {
-  const plan = await callPlanRpc("start_semester_plan_execution", planId);
-  const version = await getCurrentPlanVersion(plan);
+export async function startSemesterPlanExecution(
+  planId: string,
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanContext> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const plan = await callPlanRpc("start_semester_plan_execution", planId, resolved);
+  const version = await getCurrentPlanVersion(plan, resolved);
   if (!version) throw new Error("إصدار خطة الفصل غير موجود");
   return { plan, version };
 }
 
-export async function completeSemesterPlan(planId: string): Promise<SemesterPlanContext> {
-  const plan = await callPlanRpc("complete_semester_plan", planId);
-  const version = await getCurrentPlanVersion(plan);
+export async function completeSemesterPlan(
+  planId: string,
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanContext> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const plan = await callPlanRpc("complete_semester_plan", planId, resolved);
+  const version = await getCurrentPlanVersion(plan, resolved);
   if (!version) throw new Error("إصدار خطة الفصل غير موجود");
   return { plan, version };
 }
 
-export async function archiveSemesterPlan(planId: string): Promise<SemesterPlanContext> {
-  const plan = await callPlanRpc("archive_semester_plan", planId);
-  const version = await getCurrentPlanVersion(plan);
+export async function archiveSemesterPlan(
+  planId: string,
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanContext> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const plan = await callPlanRpc("archive_semester_plan", planId, resolved);
+  const version = await getCurrentPlanVersion(plan, resolved);
   if (!version) throw new Error("إصدار خطة الفصل غير موجود");
   return { plan, version };
 }
 
-export async function createSemesterPlanVersion(planId: string): Promise<SemesterPlanContext> {
-  const plan = await callPlanRpc("create_semester_plan_version", planId);
-  const version = await getCurrentPlanVersion(plan);
+export async function createSemesterPlanVersion(
+  planId: string,
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanContext> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const plan = await callPlanRpc("create_semester_plan_version", planId, resolved);
+  const version = await getCurrentPlanVersion(plan, resolved);
   if (!version) throw new Error("إصدار خطة الفصل غير موجود");
   return { plan, version };
 }

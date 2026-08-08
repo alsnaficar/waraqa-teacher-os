@@ -1,5 +1,6 @@
 import { getHolidayDates } from "@/features/calendar/services/calendar.service";
 import { supabase } from "@/platform/database/supabase/client";
+import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import {
   getActiveAcademicYear,
   getCurrentAcademicTerm,
@@ -160,9 +161,9 @@ export function parseProfileTimetable(classes: unknown): TimetableSlot[] {
  * connector are used as a fallback for teachers synced before that table
  * existed, and the built-in default keeps the planner usable during onboarding.
  */
-export async function loadTimetable(): Promise<TimetableSlot[]> {
+export async function loadTimetable(context?: SupabaseUserContext): Promise<TimetableSlot[]> {
   try {
-    const entries = await TeacherTimetableService.getTimetable();
+    const entries = await TeacherTimetableService.getTimetable(context);
 
     if (entries.length > 0) {
       return entries.map((entry) => ({
@@ -172,15 +173,13 @@ export async function loadTimetable(): Promise<TimetableSlot[]> {
       }));
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const resolved = await resolveUserContext(context);
 
-    if (user) {
-      const { data: profile } = await supabase
+    if (resolved) {
+      const { data: profile } = await resolved.client
         .from("profiles")
         .select("classes")
-        .eq("id", user.id)
+        .eq("id", resolved.userId)
         .maybeSingle();
 
       const fromProfile = parseProfileTimetable(profile?.classes);
@@ -256,18 +255,19 @@ function parseOverrideNotes(notes: string | null | undefined): ScheduleOverride[
  *
  * This function never deletes legacy override rows.
  */
-export async function loadUserOverrides(planId?: string): Promise<ScheduleOverride[]> {
+export async function loadUserOverrides(
+  planId?: string,
+  context?: SupabaseUserContext,
+): Promise<ScheduleOverride[]> {
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return [];
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return [];
 
-    const { data: legacyRow } = await supabase
+    const { data: legacyRow } = await resolved.client
       .from("planner_entries")
       .select("notes")
       .eq("week_start_date", CONFIG_SCHEDULE_OVERRIDES_DATE)
-      .eq("user_id", user.id)
+      .eq("user_id", resolved.userId)
       .eq("subject", "OVERRIDES")
       .is("semester_plan_id", null)
       .maybeSingle();
@@ -278,11 +278,11 @@ export async function loadUserOverrides(planId?: string): Promise<ScheduleOverri
       return legacy;
     }
 
-    const { data: planRow } = await supabase
+    const { data: planRow } = await resolved.client
       .from("planner_entries")
       .select("notes")
       .eq("week_start_date", CONFIG_SCHEDULE_OVERRIDES_DATE)
-      .eq("user_id", user.id)
+      .eq("user_id", resolved.userId)
       .eq("subject", "OVERRIDES")
       .eq("semester_plan_id", planId)
       .maybeSingle();
@@ -312,26 +312,25 @@ export async function loadUserOverrides(planId?: string): Promise<ScheduleOverri
 export async function saveUserOverrides(
   overrides: ScheduleOverride[],
   scope?: PlanSyncScope,
+  context?: SupabaseUserContext,
 ): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const resolvedContext = await resolveUserContext(context);
+  if (!resolvedContext) throw new Error("Unauthorized");
 
   const resolved = assertPlanSyncScope(scope);
 
-  const { data: existing } = await supabase
+  const { data: existing } = await resolvedContext.client
     .from("planner_entries")
     .select("id")
-    .eq("user_id", user.id)
+    .eq("user_id", resolvedContext.userId)
     .eq("week_start_date", CONFIG_SCHEDULE_OVERRIDES_DATE)
     .eq("subject", "OVERRIDES")
     .eq("semester_plan_id", resolved.planId)
     .maybeSingle();
 
-  const { error } = await supabase.from("planner_entries").upsert({
+  const { error } = await resolvedContext.client.from("planner_entries").upsert({
     id: existing?.id ?? crypto.randomUUID(),
-    user_id: user.id,
+    user_id: resolvedContext.userId,
     week_start_date: CONFIG_SCHEDULE_OVERRIDES_DATE,
     day_of_week: 0,
     period: 0,
@@ -423,17 +422,19 @@ export async function generateSchedule(
   subject?: string,
   grade?: string,
   planId?: string,
+  context?: SupabaseUserContext,
 ): Promise<CalculatedLessonEntry[]> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
+  const resolved = await resolveUserContext(context);
+  if (!resolved) return [];
+
+  const client = resolved.client;
+  const userId = resolved.userId;
 
   // 1. Fetch teacher's primary profile to see what grade & subject they teach
-  const { data: profile } = await supabase
+  const { data: profile } = await client
     .from("profiles")
     .select("grade, subject, classes")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
 
   if (!profile) {
@@ -459,7 +460,7 @@ export async function generateSchedule(
   }
 
   // 2. Fetch the published curriculum file for this grade & subject
-  const { data: files } = await supabase
+  const { data: files } = await client
     .from("curriculum_files")
     .select("id")
     .eq("grade", activeGrade)
@@ -486,7 +487,7 @@ export async function generateSchedule(
   }> = [];
 
   // 3. Fetch all curriculum lessons for this file
-  const { data: lessons, error: lessonsError } = await supabase
+  const { data: lessons, error: lessonsError } = await client
     .from("curriculum_lessons")
     .select("*")
     .eq("curriculum_file_id", publishedFileId)
@@ -514,8 +515,8 @@ export async function generateSchedule(
 
   // 4. Load config, timetable and overrides
   const config = await loadCalendarConfig();
-  const timetable = await loadTimetable();
-  const overrides = await loadUserOverrides(planId);
+  const timetable = await loadTimetable(resolved);
+  const overrides = await loadUserOverrides(planId, resolved);
 
   // 5. Generate all school days inside the semester
   const schoolDates = buildTeachingDates(config);
@@ -755,15 +756,14 @@ export async function generateSchedule(
 export async function syncScheduleToDatabase(
   entries: CalculatedLessonEntry[],
   scope: PlanSyncScope,
+  context?: SupabaseUserContext,
 ): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+  const resolvedContext = await resolveUserContext(context);
+  if (!resolvedContext) throw new Error("Unauthorized");
 
   const resolved = assertPlanSyncScope(scope);
 
-  const { data: plan, error: planError } = await supabase
+  const { data: plan, error: planError } = await resolvedContext.client
     .from("semester_plans")
     .select("id, status, subject")
     .eq("id", resolved.planId)
@@ -777,10 +777,10 @@ export async function syncScheduleToDatabase(
   }
 
   // Delete only this plan's operational rows (never subject-wide unmanaged deletes).
-  const { error: deleteError } = await supabase
+  const { error: deleteError } = await resolvedContext.client
     .from("planner_entries")
     .delete()
-    .eq("user_id", user.id)
+    .eq("user_id", resolvedContext.userId)
     .eq("semester_plan_id", resolved.planId)
     .not("week_start_date", "eq", CONFIG_ACADEMIC_CALENDAR_DATE)
     .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE)
@@ -801,7 +801,7 @@ export async function syncScheduleToDatabase(
 
       return {
         id: crypto.randomUUID(),
-        user_id: user.id,
+        user_id: resolvedContext.userId,
         week_start_date: weekStart,
         day_of_week: e.dayOfWeek,
         period: e.period,
@@ -812,7 +812,9 @@ export async function syncScheduleToDatabase(
       };
     });
 
-    const { error: insertError } = await supabase.from("planner_entries").insert(batch);
+    const { error: insertError } = await resolvedContext.client
+      .from("planner_entries")
+      .insert(batch);
     if (insertError) throw insertError;
   }
 }

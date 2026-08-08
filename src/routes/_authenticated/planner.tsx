@@ -204,6 +204,49 @@ export default function PlannerPage() {
         const loaded = await loadOrGeneratePlan(activeSubject, activeGrade);
         setPlan(loaded.plan);
         setEntries(loaded.entries);
+
+        // افتح تلقائياً أول أسبوع فعلي في الخطة إذا كان الأسبوع الحالي فارغاً.
+        if (loaded.entries.length > 0) {
+          const DAY_MS = 24 * 60 * 60 * 1000;
+          const WEEK_MS = 7 * DAY_MS;
+
+          const getWeekStart = (date: Date) => {
+            const start = new Date(date);
+            start.setHours(0, 0, 0, 0);
+            start.setDate(start.getDate() - start.getDay());
+            return start;
+          };
+
+          const currentWeekStart = getWeekStart(new Date());
+
+          const hasCurrentWeekEntries = loaded.entries.some((entry) => {
+            const entryDate = new Date(`${entry.suggestedDate}T00:00:00`);
+            return getWeekStart(entryDate).getTime() === currentWeekStart.getTime();
+          });
+
+          if (!hasCurrentWeekEntries) {
+            const currentWeekISO = currentWeekStart.toISOString().slice(0, 10);
+
+            const futureEntries = loaded.entries
+              .filter((entry) => entry.suggestedDate >= currentWeekISO)
+              .sort((a, b) => a.suggestedDate.localeCompare(b.suggestedDate));
+
+            const targetEntry =
+              futureEntries[0] ??
+              [...loaded.entries].sort((a, b) => b.suggestedDate.localeCompare(a.suggestedDate))[0];
+            if (targetEntry) {
+              const targetWeekStart = getWeekStart(
+                new Date(`${targetEntry.suggestedDate}T00:00:00`),
+              );
+
+              const offset = Math.round(
+                (targetWeekStart.getTime() - currentWeekStart.getTime()) / WEEK_MS,
+              );
+
+              setWeekOffset(offset);
+            }
+          }
+        }
       } catch (err) {
         console.error("Error loading planner:", err);
         toast.error("تعذر تحميل الخطة الدراسية");
