@@ -63,7 +63,8 @@ export function usePlanner(): UsePlannerResult {
 
       setGrade(activeGrade);
       setSubject(activeSubject);
-      setEntries(await loadOrGeneratePlan(activeSubject, activeGrade));
+      const loaded = await loadOrGeneratePlan(activeSubject, activeGrade);
+      setEntries(loaded.entries);
     } catch (error) {
       console.error("Failed to load planner:", error);
     } finally {

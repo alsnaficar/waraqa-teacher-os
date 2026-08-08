@@ -72,6 +72,37 @@ export interface CalculatedLessonEntry {
 export const CONFIG_ACADEMIC_CALENDAR_DATE = "1970-01-01";
 export const CONFIG_SCHEDULE_OVERRIDES_DATE = "1970-01-02";
 
+/** Normalises a row that may predate pedagogical fields on the Semester Plan JSON. */
+export function normalisePlanEntry(
+  raw: Partial<CalculatedLessonEntry> & { id?: string },
+): CalculatedLessonEntry | null {
+  if (!raw?.suggestedDate || raw.period == null) return null;
+
+  return {
+    id: raw.id ?? `${raw.lessonId ?? "row"}-${raw.suggestedDate}-${raw.period}`,
+    academicYear: raw.academicYear ?? "",
+    semester: raw.semester ?? "",
+    weekNumber: raw.weekNumber ?? 0,
+    teachingWeek: raw.teachingWeek ?? raw.weekNumber ?? 0,
+    suggestedDate: raw.suggestedDate,
+    dayOfWeek: raw.dayOfWeek ?? 0,
+    period: raw.period,
+    unit: raw.unit ?? "",
+    lessonId: raw.lessonId ?? null,
+    lessonTitle: raw.lessonTitle ?? "",
+    lessonOrder: raw.lessonOrder ?? 0,
+    periodsCount: raw.periodsCount ?? 1,
+    remainingPeriods: raw.remainingPeriods ?? 0,
+    status: raw.status ?? "Upcoming",
+    className: raw.className ?? "",
+    subject: raw.subject ?? "",
+    objectives: raw.objectives ?? "",
+    teachingResources: raw.teachingResources ?? "",
+    assessmentMethods: raw.assessmentMethods ?? "",
+    planNotes: raw.planNotes ?? "",
+  };
+}
+
 export const DEFAULT_CALENDAR: AcademicCalendarConfig = {
   academicYear: "1447",
   semesterId: "s1",
@@ -192,28 +223,82 @@ export async function saveCalendarConfig(_config: AcademicCalendarConfig): Promi
   );
 }
 
+export interface PlanSyncScope {
+  planId: string;
+  versionId: string;
+  subject: string;
+}
+
+function assertPlanSyncScope(scope: PlanSyncScope | undefined | null): PlanSyncScope {
+  if (!scope?.planId || !scope.versionId || !scope.subject) {
+    throw new Error("مزامنة الجدول تتطلب نطاق خطة فصل صالحاً (planId و versionId و subject).");
+  }
+  return scope;
+}
+
+function parseOverrideNotes(notes: string | null | undefined): ScheduleOverride[] {
+  if (!notes) return [];
+  try {
+    const parsed = JSON.parse(notes) as ScheduleOverride[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Loads all overrides for the current teacher.
+ * Loads schedule overrides with plan/legacy compatibility:
+ *
+ * - Prefer plan-scoped OVERRIDES row when `planId` is provided.
+ * - Always merge readable null-plan (legacy) overrides so they are never
+ *   silently dropped when a semester plan is introduced.
+ * - Plan-scoped entries win on conflicting lesson override ids/types.
+ *
+ * This function never deletes legacy override rows.
  */
-export async function loadUserOverrides(): Promise<ScheduleOverride[]> {
+export async function loadUserOverrides(planId?: string): Promise<ScheduleOverride[]> {
   try {
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return [];
 
-    const { data, error } = await supabase
+    const { data: legacyRow } = await supabase
       .from("planner_entries")
       .select("notes")
       .eq("week_start_date", CONFIG_SCHEDULE_OVERRIDES_DATE)
       .eq("user_id", user.id)
+      .eq("subject", "OVERRIDES")
+      .is("semester_plan_id", null)
       .maybeSingle();
 
-    if (error || !data?.notes) {
-      return [];
+    const legacy = parseOverrideNotes(legacyRow?.notes);
+
+    if (!planId) {
+      return legacy;
     }
 
-    return JSON.parse(data.notes) as ScheduleOverride[];
+    const { data: planRow } = await supabase
+      .from("planner_entries")
+      .select("notes")
+      .eq("week_start_date", CONFIG_SCHEDULE_OVERRIDES_DATE)
+      .eq("user_id", user.id)
+      .eq("subject", "OVERRIDES")
+      .eq("semester_plan_id", planId)
+      .maybeSingle();
+
+    const scoped = parseOverrideNotes(planRow?.notes);
+    if (scoped.length === 0) return legacy;
+    if (legacy.length === 0) return scoped;
+
+    const byKey = new Map<string, ScheduleOverride>();
+    for (const item of legacy) {
+      byKey.set(item.id || `${item.type}:${item.lessonId ?? ""}:${item.lessonIdA ?? ""}`, item);
+    }
+    for (const item of scoped) {
+      byKey.set(item.id || `${item.type}:${item.lessonId ?? ""}:${item.lessonIdA ?? ""}`, item);
+    }
+    return [...byKey.values()];
   } catch (err) {
     console.warn("Failed to load overrides:", err);
     return [];
@@ -221,23 +306,39 @@ export async function loadUserOverrides(): Promise<ScheduleOverride[]> {
 }
 
 /**
- * Saves overrides list for the current teacher.
+ * Saves overrides for a semester plan draft into the plan-scoped sentinel row.
+ * Legacy null-plan OVERRIDES rows are left untouched.
  */
-export async function saveUserOverrides(overrides: ScheduleOverride[]): Promise<void> {
+export async function saveUserOverrides(
+  overrides: ScheduleOverride[],
+  scope?: PlanSyncScope,
+): Promise<void> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
+  const resolved = assertPlanSyncScope(scope);
+
+  const { data: existing } = await supabase
+    .from("planner_entries")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("week_start_date", CONFIG_SCHEDULE_OVERRIDES_DATE)
+    .eq("subject", "OVERRIDES")
+    .eq("semester_plan_id", resolved.planId)
+    .maybeSingle();
+
   const { error } = await supabase.from("planner_entries").upsert({
-    id: "11111111-1111-1111-1111-111111111111", // Fixed UUID for user overrides
+    id: existing?.id ?? crypto.randomUUID(),
     user_id: user.id,
     week_start_date: CONFIG_SCHEDULE_OVERRIDES_DATE,
-    // day_of_week and period are NOT NULL; this marker row is not a real slot.
     day_of_week: 0,
     period: 0,
     subject: "OVERRIDES",
     notes: JSON.stringify(overrides),
+    semester_plan_id: resolved.planId,
+    semester_plan_version_id: resolved.versionId,
   });
 
   if (error) throw error;
@@ -321,6 +422,7 @@ export function buildTeachingDates(config: AcademicCalendarConfig): Array<{
 export async function generateSchedule(
   subject?: string,
   grade?: string,
+  planId?: string,
 ): Promise<CalculatedLessonEntry[]> {
   const {
     data: { user },
@@ -413,7 +515,7 @@ export async function generateSchedule(
   // 4. Load config, timetable and overrides
   const config = await loadCalendarConfig();
   const timetable = await loadTimetable();
-  const overrides = await loadUserOverrides();
+  const overrides = await loadUserOverrides(planId);
 
   // 5. Generate all school days inside the semester
   const schoolDates = buildTeachingDates(config);
@@ -645,44 +747,55 @@ export async function generateSchedule(
 }
 
 /**
- * Saves/updates generated planner entries to the `planner_entries` database table.
+ * Saves/updates generated planner entries for an explicit Draft semester-plan scope.
+ *
+ * Destructive sync (delete + rebuild) ALWAYS requires PlanSyncScope. Subject-only
+ * sync is rejected so managed plans cannot be orphaned.
  */
 export async function syncScheduleToDatabase(
   entries: CalculatedLessonEntry[],
-  subject?: string,
+  scope: PlanSyncScope,
 ): Promise<void> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
-  // 1. Delete old regular calculated entries to prevent duplication
-  // Regular calculated entries have week_start_date NOT equal to config markers
-  let query = supabase
+  const resolved = assertPlanSyncScope(scope);
+
+  const { data: plan, error: planError } = await supabase
+    .from("semester_plans")
+    .select("id, status, subject")
+    .eq("id", resolved.planId)
+    .maybeSingle();
+  if (planError) throw planError;
+  if (!plan) throw new Error("خطة الفصل غير موجودة");
+  if (plan.status !== "draft") {
+    throw new Error(
+      "لا يمكن إعادة توليد الخطة إلا وهي مسودة. أنشئ إصداراً جديداً للتعديل الهيكلي.",
+    );
+  }
+
+  // Delete only this plan's operational rows (never subject-wide unmanaged deletes).
+  const { error: deleteError } = await supabase
     .from("planner_entries")
     .delete()
     .eq("user_id", user.id)
+    .eq("semester_plan_id", resolved.planId)
     .not("week_start_date", "eq", CONFIG_ACADEMIC_CALENDAR_DATE)
-    .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE);
-
-  if (subject) {
-    query = query.eq("subject", subject);
-  }
-
-  const { error: deleteError } = await query;
+    .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE)
+    .neq("subject", "OVERRIDES");
 
   if (deleteError) throw deleteError;
 
   if (entries.length === 0) return;
 
-  // 2. Insert new generated entries in batches of 100 for safety and performance
   const batchSize = 100;
   for (let i = 0; i < entries.length; i += batchSize) {
     const batch = entries.slice(i, i + batchSize).map((e) => {
-      // Find Sunday week_start_date for the suggestedDate
       const d = new Date(e.suggestedDate);
       const day = d.getDay();
-      const diff = d.getDate() - day; // Adjust to Sunday
+      const diff = d.getDate() - day;
       const sun = new Date(d.setDate(diff));
       const weekStart = sun.toISOString().slice(0, 10);
 
@@ -692,8 +805,10 @@ export async function syncScheduleToDatabase(
         week_start_date: weekStart,
         day_of_week: e.dayOfWeek,
         period: e.period,
-        subject: e.subject,
+        subject: e.subject || resolved.subject || plan.subject,
         notes: JSON.stringify(e),
+        semester_plan_id: resolved.planId,
+        semester_plan_version_id: resolved.versionId,
       };
     });
 
@@ -706,10 +821,15 @@ export async function syncScheduleToDatabase(
  * Triggers full recalculation & synchronization of the Smart Planner schedule.
  */
 export async function recalculateAndSyncPlanner(
-  subject?: string,
-  grade?: string,
+  subject: string,
+  grade: string | undefined,
+  scope: PlanSyncScope,
 ): Promise<CalculatedLessonEntry[]> {
-  const calculated = await generateSchedule(subject, grade);
-  await syncScheduleToDatabase(calculated, subject || calculated[0]?.subject);
+  const resolved = assertPlanSyncScope(scope);
+  const calculated = await generateSchedule(subject, grade, resolved.planId);
+  await syncScheduleToDatabase(calculated, {
+    ...resolved,
+    subject: subject || calculated[0]?.subject || resolved.subject,
+  });
   return calculated;
 }

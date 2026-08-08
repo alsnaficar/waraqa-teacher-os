@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { CalendarRange, Printer, RefreshCw, Table2 } from "lucide-react";
+import {
+  Archive,
+  CalendarRange,
+  CheckCircle2,
+  GitBranch,
+  Play,
+  Printer,
+  RefreshCw,
+  Table2,
+} from "lucide-react";
 
 import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
@@ -20,6 +29,17 @@ import {
   shiftLessonOrder,
   type SemesterPlanMeta,
 } from "@/features/planner/services/semester-plan.service";
+import {
+  approveSemesterPlan,
+  archiveSemesterPlan,
+  completeSemesterPlan,
+  createSemesterPlanVersion,
+  formatPlanVersionLabel,
+  getPlanUiActions,
+  SEMESTER_PLAN_STATUS_LABELS,
+  startSemesterPlanExecution,
+  type SemesterPlanRow,
+} from "@/features/planner/services/semester-plan-lifecycle";
 import {
   getActiveAcademicYear,
   getCurrentAcademicTerm,
@@ -50,6 +70,18 @@ const DAY_MAP: Record<number, DayKey> = {
   4: "thu",
 };
 
+function formatUpdatedAt(value: string | null | undefined): string {
+  if (!value) return "—";
+  try {
+    return new Intl.DateTimeFormat("ar-SA", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value.slice(0, 16);
+  }
+}
+
 export default function PlannerPage() {
   const isMobile = useIsMobile();
   const [view, setView] = useState<PlannerView>("semester");
@@ -63,6 +95,7 @@ export default function PlannerPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [entries, setEntries] = useState<CalculatedLessonEntry[]>([]);
+  const [plan, setPlan] = useState<SemesterPlanRow | null>(null);
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
   const [metaBase, setMetaBase] = useState({
@@ -75,6 +108,8 @@ export default function PlannerPage() {
     academicYearLabel: "",
   });
 
+  const actions = getPlanUiActions(plan?.status ?? "draft");
+
   const meta: SemesterPlanMeta = useMemo(
     () =>
       buildSemesterPlanMeta(
@@ -82,10 +117,14 @@ export default function PlannerPage() {
           ...metaBase,
           subject: subject || metaBase.subject,
           grade: grade || metaBase.grade,
+          statusLabel: plan ? SEMESTER_PLAN_STATUS_LABELS[plan.status] : undefined,
+          versionLabel: plan ? formatPlanVersionLabel(plan.current_version) : undefined,
+          approvedAt: plan?.approved_at,
+          updatedAt: plan?.updated_at,
         },
         entries,
       ),
-    [metaBase, subject, grade, entries],
+    [metaBase, subject, grade, entries, plan],
   );
 
   const { weekStart, weekEnd } = useMemo(() => {
@@ -162,7 +201,9 @@ export default function PlannerPage() {
           academicYearLabel: year?.label || profile?.academic_year || "",
         });
 
-        setEntries(await loadOrGeneratePlan(activeSubject, activeGrade));
+        const loaded = await loadOrGeneratePlan(activeSubject, activeGrade);
+        setPlan(loaded.plan);
+        setEntries(loaded.entries);
       } catch (err) {
         console.error("Error loading planner:", err);
         toast.error("تعذر تحميل الخطة الدراسية");
@@ -202,24 +243,30 @@ export default function PlannerPage() {
   };
 
   const runGenerate = async () => {
+    if (!actions.canGenerate) {
+      toast.error("التوليد متاح للمسودة فقط — أنشئ إصداراً جديداً أولاً");
+      return;
+    }
     setBusy(true);
     try {
       const next = await generateSemesterPlan(subject, grade);
-      setEntries(next);
+      setPlan(next.plan);
+      setEntries(next.entries);
       toast.success(
-        next.length > 0
-          ? `تم توليد خطة الفصل (${next.length} حصة)`
+        next.entries.length > 0
+          ? `تم توليد خطة الفصل (${next.entries.length} حصة)`
           : "لم يُعثر على منهج منشور أو جدول حصص لهذا الصف والمادة",
       );
     } catch (error) {
       console.error(error);
-      toast.error("فشل توليد خطة الفصل");
+      toast.error(error instanceof Error ? error.message : "فشل توليد خطة الفصل");
     } finally {
       setBusy(false);
     }
   };
 
   const onMoveDate = async (lessonId: string, date: string, period: number) => {
+    if (!actions.canEdit) return;
     setBusy(true);
     try {
       const next = await moveLessonInPlan({
@@ -229,17 +276,19 @@ export default function PlannerPage() {
         subject,
         grade,
       });
-      setEntries(next);
+      setPlan(next.plan);
+      setEntries(next.entries);
       toast.success("تم تحديث موعد الدرس");
     } catch (error) {
       console.error(error);
-      toast.error("تعذر نقل الدرس");
+      toast.error(error instanceof Error ? error.message : "تعذر نقل الدرس");
     } finally {
       setBusy(false);
     }
   };
 
   const onShiftOrder = async (lessonId: string, direction: "up" | "down") => {
+    if (!actions.canEdit) return;
     setBusy(true);
     try {
       const next = await shiftLessonOrder({
@@ -249,11 +298,29 @@ export default function PlannerPage() {
         subject,
         grade,
       });
-      setEntries(next);
+      setPlan(next.plan);
+      setEntries(next.entries);
       toast.success("تم تعديل ترتيب الدرس");
     } catch (error) {
       console.error(error);
-      toast.error("تعذر تعديل الترتيب");
+      toast.error(error instanceof Error ? error.message : "تعذر تعديل الترتيب");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runLifecycle = async (
+    action: () => Promise<{ plan: SemesterPlanRow }>,
+    successMessage: string,
+  ) => {
+    setBusy(true);
+    try {
+      const next = await action();
+      setPlan(next.plan);
+      toast.success(successMessage);
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "تعذر تحديث حالة الخطة");
     } finally {
       setBusy(false);
     }
@@ -322,27 +389,133 @@ export default function PlannerPage() {
         </div>
 
         {view === "semester" ? (
-          <div className="flex flex-wrap gap-2 rounded-2xl border border-border bg-card p-3">
-            <Button
-              className="h-11 min-w-[44px]"
-              disabled={busy}
-              onClick={() => void runGenerate()}
-            >
-              <RefreshCw className={cn("ml-2 h-4 w-4", busy && "animate-spin")} />
-              توليد خطة الفصل
-            </Button>
-            <Button
-              variant="outline"
-              className="h-11"
-              disabled={busy || entries.length === 0}
-              onClick={() => setPrintOpen(true)}
-            >
-              <Printer className="ml-2 h-4 w-4" />
-              طباعة خطة الفصل
-            </Button>
-            <p className="flex w-full items-center text-xs text-muted-foreground sm:w-auto sm:ms-auto">
-              {meta.academicYearLabel || "—"} · {meta.semesterLabel || "—"} · {subject} · {grade}
-            </p>
+          <div className="space-y-3 rounded-2xl border border-border bg-card p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="inline-flex h-11 items-center rounded-xl bg-muted px-3 font-semibold">
+                {plan ? SEMESTER_PLAN_STATUS_LABELS[plan.status] : "مسودة"}
+              </span>
+              <span className="inline-flex h-11 items-center rounded-xl border border-border px-3">
+                {plan ? formatPlanVersionLabel(plan.current_version) : "الإصدار 1"}
+              </span>
+              <span className="text-muted-foreground">
+                آخر تحديث: {formatUpdatedAt(plan?.updated_at)}
+              </span>
+              {plan?.approved_at ? (
+                <span className="text-muted-foreground">
+                  الاعتماد: {plan.approved_at.slice(0, 10)}
+                </span>
+              ) : null}
+              <p className="w-full text-xs text-muted-foreground sm:ms-auto sm:w-auto">
+                {meta.academicYearLabel || "—"} · {meta.semesterLabel || "—"} · {subject} · {grade}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {actions.canGenerate ? (
+                <Button
+                  className="h-11 min-w-[44px]"
+                  disabled={busy}
+                  onClick={() => void runGenerate()}
+                >
+                  <RefreshCw className={cn("ml-2 h-4 w-4", busy && "animate-spin")} />
+                  {entries.length > 0 ? "إعادة توليد" : "توليد خطة الفصل"}
+                </Button>
+              ) : null}
+
+              {actions.canApprove ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || entries.length === 0 || !plan}
+                  variant="default"
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(
+                      () => approveSemesterPlan(plan.id),
+                      "تم اعتماد الخطة — أصبحت غير قابلة للتعديل المباشر",
+                    )
+                  }
+                >
+                  <CheckCircle2 className="ml-2 h-4 w-4" />
+                  اعتماد الخطة
+                </Button>
+              ) : null}
+
+              {actions.canStartExecution ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(() => startSemesterPlanExecution(plan.id), "بدأ تنفيذ الخطة")
+                  }
+                >
+                  <Play className="ml-2 h-4 w-4" />
+                  بدء التنفيذ
+                </Button>
+              ) : null}
+
+              {actions.canCreateVersion ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  variant="outline"
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(
+                      () => createSemesterPlanVersion(plan.id),
+                      "تم إنشاء إصدار جديد كمسودة — الإصدار السابق محفوظ للمراجعة",
+                    )
+                  }
+                >
+                  <GitBranch className="ml-2 h-4 w-4" />
+                  إنشاء إصدار جديد
+                </Button>
+              ) : null}
+
+              {actions.canComplete ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  variant="outline"
+                  onClick={() =>
+                    plan && void runLifecycle(() => completeSemesterPlan(plan.id), "تم إكمال الخطة")
+                  }
+                >
+                  <CheckCircle2 className="ml-2 h-4 w-4" />
+                  إكمال الخطة
+                </Button>
+              ) : null}
+
+              {actions.canArchive ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  variant="outline"
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(
+                      () => archiveSemesterPlan(plan.id),
+                      "تم أرشفة الخطة — للقراءة والطباعة فقط",
+                    )
+                  }
+                >
+                  <Archive className="ml-2 h-4 w-4" />
+                  أرشفة
+                </Button>
+              ) : null}
+
+              {actions.canPrint ? (
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  disabled={busy || entries.length === 0}
+                  onClick={() => setPrintOpen(true)}
+                >
+                  <Printer className="ml-2 h-4 w-4" />
+                  طباعة خطة الفصل
+                </Button>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>
@@ -351,6 +524,7 @@ export default function PlannerPage() {
         <SemesterPlanTable
           entries={entries}
           busy={busy}
+          readOnly={actions.isReadOnly}
           onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
           onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
         />

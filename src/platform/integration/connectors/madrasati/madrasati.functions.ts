@@ -4,9 +4,9 @@ import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middlewar
 import {
   generateSchedule,
   syncScheduleToDatabase,
-  recalculateAndSyncPlanner,
   type CalculatedLessonEntry,
 } from "@/features/planner/services/planner-engine";
+import { ensureSemesterPlan } from "@/features/planner/services/semester-plan-lifecycle";
 
 export const MadrasatiSyncInput = z.object({
   email: z.string().email("الرجاء إدخال بريد إلكتروني صحيح من منصة مدرستي"),
@@ -292,14 +292,32 @@ export const syncMadrasatiSchedule = createServerFn({ method: "POST" })
       throw new Error("فشل تحديث ملف المعلم بقاعدة البيانات.");
     }
 
-    // 2. Perform schedule generation & planner_entries sync in DB
+    // 2. Sync into the teacher's Draft semester plan scope (never subject-only wipe).
     try {
-      const calculatedEntries: CalculatedLessonEntry[] = await generateSchedule(
-        "لغتي الخالدة",
-        "الصف الأول المتوسط",
-      );
-      if (calculatedEntries.length > 0) {
-        await syncScheduleToDatabase(calculatedEntries, "لغتي الخالدة");
+      const subject = "لغتي الخالدة";
+      const grade = "الصف الأول المتوسط";
+      const ctx = await ensureSemesterPlan({ subject, grade });
+
+      if (ctx.plan.status !== "draft") {
+        logs.push(
+          "تم تخطي إعادة توليد خطة الفصل لأن الخطة الحالية ليست مسودة — أنشئ إصداراً جديداً أولاً.",
+        );
+      } else {
+        const calculatedEntries: CalculatedLessonEntry[] = await generateSchedule(
+          subject,
+          grade,
+          ctx.plan.id,
+        );
+        if (calculatedEntries.length > 0) {
+          await syncScheduleToDatabase(calculatedEntries, {
+            planId: ctx.plan.id,
+            versionId: ctx.version.id,
+            subject,
+          });
+          logs.push(
+            `تمت مزامنة الجدول التشغيلي مع خطة الفصل (الإصدار ${ctx.plan.current_version}).`,
+          );
+        }
       }
     } catch (err) {
       console.error("Error generating/syncing schedule in Madrasati server fn:", err);

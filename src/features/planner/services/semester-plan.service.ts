@@ -4,12 +4,25 @@ import {
   CONFIG_SCHEDULE_OVERRIDES_DATE,
   generateSchedule,
   loadUserOverrides,
+  normalisePlanEntry,
   recalculateAndSyncPlanner,
   saveUserOverrides,
   syncScheduleToDatabase,
   type CalculatedLessonEntry,
+  type PlanSyncScope,
   type ScheduleOverride,
 } from "./planner-engine";
+import {
+  assertWritableDraft,
+  ensureSemesterPlan,
+  findSemesterPlan,
+  getCurrentPlanVersion,
+  loadPlanEntries,
+  type SemesterPlanContext,
+  type SemesterPlanRow,
+} from "./semester-plan-lifecycle";
+
+export { normalisePlanEntry };
 
 export interface SemesterPlanMeta {
   teacherName: string;
@@ -23,51 +36,32 @@ export interface SemesterPlanMeta {
   teachingWeeksCount: number;
   lessonsCount: number;
   printDate: string;
+  statusLabel?: string;
+  versionLabel?: string;
+  approvedAt?: string | null;
+  updatedAt?: string | null;
 }
 
-/**
- * Normalises a row that may predate the pedagogical fields.
- * The Semester Plan JSON in `planner_entries.notes` is the canonical projection.
- */
-export function normalisePlanEntry(
-  raw: Partial<CalculatedLessonEntry> & {
-    id?: string;
-  },
-): CalculatedLessonEntry | null {
-  if (!raw?.suggestedDate || raw.period == null) return null;
+export interface LoadedSemesterPlan extends SemesterPlanContext {
+  entries: CalculatedLessonEntry[];
+}
 
+function toScope(ctx: SemesterPlanContext, subject?: string): PlanSyncScope {
   return {
-    id: raw.id ?? `${raw.lessonId ?? "row"}-${raw.suggestedDate}-${raw.period}`,
-    academicYear: raw.academicYear ?? "",
-    semester: raw.semester ?? "",
-    weekNumber: raw.weekNumber ?? 0,
-    teachingWeek: raw.teachingWeek ?? raw.weekNumber ?? 0,
-    suggestedDate: raw.suggestedDate,
-    dayOfWeek: raw.dayOfWeek ?? 0,
-    period: raw.period,
-    unit: raw.unit ?? "",
-    lessonId: raw.lessonId ?? null,
-    lessonTitle: raw.lessonTitle ?? "",
-    lessonOrder: raw.lessonOrder ?? 0,
-    periodsCount: raw.periodsCount ?? 1,
-    remainingPeriods: raw.remainingPeriods ?? 0,
-    status: raw.status ?? "Upcoming",
-    className: raw.className ?? "",
-    subject: raw.subject ?? "",
-    objectives: raw.objectives ?? "",
-    teachingResources: raw.teachingResources ?? "",
-    assessmentMethods: raw.assessmentMethods ?? "",
-    planNotes: raw.planNotes ?? "",
+    planId: ctx.plan.id,
+    versionId: ctx.version.id,
+    subject: subject || ctx.plan.subject,
   };
 }
 
 /**
- * Reads the canonical Semester Plan from synced `planner_entries`.
- * Does not regenerate — weekly view and lesson sessions should call this first.
+ * Owner-scoped operational rows that are not yet linked to a semester plan.
+ * Used only as a compatibility fallback — never creates a second schedule.
  */
-export async function loadCanonicalSemesterPlan(
-  subject?: string,
-): Promise<CalculatedLessonEntry[]> {
+export async function loadLegacyOwnerPlannerEntries(input?: {
+  subject?: string;
+  date?: string;
+}): Promise<CalculatedLessonEntry[]> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -75,26 +69,29 @@ export async function loadCanonicalSemesterPlan(
 
   let query = supabase
     .from("planner_entries")
-    .select("notes, subject, week_start_date")
+    .select("notes, subject, week_start_date, semester_plan_id")
     .eq("user_id", user.id)
+    .is("semester_plan_id", null)
     .not("week_start_date", "eq", CONFIG_ACADEMIC_CALENDAR_DATE)
-    .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE);
+    .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE)
+    .neq("subject", "OVERRIDES");
 
-  if (subject) {
-    query = query.eq("subject", subject);
+  if (input?.subject) {
+    query = query.eq("subject", input.subject);
   }
 
   const { data, error } = await query;
   if (error || !data) return [];
 
   const entries: CalculatedLessonEntry[] = [];
-
   for (const row of data) {
     if (!row.notes) continue;
     try {
       const parsed = JSON.parse(row.notes) as Partial<CalculatedLessonEntry>;
       const normalised = normalisePlanEntry(parsed);
-      if (normalised) entries.push(normalised);
+      if (!normalised) continue;
+      if (input?.date && normalised.suggestedDate !== input.date) continue;
+      entries.push(normalised);
     } catch {
       // skip corrupt rows
     }
@@ -109,42 +106,136 @@ export async function loadCanonicalSemesterPlan(
 }
 
 /**
- * Prefer the stored Semester Plan. Regenerate only when the canonical store is empty.
+ * Reads linked canonical schedule for a subject when a plan already exists.
+ * Does not create a plan and does not regenerate.
+ */
+export async function loadCanonicalSemesterPlan(
+  subject?: string,
+): Promise<CalculatedLessonEntry[]> {
+  if (!subject) return [];
+
+  try {
+    const ctx = await findSemesterPlan({ subject });
+    if (!ctx) return [];
+    return loadPlanEntries(ctx.plan.id, ctx.version.id);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Prefer linked Semester Plan rows. If the draft store is empty but legacy
+ * unlinked rows exist, adopt them (link) instead of regenerating.
  */
 export async function loadOrGeneratePlan(
   subject: string,
   grade: string,
-): Promise<CalculatedLessonEntry[]> {
-  const stored = await loadCanonicalSemesterPlan(subject);
-  if (stored.length > 0) return stored;
-
-  const calculated = await generateSchedule(subject, grade);
-  if (calculated.length > 0) {
-    await syncScheduleToDatabase(calculated, subject);
-    return calculated;
+): Promise<LoadedSemesterPlan> {
+  const ctx = await ensureSemesterPlan({ subject, grade });
+  let stored = await loadPlanEntries(ctx.plan.id, ctx.version.id);
+  if (stored.length > 0) {
+    return { ...ctx, entries: stored };
   }
 
-  return recalculateAndSyncPlanner(subject, grade);
+  // Compatibility: legacy unlinked rows for this subject become the draft schedule.
+  const legacy = await loadLegacyOwnerPlannerEntries({ subject });
+  if (legacy.length > 0) {
+    stored = await loadPlanEntries(ctx.plan.id, ctx.version.id);
+    if (stored.length > 0) {
+      return { ...ctx, entries: stored };
+    }
+    // ensureSemesterPlan already attempted linkOrphan; re-read after a second link.
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) {
+      await supabase
+        .from("planner_entries")
+        .update({
+          semester_plan_id: ctx.plan.id,
+          semester_plan_version_id: ctx.version.id,
+        })
+        .eq("user_id", userData.user.id)
+        .eq("subject", subject)
+        .is("semester_plan_id", null)
+        .not("week_start_date", "eq", CONFIG_ACADEMIC_CALENDAR_DATE)
+        .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE);
+
+      stored = await loadPlanEntries(ctx.plan.id, ctx.version.id);
+      if (stored.length > 0) {
+        return { ...ctx, entries: stored };
+      }
+    }
+    // Linked read still empty (e.g. column missing pre-migration) — return legacy as-is.
+    return { ...ctx, entries: legacy };
+  }
+
+  if (ctx.plan.status !== "draft") {
+    return { ...ctx, entries: [] };
+  }
+
+  const scope = toScope(ctx, subject);
+  const calculated = await generateSchedule(subject, grade, ctx.plan.id);
+  if (calculated.length > 0) {
+    await syncScheduleToDatabase(calculated, scope);
+    return { ...ctx, entries: calculated };
+  }
+
+  const regenerated = await recalculateAndSyncPlanner(subject, grade, scope);
+  return { ...ctx, entries: regenerated };
 }
 
 /**
  * Entries for a single calendar date — used by Lesson Sessions and daily prep.
+ *
+ * 1. Linked current-version plan rows when a semester plan exists.
+ * 2. Otherwise owner-scoped legacy planner_entries for that date/subject.
+ * Never silently regenerates when legacy rows are available.
  */
 export async function getPlanEntriesForDate(
   date: string,
   subject?: string,
 ): Promise<CalculatedLessonEntry[]> {
-  const plan = await loadCanonicalSemesterPlan(subject);
-  if (plan.length > 0) {
-    return plan.filter((entry) => entry.suggestedDate === date && entry.status !== "Skipped");
+  const linked = subject
+    ? await loadCanonicalSemesterPlan(subject)
+    : await loadLinkedEntriesAcrossPlansForDate(date);
+
+  const fromLinked = linked.filter(
+    (entry) => entry.suggestedDate === date && entry.status !== "Skipped",
+  );
+  if (fromLinked.length > 0) {
+    return fromLinked;
   }
 
-  // Cold start: generate once so sessions have something to project from.
-  const generated = await generateSchedule(subject);
-  if (generated.length > 0 && subject) {
-    await syncScheduleToDatabase(generated, subject);
+  const legacy = await loadLegacyOwnerPlannerEntries({ subject, date });
+  return legacy.filter((entry) => entry.status !== "Skipped");
+}
+
+/** Linked current-version entries for a date across the teacher's non-archived plans. */
+async function loadLinkedEntriesAcrossPlansForDate(date: string): Promise<CalculatedLessonEntry[]> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data: plans, error } = await supabase
+    .from("semester_plans")
+    .select(
+      "id, current_version, subject, grade, status, user_id, academic_year_id, semester_id, approved_at, completed_at, archived_at, created_at, updated_at",
+    )
+    .eq("user_id", user.id)
+    .neq("status", "archived");
+
+  if (error || !plans?.length) return [];
+
+  const entries: CalculatedLessonEntry[] = [];
+  for (const plan of plans) {
+    const version = await getCurrentPlanVersion(plan as SemesterPlanRow);
+    if (!version) continue;
+    const rows = await loadPlanEntries(plan.id, version.id);
+    for (const row of rows) {
+      if (row.suggestedDate === date) entries.push(row);
+    }
   }
-  return generated.filter((entry) => entry.suggestedDate === date && entry.status !== "Skipped");
+  return entries;
 }
 
 export function countTeachingWeeks(entries: CalculatedLessonEntry[]): number {
@@ -157,7 +248,8 @@ export function countTeachingWeeks(entries: CalculatedLessonEntry[]): number {
 }
 
 export function buildSemesterPlanMeta(
-  base: Omit<SemesterPlanMeta, "teachingWeeksCount" | "lessonsCount" | "printDate">,
+  base: Omit<SemesterPlanMeta, "teachingWeeksCount" | "lessonsCount" | "printDate"> &
+    Partial<Pick<SemesterPlanMeta, "statusLabel" | "versionLabel" | "approvedAt" | "updatedAt">>,
   entries: CalculatedLessonEntry[],
 ): SemesterPlanMeta {
   return {
@@ -169,14 +261,16 @@ export function buildSemesterPlanMeta(
 }
 
 /**
- * Regenerates the full-term plan from curriculum + calendar + timetable and
- * writes it into `planner_entries` (canonical store).
+ * Regenerates the full-term plan — Draft only.
  */
 export async function generateSemesterPlan(
   subject: string,
   grade: string,
-): Promise<CalculatedLessonEntry[]> {
-  return recalculateAndSyncPlanner(subject, grade);
+): Promise<LoadedSemesterPlan> {
+  const ctx = await ensureSemesterPlan({ subject, grade });
+  assertWritableDraft(ctx.plan);
+  const entries = await recalculateAndSyncPlanner(subject, grade, toScope(ctx, subject));
+  return { ...ctx, entries };
 }
 
 export async function moveLessonInPlan(input: {
@@ -185,8 +279,12 @@ export async function moveLessonInPlan(input: {
   targetPeriod: number;
   subject: string;
   grade: string;
-}): Promise<CalculatedLessonEntry[]> {
-  const overrides = await loadUserOverrides();
+}): Promise<LoadedSemesterPlan> {
+  const ctx = await ensureSemesterPlan({ subject: input.subject, grade: input.grade });
+  assertWritableDraft(ctx.plan);
+  const scope = toScope(ctx, input.subject);
+
+  const overrides = await loadUserOverrides(ctx.plan.id);
   const next: ScheduleOverride[] = [
     ...overrides.filter((o) => !(o.type === "move" && o.lessonId === input.lessonId)),
     {
@@ -198,8 +296,9 @@ export async function moveLessonInPlan(input: {
     },
   ];
 
-  await saveUserOverrides(next);
-  return recalculateAndSyncPlanner(input.subject, input.grade);
+  await saveUserOverrides(next, scope);
+  const entries = await recalculateAndSyncPlanner(input.subject, input.grade, scope);
+  return { ...ctx, entries };
 }
 
 export async function swapLessonsInPlan(input: {
@@ -207,8 +306,12 @@ export async function swapLessonsInPlan(input: {
   lessonIdB: string;
   subject: string;
   grade: string;
-}): Promise<CalculatedLessonEntry[]> {
-  const overrides = await loadUserOverrides();
+}): Promise<LoadedSemesterPlan> {
+  const ctx = await ensureSemesterPlan({ subject: input.subject, grade: input.grade });
+  assertWritableDraft(ctx.plan);
+  const scope = toScope(ctx, input.subject);
+
+  const overrides = await loadUserOverrides(ctx.plan.id);
   const next: ScheduleOverride[] = [
     ...overrides.filter(
       (o) =>
@@ -226,8 +329,9 @@ export async function swapLessonsInPlan(input: {
     },
   ];
 
-  await saveUserOverrides(next);
-  return recalculateAndSyncPlanner(input.subject, input.grade);
+  await saveUserOverrides(next, scope);
+  const entries = await recalculateAndSyncPlanner(input.subject, input.grade, scope);
+  return { ...ctx, entries };
 }
 
 export async function shiftLessonOrder(input: {
@@ -236,17 +340,26 @@ export async function shiftLessonOrder(input: {
   direction: "up" | "down";
   subject: string;
   grade: string;
-}): Promise<CalculatedLessonEntry[]> {
+}): Promise<LoadedSemesterPlan> {
   const unique = uniqueLessons(input.entries);
   const index = unique.findIndex((e) => e.lessonId === input.lessonId);
-  if (index < 0) return input.entries;
+  if (index < 0) {
+    const ctx = await ensureSemesterPlan({ subject: input.subject, grade: input.grade });
+    return { ...ctx, entries: input.entries };
+  }
 
   const swapWith = input.direction === "up" ? index - 1 : index + 1;
-  if (swapWith < 0 || swapWith >= unique.length) return input.entries;
+  if (swapWith < 0 || swapWith >= unique.length) {
+    const ctx = await ensureSemesterPlan({ subject: input.subject, grade: input.grade });
+    return { ...ctx, entries: input.entries };
+  }
 
   const a = unique[index].lessonId;
   const b = unique[swapWith].lessonId;
-  if (!a || !b) return input.entries;
+  if (!a || !b) {
+    const ctx = await ensureSemesterPlan({ subject: input.subject, grade: input.grade });
+    return { ...ctx, entries: input.entries };
+  }
 
   return swapLessonsInPlan({
     lessonIdA: a,
@@ -287,6 +400,8 @@ export function buildPlanQrPayload(meta: SemesterPlanMeta): string {
     meta.grade,
     meta.semesterLabel,
     meta.academicYearLabel,
+    meta.statusLabel,
+    meta.versionLabel,
     `weeks:${meta.teachingWeeksCount}`,
     `lessons:${meta.lessonsCount}`,
     meta.printDate,

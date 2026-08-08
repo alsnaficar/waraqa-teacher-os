@@ -603,6 +603,8 @@ export type Database = {
           id: string;
           notes: string | null;
           period: number;
+          semester_plan_id: string | null;
+          semester_plan_version_id: string | null;
           subject: string | null;
           updated_at: string;
           user_id: string;
@@ -614,6 +616,8 @@ export type Database = {
           id?: string;
           notes?: string | null;
           period: number;
+          semester_plan_id?: string | null;
+          semester_plan_version_id?: string | null;
           subject?: string | null;
           updated_at?: string;
           user_id: string;
@@ -625,12 +629,29 @@ export type Database = {
           id?: string;
           notes?: string | null;
           period?: number;
+          semester_plan_id?: string | null;
+          semester_plan_version_id?: string | null;
           subject?: string | null;
           updated_at?: string;
           user_id?: string;
           week_start_date?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "planner_entries_semester_plan_id_fkey";
+            columns: ["semester_plan_id"];
+            isOneToOne: false;
+            referencedRelation: "semester_plans";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "planner_entries_semester_plan_version_id_fkey";
+            columns: ["semester_plan_version_id"];
+            isOneToOne: false;
+            referencedRelation: "semester_plan_versions";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       plans: {
         Row: {
@@ -721,6 +742,110 @@ export type Database = {
           whatsapp?: string | null;
         };
         Relationships: [];
+      };
+      semester_plans: {
+        Row: {
+          academic_year_id: string | null;
+          approved_at: string | null;
+          archived_at: string | null;
+          completed_at: string | null;
+          created_at: string;
+          current_version: number;
+          grade: string;
+          id: string;
+          semester_id: string | null;
+          status: Database["public"]["Enums"]["semester_plan_status"];
+          subject: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          academic_year_id?: string | null;
+          approved_at?: string | null;
+          archived_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          current_version?: number;
+          grade?: string;
+          id?: string;
+          semester_id?: string | null;
+          status?: Database["public"]["Enums"]["semester_plan_status"];
+          subject: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          academic_year_id?: string | null;
+          approved_at?: string | null;
+          archived_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          current_version?: number;
+          grade?: string;
+          id?: string;
+          semester_id?: string | null;
+          status?: Database["public"]["Enums"]["semester_plan_status"];
+          subject?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "semester_plans_academic_year_id_fkey";
+            columns: ["academic_year_id"];
+            isOneToOne: false;
+            referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "semester_plans_semester_id_fkey";
+            columns: ["semester_id"];
+            isOneToOne: false;
+            referencedRelation: "semesters";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      semester_plan_versions: {
+        Row: {
+          approved_at: string | null;
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          semester_plan_id: string;
+          snapshot: Json;
+          status: Database["public"]["Enums"]["semester_plan_version_status"];
+          version_number: number;
+        };
+        Insert: {
+          approved_at?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          semester_plan_id: string;
+          snapshot?: Json;
+          status?: Database["public"]["Enums"]["semester_plan_version_status"];
+          version_number: number;
+        };
+        Update: {
+          approved_at?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          semester_plan_id?: string;
+          snapshot?: Json;
+          status?: Database["public"]["Enums"]["semester_plan_version_status"];
+          version_number?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "semester_plan_versions_semester_plan_id_fkey";
+            columns: ["semester_plan_id"];
+            isOneToOne: false;
+            referencedRelation: "semester_plans";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       semesters: {
         Row: {
@@ -984,6 +1109,26 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      approve_semester_plan: {
+        Args: { p_plan_id: string };
+        Returns: Database["public"]["Tables"]["semester_plans"]["Row"];
+      };
+      archive_semester_plan: {
+        Args: { p_plan_id: string };
+        Returns: Database["public"]["Tables"]["semester_plans"]["Row"];
+      };
+      capture_semester_plan_snapshot: {
+        Args: { p_plan_id: string; p_version_id: string };
+        Returns: Json;
+      };
+      complete_semester_plan: {
+        Args: { p_plan_id: string };
+        Returns: Database["public"]["Tables"]["semester_plans"]["Row"];
+      };
+      create_semester_plan_version: {
+        Args: { p_plan_id: string };
+        Returns: Database["public"]["Tables"]["semester_plans"]["Row"];
+      };
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"];
@@ -991,9 +1136,35 @@ export type Database = {
         };
         Returns: boolean;
       };
+      is_semester_plan_owner: {
+        Args: { plan_id: string };
+        Returns: boolean;
+      };
+      start_semester_plan_execution: {
+        Args: { p_plan_id: string };
+        Returns: Database["public"]["Tables"]["semester_plans"]["Row"];
+      };
+      is_p2e2e_test_email: {
+        Args: { p_email: string };
+        Returns: boolean;
+      };
+      is_p2e2e_test_user_id: {
+        Args: { p_user_id: string };
+        Returns: boolean;
+      };
+      p2e2e_teardown_active: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      teardown_p2e2e_test_user: {
+        Args: { p_email: string };
+        Returns: Json;
+      };
     };
     Enums: {
       app_role: "admin" | "teacher";
+      semester_plan_status: "draft" | "approved" | "in_progress" | "completed" | "archived";
+      semester_plan_version_status: "draft" | "approved";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -1116,6 +1287,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "teacher"],
+      semester_plan_status: ["draft", "approved", "in_progress", "completed", "archived"],
+      semester_plan_version_status: ["draft", "approved"],
     },
   },
 } as const;

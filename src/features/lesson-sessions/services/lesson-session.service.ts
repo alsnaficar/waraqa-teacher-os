@@ -62,9 +62,11 @@ function dayOfWeekFor(date: string): number {
  * Owns the Lesson Session lifecycle.
  *
  * A session is created by projecting the teacher's timetable onto the
- * **canonical Semester Plan** stored in `planner_entries` (via
- * `getPlanEntriesForDate`). Once a teacher prepares a session the lesson is
- * locked — see docs/architecture/LESSON_SESSIONS_ENGINE.md.
+ * **canonical Semester Plan** stored in `planner_entries` for the plan's
+ * current version (via `getPlanEntriesForDate`). Historical plan versions are
+ * audit snapshots only and never rewrite existing sessions. Once a teacher
+ * prepares a session the curriculum lesson is locked —
+ * see docs/architecture/LESSON_SESSIONS_ENGINE.md.
  */
 export class LessonSessionService {
   static async getSessionsByDate(

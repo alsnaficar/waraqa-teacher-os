@@ -68,6 +68,12 @@ export function SemesterPlanPrintDocument({
         <Field label="الصف" value={meta.grade || "—"} />
         <Field label="الفصل الدراسي" value={meta.semesterLabel || "—"} />
         <Field label="العام الدراسي" value={meta.academicYearLabel || "—"} />
+        <Field label="حالة الخطة" value={meta.statusLabel || "—"} />
+        <Field label="الإصدار" value={meta.versionLabel || "—"} />
+        <Field
+          label="تاريخ الاعتماد"
+          value={meta.approvedAt ? meta.approvedAt.slice(0, 10) : "—"}
+        />
         <Field label="عدد الأسابيع الدراسية" value={String(meta.teachingWeeksCount || "—")} />
         <Field label="عدد الدروس" value={String(meta.lessonsCount || "—")} />
         <Field label="تاريخ الطباعة" value={meta.printDate || "—"} />

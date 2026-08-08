@@ -11,6 +11,7 @@ const DAY_LABELS = ["الأحد", "الإثنين", "الثلاثاء", "الأ�
 interface SemesterPlanTableProps {
   entries: CalculatedLessonEntry[];
   busy?: boolean;
+  readOnly?: boolean;
   onMoveDate: (lessonId: string, date: string, period: number) => void;
   onShiftOrder: (lessonId: string, direction: "up" | "down") => void;
 }
@@ -24,10 +25,12 @@ function clip(text: string, max = 80): string {
 export function SemesterPlanTable({
   entries,
   busy = false,
+  readOnly = false,
   onMoveDate,
   onShiftOrder,
 }: SemesterPlanTableProps) {
   const rows = uniqueLessons(entries);
+  const locked = busy || readOnly;
 
   if (rows.length === 0) {
     return (
@@ -74,9 +77,9 @@ export function SemesterPlanTable({
                   type="date"
                   className="h-11 w-[146px]"
                   value={row.suggestedDate}
-                  disabled={busy || !row.lessonId}
+                  disabled={locked || !row.lessonId}
                   onChange={(event) => {
-                    if (!row.lessonId) return;
+                    if (!row.lessonId || readOnly) return;
                     onMoveDate(row.lessonId, event.target.value, row.period);
                   }}
                 />
@@ -121,9 +124,9 @@ export function SemesterPlanTable({
                     size="icon"
                     variant="outline"
                     className="h-11 w-11"
-                    disabled={busy || !row.lessonId || index === 0}
+                    disabled={locked || !row.lessonId || index === 0}
                     aria-label="تحريك لأعلى"
-                    onClick={() => row.lessonId && onShiftOrder(row.lessonId, "up")}
+                    onClick={() => row.lessonId && !readOnly && onShiftOrder(row.lessonId, "up")}
                   >
                     <ArrowUp className="h-4 w-4" />
                   </Button>
@@ -132,9 +135,9 @@ export function SemesterPlanTable({
                     size="icon"
                     variant="outline"
                     className="h-11 w-11"
-                    disabled={busy || !row.lessonId || index === rows.length - 1}
+                    disabled={locked || !row.lessonId || index === rows.length - 1}
                     aria-label="تحريك لأسفل"
-                    onClick={() => row.lessonId && onShiftOrder(row.lessonId, "down")}
+                    onClick={() => row.lessonId && !readOnly && onShiftOrder(row.lessonId, "down")}
                   >
                     <ArrowDown className="h-4 w-4" />
                   </Button>
