@@ -52,6 +52,19 @@ function mockAuth(options: {
     objectives: string | null;
     notes: string | null;
   } | null;
+  timetable?: Array<{
+    id: string;
+    teacher_id: string;
+    day_of_week: number;
+    period: number;
+    subject: string;
+    grade: string;
+    class_name: string;
+    classroom?: string | null;
+    starts_at?: string | null;
+    ends_at?: string | null;
+    active: boolean;
+  }>;
   generations?: Array<Record<string, unknown>>;
   failMarkPrepared?: boolean;
   /**
@@ -170,6 +183,38 @@ function mockAuth(options: {
             }
           },
         };
+        return chain;
+      }
+
+      if (table === "teacher_timetable") {
+        const filters: Record<string, string | boolean> = {};
+
+        const chain = {
+          select() {
+            return chain;
+          },
+          eq(column: string, value: string | boolean) {
+            filters[column] = value;
+            return chain;
+          },
+          order() {
+            return chain;
+          },
+          then(resolve: (value: unknown) => unknown) {
+            const data = (options.timetable ?? []).filter((entry) => {
+              if (filters.teacher_id !== undefined && entry.teacher_id !== filters.teacher_id) {
+                return false;
+              }
+              if (filters.active !== undefined && entry.active !== filters.active) {
+                return false;
+              }
+              return true;
+            });
+
+            return Promise.resolve(resolve({ data, error: null }));
+          },
+        };
+
         return chain;
       }
 

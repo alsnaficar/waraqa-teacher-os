@@ -29,21 +29,29 @@ export async function executeLessonPlanGeneration(
   const { session, curriculumLesson } = ctx;
   const notesExtra = deserializeLessonNotes(curriculumLesson?.notes ?? null);
 
-  const subject = options.subject?.trim() || "المادة";
-  const grade = options.grade?.trim() || "الصف";
-  const lessonName = options.lessonName?.trim() || curriculumLesson?.title || "الدرس";
-  const objectives =
-    options.objectives?.trim() || curriculumLesson?.objectives || notesExtra.outcomes || "";
-  const unit = options.unit?.trim() || notesExtra.unitName || "";
+  const timetableEntry = ctx.timetableEntry;
+
+  // Session-bound timetable is authoritative for subject, grade and class.
+  const subject = timetableEntry?.subject?.trim() || "المادة";
+  const grade = timetableEntry?.grade?.trim() || "الصف";
+  const className = timetableEntry?.className?.trim() || "";
+
+  // Session-bound curriculum is authoritative for lesson identity and content.
+  const officialLessonName = curriculumLesson?.title?.trim() || "الدرس";
+  const officialObjectives =
+    curriculumLesson?.objectives?.trim() || notesExtra.outcomes?.trim() || "";
+  const officialUnit = notesExtra.unitName?.trim() || "";
+
+  // Teacher values are optional enrichments only.
+  const teacherObjectives = options.objectives?.trim() || "";
+  const teacherUnit = options.unit?.trim() || "";
   const suggestedDate = options.suggestedDate?.trim() || session.sessionDate;
 
   // Official curriculum context is authoritative for lesson content.
   // Teacher options can enrich the request, but must not replace curriculum data.
   const curriculumContext = [
-    `عنوان الدرس الرسمي: ${curriculumLesson?.title ?? lessonName}`,
-    curriculumLesson?.objectives
-      ? `الأهداف الرسمية: ${curriculumLesson.objectives}`
-      : "",
+    `عنوان الدرس الرسمي: ${officialLessonName}`,
+    curriculumLesson?.objectives ? `الأهداف الرسمية: ${curriculumLesson.objectives}` : "",
     notesExtra.unitNumber ? `رقم الوحدة: ${notesExtra.unitNumber}` : "",
     notesExtra.unitName ? `اسم الوحدة: ${notesExtra.unitName}` : "",
     notesExtra.lessonNumber ? `رقم الدرس: ${notesExtra.lessonNumber}` : "",
@@ -65,14 +73,20 @@ export async function executeLessonPlanGeneration(
 
     - المادة الدراسية: ${subject}
     - الصف الدراسي: ${grade}
-    - اسم الدرس: ${lessonName}
-    ${unit ? `- الوحدة الدراسية: ${unit}` : ""}
+      ${className ? `- الفصل/الشعبة: ${className}` : ""}
+      - اسم الدرس الرسمي: ${officialLessonName}
+    ${officialUnit ? `- الوحدة الدراسية الرسمية: ${officialUnit}` : ""}
     ${suggestedDate ? `- تاريخ تنفيذ الدرس: ${suggestedDate}` : ""}
-    ${objectives ? `- الأهداف الإضافية المدخلة من المعلم: ${objectives}` : ""}
+    ${officialObjectives ? `- الأهداف الرسمية: ${officialObjectives}` : ""}
 
     --- بيانات المنهج الرسمية ---
     ${curriculumContext}
     --- نهاية بيانات المنهج الرسمية ---
+
+      --- إضافات المعلم الاختيارية ---
+      ${teacherObjectives ? `أهداف/تركيز إضافي من المعلم: ${teacherObjectives}` : ""}
+      ${teacherUnit ? `ملاحظة إضافية من المعلم حول الوحدة: ${teacherUnit}` : ""}
+      --- نهاية إضافات المعلم ---
 
     قواعد مهمة:
     1. اعتبر بيانات المنهج الرسمية المصدر الأساسي لمحتوى التحضير.
@@ -191,14 +205,14 @@ export async function executeLessonPlanGeneration(
     return {
       content: parsedOutput,
       model: modelName,
-      prompt: `تحضير مباشر لدرس: ${lessonName}`,
+      prompt: `تحضير مباشر لدرس: ${officialLessonName}`,
       input: {
         lessonSessionId: session.id,
         subject,
         grade,
-        lessonName,
-        objectives,
-        unit,
+        lessonName: officialLessonName,
+        objectives: officialObjectives,
+        unit: officialUnit,
         suggestedDate,
       },
       extraOutput: {
@@ -207,10 +221,10 @@ export async function executeLessonPlanGeneration(
           curriculumLessonId: session.curriculumLessonId,
           lessonId: session.curriculumLessonId,
           suggestedDate,
-          lessonName,
+          lessonName: officialLessonName,
           subject,
           grade,
-          unit,
+          unit: officialUnit,
           sessionStatus: session.status,
         },
       },

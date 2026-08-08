@@ -18,9 +18,24 @@ export type GenerateRequest<TOptions = Record<string, unknown>> = {
   options?: TOptions;
 };
 
+export type SessionBoundTimetableEntry = {
+  id: string;
+  teacherId: string;
+  dayOfWeek: number;
+  period: number;
+  subject: string;
+  grade: string;
+  className: string;
+  classroom?: string;
+  startsAt?: string;
+  endsAt?: string;
+  active: boolean;
+};
+
 export type SessionBoundGenerationContext = {
   session: LessonSession;
   curriculumLesson: SessionCurriculumLesson | null;
+  timetableEntry: SessionBoundTimetableEntry | null;
   auth: SupabaseUserContext;
   supabase: SupabaseClient;
   userId: string;

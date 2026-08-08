@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { saveAiGeneration, type AiGenerationKind } from "@/features/ai/services/persistence.server";
+import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import type { SupabaseUserContext } from "@/platform/database/supabase/context";
 import {
   loadCurriculumLessonForSession,
@@ -55,9 +56,17 @@ export async function runSessionBoundGeneration(
   const session = await requireOwnedLessonSession(params.lessonSessionId, params.auth);
   const curriculumLesson = await loadCurriculumLessonForSession(session, params.auth);
 
+  const timetable = await TeacherTimetableService.getTimetable(params.auth);
+
+  const timetableEntry =
+    timetable.find(
+      (entry) => entry.dayOfWeek === session.dayOfWeek && entry.period === session.periodNumber,
+    ) ?? null;
+
   const ctx: SessionBoundGenerationContext = {
     session,
     curriculumLesson,
+    timetableEntry,
     auth: params.auth,
     supabase: params.supabase,
     userId: params.userId,

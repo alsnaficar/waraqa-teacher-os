@@ -40,6 +40,19 @@ function mockAuth(
   userId: string,
   sessionRow: ReturnType<typeof makeSessionRow> | null,
   curriculum: { id: string; title: string; objectives: string | null; notes: string | null } | null,
+  timetable: Array<{
+    id: string;
+    teacher_id: string;
+    day_of_week: number;
+    period: number;
+    subject: string;
+    grade: string;
+    class_name: string;
+    classroom?: string | null;
+    starts_at?: string | null;
+    ends_at?: string | null;
+    active: boolean;
+  }> = [],
 ): {
   auth: SupabaseUserContext;
   inserted: { current: Record<string, unknown> | null };
@@ -69,6 +82,45 @@ function mockAuth(
             return { data: sessionRow, error: null };
           },
         };
+        return chain;
+      }
+
+      if (table === "teacher_timetable") {
+        const state: { filters: Record<string, string | boolean> } = {
+          filters: {},
+        };
+
+        const chain = {
+          select() {
+            return chain;
+          },
+          eq(column: string, value: string | boolean) {
+            state.filters[column] = value;
+            return chain;
+          },
+          order() {
+            return chain;
+          },
+          then(resolve: (value: unknown) => unknown) {
+            const data = timetable.filter((entry) => {
+              if (
+                state.filters.teacher_id !== undefined &&
+                entry.teacher_id !== state.filters.teacher_id
+              ) {
+                return false;
+              }
+
+              if (state.filters.active !== undefined && entry.active !== state.filters.active) {
+                return false;
+              }
+
+              return true;
+            });
+
+            return Promise.resolve(resolve({ data, error: null }));
+          },
+        };
+
         return chain;
       }
 
@@ -155,6 +207,88 @@ describe("P3 Step 3 unified session-bound generation", () => {
     assert.equal(inserted.current.lesson_session_id, SESSION_A);
     assert.equal(inserted.current.kind, "worksheet");
     assert.equal(inserted.current.user_id, TEACHER_A);
+  });
+
+  it("resolves the timetable entry from session day and period", async () => {
+    const { auth } = mockAuth(
+      TEACHER_A,
+      makeSessionRow({
+        day_of_week: 5,
+        period_number: 1,
+      }),
+      {
+        id: CURRICULUM_LESSON,
+        title: "درس الجلسة",
+        objectives: "هدف",
+        notes: null,
+      },
+      [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          teacher_id: TEACHER_A,
+          day_of_week: 5,
+          period: 2,
+          subject: "رياضيات",
+          grade: "الأول المتوسط",
+          class_name: "أ",
+          active: true,
+        },
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          teacher_id: TEACHER_A,
+          day_of_week: 4,
+          period: 1,
+          subject: "علوم",
+          grade: "الثاني المتوسط",
+          class_name: "ب",
+          active: true,
+        },
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          teacher_id: TEACHER_A,
+          day_of_week: 5,
+          period: 1,
+          subject: "لغتي",
+          grade: "الأول المتوسط",
+          class_name: "ج",
+          classroom: "3",
+          starts_at: "08:00",
+          ends_at: "08:45",
+          active: true,
+        },
+      ],
+    );
+
+    const result = await runSessionBoundGeneration(
+      {
+        lessonSessionId: SESSION_A,
+        kind: "worksheet",
+        auth,
+        supabase: auth.client,
+        userId: TEACHER_A,
+      },
+      async (ctx) => {
+        assert.equal(ctx.timetableEntry?.id, "33333333-3333-4333-8333-333333333333");
+        assert.equal(ctx.timetableEntry?.dayOfWeek, 5);
+        assert.equal(ctx.timetableEntry?.period, 1);
+        assert.equal(ctx.timetableEntry?.subject, "لغتي");
+        assert.equal(ctx.timetableEntry?.grade, "الأول المتوسط");
+        assert.equal(ctx.timetableEntry?.className, "ج");
+
+        return {
+          content: "markdown",
+          model: "gemini-2.5-flash",
+          prompt: "test",
+          input: {
+            subject: ctx.timetableEntry?.subject,
+            grade: ctx.timetableEntry?.grade,
+            className: ctx.timetableEntry?.className,
+          },
+        };
+      },
+    );
+
+    assert.equal(result.id, "99999999-9999-4999-8999-999999999999");
   });
 
   it("rejects cross-teacher session before strategy runs", async () => {
