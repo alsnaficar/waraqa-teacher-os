@@ -175,7 +175,7 @@ export async function adminDeleteCurriculumDraft(
   return { success: true };
 }
 
-/** Save draft — admin only (existing behavior; shared assertAdmin). */
+/** Save draft — admin only, using the atomic server-side RPC. */
 export async function adminSaveCurriculumDraft(
   admin: CurriculumAdminClient,
   auth: CurriculumAdminAuth,
@@ -202,71 +202,35 @@ export async function adminSaveCurriculumDraft(
 ): Promise<{ fileId: string }> {
   await assertAdmin(admin, auth.userId, auth.email);
 
-  let fileId = data.id;
+  const { data: fileId, error } = await admin.rpc(
+    "save_curriculum_draft_atomic",
+    {
+      p_user_id: auth.userId,
+      p_file_id: data.id ?? null,
+      p_original_name: data.originalName,
+      p_academic_year: data.academicYear,
+      p_semester: data.semester,
+      p_grade: data.grade,
+      p_subject: data.subject,
+      p_lessons: data.lessons,
+    },
+  );
 
-  if (fileId) {
-    const { error: fileUpdateErr } = await admin
-      .from("curriculum_files")
-      .update({
-        subject: data.subject,
-        grade: data.grade,
-        semester: data.semester,
-        academic_year: data.academicYear,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", fileId);
+  if (error) {
+    if (error.code === "ADMIN_REQUIRED") {
+      throw new Error("عذراً، هذا الإجراء متاح فقط لمديري النظام (Administrators).");
+    }
 
-    if (fileUpdateErr) throw fileUpdateErr;
+    if (error.code === "CURRICULUM_NOT_DRAFT") {
+      throw new Error("لا يمكن تعديل منهج غير مسودة.");
+    }
 
-    const { error: deleteErr } = await admin
-      .from("curriculum_lessons")
-      .delete()
-      .eq("curriculum_file_id", fileId);
-
-    if (deleteErr) throw deleteErr;
-  } else {
-    const { data: newFile, error: fileInsertErr } = await admin
-      .from("curriculum_files")
-      .insert({
-        original_name: data.originalName,
-        subject: data.subject,
-        grade: data.grade,
-        semester: data.semester,
-        academic_year: data.academicYear,
-        status: "draft",
-        mime_type: "application/pdf",
-        size_bytes: 0,
-        storage_path: "admin_upload",
-        user_id: auth.userId,
-      })
-      .select("id")
-      .single();
-
-    if (fileInsertErr) throw fileInsertErr;
-    fileId = newFile.id;
+    throw error;
   }
 
-  const lessonsData = data.lessons.map((lesson, idx) => ({
-    curriculum_file_id: fileId!,
-    title: lesson.lessonTitle,
-    objectives: lesson.objectives || "",
-    notes: serializeLessonNotes({
-      unitNumber: lesson.unitNumber,
-      unitName: lesson.unitName,
-      lessonNumber: lesson.lessonNumber,
-      outcomes: lesson.outcomes,
-      activities: lesson.activities,
-      assessment: lesson.assessment,
-      periods: lesson.periods,
-      notes: lesson.notes,
-    }),
-    order_index: idx,
-    user_id: auth.userId,
-  }));
+  if (!fileId) {
+    throw new Error("تعذر حفظ المنهج.");
+  }
 
-  const { error: lessonsInsertErr } = await admin.from("curriculum_lessons").insert(lessonsData);
-
-  if (lessonsInsertErr) throw lessonsInsertErr;
-
-  return { fileId: fileId! };
+  return { fileId };
 }

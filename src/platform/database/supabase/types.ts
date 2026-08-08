@@ -1185,6 +1185,19 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      save_curriculum_draft_atomic: {
+        Args: {
+          p_academic_year: string;
+          p_file_id: string | null;
+          p_grade: string;
+          p_lessons: Json;
+          p_original_name: string;
+          p_semester: string;
+          p_subject: string;
+          p_user_id: string;
+        };
+        Returns: string;
+      };
       teardown_p2e2e_test_user: {
         Args: { p_email: string };
         Returns: Json;
