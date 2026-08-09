@@ -15,8 +15,7 @@ import {
 import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { PlannerDesktopLayout } from "@/features/planner/components/planner-desktop-layout";
-import { PlannerMobileLayout } from "@/features/planner/components/planner-mobile-layout";
+import { TeacherWeeklyTimetable } from "@/features/teacher-timetable/components/teacher-weekly-timetable";
 import { SemesterPlanTable } from "@/features/planner/components/semester-plan-table";
 import { SemesterPlanPrintDocument } from "@/features/planner/components/semester-plan-print";
 import { SemesterPlanPrintDialog } from "@/features/planner/components/semester-plan-print-dialog";
@@ -369,26 +368,6 @@ export default function PlannerPage() {
     }
   };
 
-  const weekProps = {
-    weekOffset,
-    setWeekOffset,
-    weekStart,
-    weekEnd,
-    onComingSoon,
-    onPublishClick: () => setPublishOpen(true),
-    lessons,
-    lessonAt,
-    onChangeLesson,
-    publishOpen,
-    setPublishOpen,
-    publishTarget,
-    setPublishTarget,
-    onConfirmPublish: () => {
-      toast.success("تم النشر بنجاح!");
-      setPublishOpen(false);
-    },
-  };
-
   if (loading) {
     return (
       <PageShell className="px-3 md:px-6">
@@ -571,10 +550,8 @@ export default function PlannerPage() {
           onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
           onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
         />
-      ) : isMobile ? (
-        <PlannerMobileLayout {...weekProps} />
       ) : (
-        <PlannerDesktopLayout {...weekProps} />
+        <TeacherWeeklyTimetable />
       )}
 
       <SemesterPlanPrintDialog
