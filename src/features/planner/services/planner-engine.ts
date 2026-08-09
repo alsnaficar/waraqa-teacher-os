@@ -24,6 +24,8 @@ export interface TimetableSlot {
   dayOfWeek: number; // 0 = Sunday, 1 = Monday, etc.
   period: number; // 1-based period number
   className: string; // e.g., "5-أ" or "1/أ"
+  subject?: string;
+  grade?: string;
 }
 
 export type OverrideType = "skip" | "swap" | "move" | "insert";
@@ -170,6 +172,8 @@ export async function loadTimetable(context?: SupabaseUserContext): Promise<Time
         dayOfWeek: entry.dayOfWeek,
         period: entry.period,
         className: entry.className,
+        subject: entry.subject,
+        grade: entry.grade,
       }));
     }
 
@@ -536,8 +540,14 @@ export async function generateSchedule(
     if (day.isHoliday) continue;
     // سنضيف دعم أسابيع الاختبارات من calendar_events لاحقًا
 
-    // Find timetable slots for this day of week
-    const slotsForDay = timetable.filter((t) => t.dayOfWeek === day.dayOfWeek);
+    // Find timetable slots for this day and current subject/grade.
+    // Legacy rows without subject/grade remain usable as a fallback.
+    const slotsForDay = timetable.filter(
+      (t) =>
+        t.dayOfWeek === day.dayOfWeek &&
+        (!t.subject || t.subject === activeSubject) &&
+        (!t.grade || t.grade === activeGrade),
+    );
     // Sort slots by period ascending
     slotsForDay.sort((a, b) => a.period - b.period);
 

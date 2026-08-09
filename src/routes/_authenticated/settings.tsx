@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Button } from "@/shared/ui/button";
+import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import { Avatar, AvatarFallback, AvatarImage } from "@/shared/ui/avatar";
 import { Badge } from "@/shared/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
@@ -33,6 +34,14 @@ export interface Assignment {
   klasses: string[];
 }
 
+type TimetableDraft = {
+  dayOfWeek: number;
+  period: number;
+  subject: string;
+  grade: string;
+  className: string;
+};
+
 type ProfileForm = {
   full_name: string;
   avatar_url: string;
@@ -50,6 +59,7 @@ const EMPTY: ProfileForm = {
 };
 
 function SettingsPage() {
+  const [timetable, setTimetable] = useState<TimetableDraft[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [form, setForm] = useState<ProfileForm>(EMPTY);
   const [classesObj, setClassesObj] = useState<Record<string, unknown>>({});
@@ -70,6 +80,20 @@ function SettingsPage() {
         .eq("id", user.id)
         .maybeSingle();
       if (!active) return;
+
+      const timetableEntries = await TeacherTimetableService.getTimetable();
+      if (active) {
+        setTimetable(
+          timetableEntries.map((entry) => ({
+            dayOfWeek: entry.dayOfWeek,
+            period: entry.period,
+            subject: entry.subject,
+            grade: entry.grade,
+            className: entry.className,
+          })),
+        );
+      }
+
       if (data) {
         const classes = (data.classes as Record<string, unknown>) || {};
         setClassesObj(classes);
@@ -489,6 +513,89 @@ function SettingsPage() {
               </div>
 
               <div className="sm:col-span-2 flex justify-end pt-2 border-t">
+                {/* Weekly timetable */}
+                <div className="sm:col-span-2 space-y-4 pt-4 border-t">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">الجدول الأسبوعي للحصص</h3>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      الجدول الحالي المستورد من جدول المعلم التشغيلي.
+                    </p>
+                  </div>
+
+                  {timetable.length === 0 ? (
+                    <div className="border border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50/50">
+                      <BookOpen className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                      <p className="text-xs text-slate-500 font-bold">
+                        لا يوجد جدول حصص مسجل حالياً.
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        يمكنك مزامنة جدولك من منصة مدرستي لإضافته تلقائياً.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      {[
+                        { day: 0, label: "الأحد" },
+                        { day: 1, label: "الاثنين" },
+                        { day: 2, label: "الثلاثاء" },
+                        { day: 3, label: "الأربعاء" },
+                        { day: 4, label: "الخميس" },
+                      ].map(({ day, label }) => {
+                        const dayEntries = timetable
+                          .filter((entry) => entry.dayOfWeek === day)
+                          .sort((a, b) => a.period - b.period);
+
+                        return (
+                          <div
+                            key={day}
+                            className="rounded-xl border border-slate-100 bg-slate-50/50 overflow-hidden"
+                          >
+                            <div className="px-3 py-2 border-b bg-white">
+                              <h4 className="text-xs font-bold text-slate-700">{label}</h4>
+                            </div>
+
+                            <div className="p-2 space-y-2">
+                              {dayEntries.length === 0 ? (
+                                <p className="text-[10px] text-slate-400 text-center py-4">
+                                  لا توجد حصص
+                                </p>
+                              ) : (
+                                dayEntries.map((entry) => (
+                                  <div
+                                    key={`${entry.dayOfWeek}-${entry.period}-${entry.className}`}
+                                    className="rounded-lg border border-slate-100 bg-white p-2.5"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <Badge
+                                        variant="secondary"
+                                        className="text-[9px] px-1.5 py-0.5 font-bold"
+                                      >
+                                        الحصة {entry.period}
+                                      </Badge>
+
+                                      <span className="text-[10px] text-slate-500 font-medium">
+                                        {entry.className}
+                                      </span>
+                                    </div>
+
+                                    <p className="text-[11px] font-bold text-slate-700 mt-2">
+                                      {entry.subject}
+                                    </p>
+
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                      {entry.grade}
+                                    </p>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 <Button type="submit" disabled={loading || saving} className="font-bold">
                   {saving ? "جارٍ الحفظ…" : "حفظ التغييرات والأسناد"}
                 </Button>
