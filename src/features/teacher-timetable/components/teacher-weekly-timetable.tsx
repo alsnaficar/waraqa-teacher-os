@@ -1,22 +1,31 @@
+import { useState } from "react";
+
+import { useQueries } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+
 import {
   BookOpen,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
+  FileCheck2,
   Clock,
   FlaskConical,
   Globe,
   KeyRound,
   MapPin,
   PlaySquare,
-  Target,
   Trash2,
 } from "lucide-react";
 
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
 
 import { useTeacherTimetable } from "../hooks/useTeacherTimetable";
+import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
 
 const DAYS = [
   { value: 0, label: "الأحد" },
@@ -26,11 +35,12 @@ const DAYS = [
   { value: 4, label: "الخميس" },
 ];
 
-function getWeekRange() {
+function getWeekRange(weekOffset = 0) {
   const today = new Date();
 
   const sunday = new Date(today);
-  sunday.setDate(today.getDate() - today.getDay());
+  sunday.setHours(0, 0, 0, 0);
+  sunday.setDate(today.getDate() - today.getDay() + weekOffset * 7);
 
   const thursday = new Date(sunday);
   thursday.setDate(sunday.getDate() + 4);
@@ -48,10 +58,30 @@ function getWeekRange() {
   });
 
   return {
+    sunday,
+    thursday,
     hijriStart: hijriFormatter.format(sunday),
     hijriEnd: hijriFormatter.format(thursday),
     gregorianStart: gregorianFormatter.format(sunday),
     gregorianEnd: gregorianFormatter.format(thursday),
+  };
+}
+function formatDayDates(date: Date) {
+  const hijri = new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  const gregorian = new Intl.DateTimeFormat("ar-SA", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  return {
+    hijri: hijri.format(date),
+    gregorian: gregorian.format(date),
   };
 }
 
@@ -67,43 +97,96 @@ function formatTime(value?: string) {
   });
 }
 
-function LessonActions() {
+function LessonActions({ lessonSessionId }: { lessonSessionId?: string }) {
   return (
-    <div className="mt-2 flex items-center justify-center gap-1.5" dir="ltr">
-      <BookOpen className="h-3.5 w-3.5 text-emerald-600" />
-      <FlaskConical className="h-3.5 w-3.5 text-purple-500" />
-      <ClipboardList className="h-3.5 w-3.5 text-orange-500" />
-      <Globe className="h-3.5 w-3.5 text-blue-500" />
-      <PlaySquare className="h-3.5 w-3.5 text-indigo-500" />
-      <Target className="h-3.5 w-3.5 text-red-500" />
-      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+    <div className="mt-2 flex flex-row-reverse items-center justify-center gap-1.5" dir="rtl">
+      {lessonSessionId ? (
+        <Link to="/ai-lesson-plan" search={{ lessonSessionId } as never} aria-label="تحضير الدرس">
+          <BookOpen className="h-3.5 w-3.5 text-emerald-600" />
+        </Link>
+      ) : (
+        <BookOpen className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="تحضير" />
+      )}
+
+      <FileCheck2 className="h-3.5 w-3.5 text-cyan-600" aria-label="واجب" />
+
+      <FlaskConical className="h-3.5 w-3.5 text-purple-500" aria-label="اختبار" />
+
+      <ClipboardList className="h-3.5 w-3.5 text-orange-500" aria-label="ورقة عمل" />
+
+      <Globe className="h-3.5 w-3.5 text-blue-500" aria-label="إثراء" />
+
+      <PlaySquare className="h-3.5 w-3.5 text-indigo-500" aria-label="الوسائل" />
+
+      <Trash2 className="h-3.5 w-3.5 text-red-500" aria-label="حذف" />
     </div>
   );
 }
 
 function PlannerLegend() {
+  const items = [
+    { icon: BookOpen, label: "تحضير الدرس", className: "text-emerald-600" },
+    { icon: FileCheck2, label: "واجب", className: "text-cyan-600" },
+    { icon: FlaskConical, label: "اختبار", className: "text-purple-500" },
+    { icon: ClipboardList, label: "ورقة عمل", className: "text-orange-500" },
+    { icon: Globe, label: "إثراء", className: "text-blue-500" },
+    { icon: PlaySquare, label: "الوسائل", className: "text-indigo-500" },
+    { icon: Trash2, label: "حذف", className: "text-red-500" },
+  ];
+
   return (
     <div
-      className="mb-2 flex w-fit items-center gap-2 rounded-lg border bg-card px-2 py-1 shadow-sm"
+      className="mb-3 flex w-full items-center justify-center rounded-lg border bg-card px-3 py-2 shadow-sm"
       dir="rtl"
     >
-      <KeyRound className="h-3.5 w-3.5 text-emerald-700" />
-      <span className="text-[10px] font-medium">مفتاح الرموز</span>
-      <span className="h-4 w-px bg-border" />
-      <BookOpen className="h-3.5 w-3.5 text-emerald-600" />
-      <FlaskConical className="h-3.5 w-3.5 text-purple-500" />
-      <ClipboardList className="h-3.5 w-3.5 text-orange-500" />
-      <Globe className="h-3.5 w-3.5 text-blue-500" />
-      <PlaySquare className="h-3.5 w-3.5 text-indigo-500" />
-      <Target className="h-3.5 w-3.5 text-red-500" />
-      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
+          <KeyRound className="h-4 w-4 text-emerald-700" />
+          <span>مفتاح الرموز</span>
+        </div>
+
+        <span className="hidden h-6 w-px bg-border sm:block" />
+
+        {items.map(({ icon: Icon, label, className }) => (
+          <div
+            key={label}
+            className="flex min-w-[52px] flex-col items-center justify-center gap-0.5"
+          >
+            <Icon className={`h-4 w-4 ${className}`} />
+            <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
-
 export function TeacherWeeklyTimetable() {
   const { loading, entries, error } = useTeacherTimetable();
-  const weekRange = getWeekRange();
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const weekRange = getWeekRange(weekOffset);
+
+  const weekDates = Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(weekRange.sunday);
+    date.setDate(weekRange.sunday.getDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+
+  const sessionQueries = useQueries({
+    queries: weekDates.map((date) => ({
+      queryKey: ["lesson-sessions", date],
+      queryFn: () => LessonSessionService.ensureSessionsForDate(date),
+      staleTime: 30_000,
+    })),
+  });
+
+  const sessions = sessionQueries.flatMap((query) => query.data?.sessions ?? []);
+
+  const sessionBySlot = new Map(
+    sessions.map((session) => [`${session.dayOfWeek}-${session.periodNumber}`, session]),
+  );
 
   if (loading) {
     return (
@@ -156,21 +239,43 @@ export function TeacherWeeklyTimetable() {
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b bg-muted/30">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <CalendarDays className="h-4 w-4" />
-          <div className="flex flex-col">
-            <span>الجدول الأسبوعي</span>
-            <span className="mt-0.5 text-[11px] font-normal text-muted-foreground">
+        <div className="flex items-center justify-between gap-2" dir="rtl">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-1 px-2"
+            onClick={() => setWeekOffset((value) => value - 1)}
+            aria-label="الأسبوع السابق"
+          >
+            <ChevronRight className="h-4 w-4" />
+            <span className="hidden sm:inline">السابق</span>
+          </Button>
+
+          <CardTitle className="flex min-w-0 flex-1 flex-col items-center text-center">
+            <span className="text-base font-bold">الجدول الأسبوعي</span>
+            <span className="mt-1 text-[11px] font-normal text-muted-foreground">
               من {weekRange.hijriStart} إلى {weekRange.hijriEnd} هـ
             </span>
             <span className="text-[10px] font-normal text-muted-foreground/80">
               من {weekRange.gregorianStart} إلى {weekRange.gregorianEnd} م
             </span>
-          </div>
-          <Badge variant="secondary" className="mr-auto">
-            {entries.length} حصص
-          </Badge>
-        </CardTitle>
+          </CardTitle>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-1 px-2"
+            onClick={() => setWeekOffset((value) => value + 1)}
+            aria-label="الأسبوع التالي"
+          >
+            <span className="hidden sm:inline">التالي</span>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="mt-2 flex justify-center">
+          <Badge variant="secondary">{entries.length} حصص</Badge>
+        </div>
       </CardHeader>
 
       <CardContent className="p-0">
@@ -186,14 +291,31 @@ export function TeacherWeeklyTimetable() {
                   الحصة
                 </th>
 
-                {DAYS.map((day) => (
-                  <th
-                    key={day.value}
-                    className="border-b border-l bg-muted/70 p-2 text-center text-sm font-bold last:border-l-0"
-                  >
-                    {day.label}
-                  </th>
-                ))}
+                {DAYS.map((day, index) => {
+                  const dayDate = new Date(weekRange.sunday);
+                  dayDate.setDate(weekRange.sunday.getDate() + index);
+
+                  const dayDates = formatDayDates(dayDate);
+
+                  return (
+                    <th
+                      key={day.value}
+                      className="border-b border-l bg-muted/70 p-2 text-center last:border-l-0"
+                    >
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-sm font-bold">{day.label}</span>
+
+                        <span className="text-[11px] font-medium text-foreground/80">
+                          {dayDates.hijri}
+                        </span>
+
+                        <span className="text-[10px] font-normal text-muted-foreground">
+                          {dayDates.gregorian}
+                        </span>
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
 
@@ -222,6 +344,11 @@ export function TeacherWeeklyTimetable() {
 
                             <div className="mt-1 text-[11px] text-muted-foreground">
                               الفصل: {entry.className}
+                              <LessonActions
+                                lessonSessionId={
+                                  sessionBySlot.get(`${entry.dayOfWeek}-${entry.period}`)?.id
+                                }
+                              />
                             </div>
                             <LessonActions />
                           </div>
