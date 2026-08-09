@@ -826,12 +826,17 @@ export async function recalculateAndSyncPlanner(
   subject: string,
   grade: string | undefined,
   scope: PlanSyncScope,
+  context?: SupabaseUserContext,
 ): Promise<CalculatedLessonEntry[]> {
   const resolved = assertPlanSyncScope(scope);
-  const calculated = await generateSchedule(subject, grade, resolved.planId);
-  await syncScheduleToDatabase(calculated, {
-    ...resolved,
-    subject: subject || calculated[0]?.subject || resolved.subject,
-  });
+  const calculated = await generateSchedule(subject, grade, resolved.planId, context);
+  await syncScheduleToDatabase(
+    calculated,
+    {
+      ...resolved,
+      subject: subject || calculated[0]?.subject || resolved.subject,
+    },
+    context,
+  );
   return calculated;
 }
