@@ -16,6 +16,7 @@ import { Route as ConnectSchoolRouteImport } from './routes/connect-school'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedAiRouteImport } from './routes/_authenticated/ai'
 import { Route as AuthenticatedAiActivityIdeasRouteImport } from './routes/_authenticated/ai-activity-ideas'
 import { Route as AuthenticatedAiEnrichmentRouteImport } from './routes/_authenticated/ai-enrichment'
@@ -33,6 +34,10 @@ import { Route as AuthenticatedPlannerRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authenticated/subscription'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminCurriculumManagementRouteImport } from './routes/_authenticated/admin/curriculum-management'
+import { Route as AuthenticatedAdminGoogleSheetsRouteImport } from './routes/_authenticated/admin/google-sheets'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -67,6 +72,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAiRoute = AuthenticatedAiRouteImport.update({
   id: '/ai',
@@ -163,6 +173,28 @@ const AuthenticatedSubscriptionRoute =
     path: '/subscription',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
+const AuthenticatedAdminCurriculumManagementRoute =
+  AuthenticatedAdminCurriculumManagementRouteImport.update({
+    id: '/curriculum-management',
+    path: '/curriculum-management',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminGoogleSheetsRoute =
+  AuthenticatedAdminGoogleSheetsRouteImport.update({
+    id: '/google-sheets',
+    path: '/google-sheets',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -171,6 +203,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/ai': typeof AuthenticatedAiRoute
   '/ai-activity-ideas': typeof AuthenticatedAiActivityIdeasRoute
   '/ai-enrichment': typeof AuthenticatedAiEnrichmentRoute
@@ -188,6 +221,10 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
+  '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -213,6 +250,10 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
+  '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -223,6 +264,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/ai': typeof AuthenticatedAiRoute
   '/_authenticated/ai-activity-ideas': typeof AuthenticatedAiActivityIdeasRoute
   '/_authenticated/ai-enrichment': typeof AuthenticatedAiEnrichmentRoute
@@ -240,6 +282,10 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/subscription': typeof AuthenticatedSubscriptionRoute
+  '/_authenticated/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
+  '/_authenticated/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -250,6 +296,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
+    | '/admin'
     | '/ai'
     | '/ai-activity-ideas'
     | '/ai-enrichment'
@@ -267,6 +314,10 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/admin/curriculum-management'
+    | '/admin/google-sheets'
+    | '/admin/users'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -292,6 +343,10 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/admin/curriculum-management'
+    | '/admin/google-sheets'
+    | '/admin/users'
+    | '/admin'
   id:
     | '__root__'
     | '/'
@@ -301,6 +356,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
+    | '/_authenticated/admin'
     | '/_authenticated/ai'
     | '/_authenticated/ai-activity-ideas'
     | '/_authenticated/ai-enrichment'
@@ -318,6 +374,10 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/subscription'
+    | '/_authenticated/admin/curriculum-management'
+    | '/_authenticated/admin/google-sheets'
+    | '/_authenticated/admin/users'
+    | '/_authenticated/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -380,6 +440,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/ai': {
       id: '/_authenticated/ai'
@@ -500,10 +567,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSubscriptionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/curriculum-management': {
+      id: '/_authenticated/admin/curriculum-management'
+      path: '/curriculum-management'
+      fullPath: '/admin/curriculum-management'
+      preLoaderRoute: typeof AuthenticatedAdminCurriculumManagementRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/google-sheets': {
+      id: '/_authenticated/admin/google-sheets'
+      path: '/google-sheets'
+      fullPath: '/admin/google-sheets'
+      preLoaderRoute: typeof AuthenticatedAdminGoogleSheetsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
   }
 }
 
+interface AuthenticatedAdminRouteRouteChildren {
+  AuthenticatedAdminCurriculumManagementRoute: typeof AuthenticatedAdminCurriculumManagementRoute
+  AuthenticatedAdminGoogleSheetsRoute: typeof AuthenticatedAdminGoogleSheetsRoute
+  AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+}
+
+const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
+  {
+    AuthenticatedAdminCurriculumManagementRoute:
+      AuthenticatedAdminCurriculumManagementRoute,
+    AuthenticatedAdminGoogleSheetsRoute: AuthenticatedAdminGoogleSheetsRoute,
+    AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+    AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  }
+
+const AuthenticatedAdminRouteRouteWithChildren =
+  AuthenticatedAdminRouteRoute._addFileChildren(
+    AuthenticatedAdminRouteRouteChildren,
+  )
+
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
   AuthenticatedAiRoute: typeof AuthenticatedAiRoute
   AuthenticatedAiActivityIdeasRoute: typeof AuthenticatedAiActivityIdeasRoute
   AuthenticatedAiEnrichmentRoute: typeof AuthenticatedAiEnrichmentRoute
@@ -524,6 +641,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
   AuthenticatedAiRoute: AuthenticatedAiRoute,
   AuthenticatedAiActivityIdeasRoute: AuthenticatedAiActivityIdeasRoute,
   AuthenticatedAiEnrichmentRoute: AuthenticatedAiEnrichmentRoute,

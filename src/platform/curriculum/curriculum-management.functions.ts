@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { assertAdmin } from "@/platform/auth/assert-admin";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import { getGemini } from "@/features/ai/providers/gemini";
 import {
@@ -44,7 +45,10 @@ const SaveCurriculumInput = z.object({
 export const extractCurriculumFromPdf = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => z.object({ pdfBase64: z.string() }).parse(data))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    await assertAdmin(supabaseAdmin, context.userId);
+
     try {
       const ai = getGemini();
       const response = await ai.models.generateContent({

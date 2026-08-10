@@ -3,63 +3,102 @@ import { describe, it } from "node:test";
 
 import { assertAdmin } from "./assert-admin.ts";
 
-function mockRoleClient(role: string | null): {
+function mockRoleClient(options: { role: string | null; errorMessage?: string }): {
   client: never;
   tables: string[];
+  eqs: Array<{ column: string; value: string }>;
 } {
   const tables: string[] = [];
+  const eqs: Array<{ column: string; value: string }> = [];
+
+  const terminal = {
+    async maybeSingle() {
+      if (options.errorMessage) {
+        return { data: null, error: { message: options.errorMessage } };
+      }
+      return {
+        data: options.role == null ? null : { role: options.role },
+        error: null,
+      };
+    },
+  };
+
+  const chain = {
+    eq(column: string, value: string) {
+      eqs.push({ column, value });
+      return {
+        eq(column2: string, value2: string) {
+          eqs.push({ column: column2, value: value2 });
+          return terminal;
+        },
+        ...terminal,
+      };
+    },
+  };
+
   const client = {
     from(table: string) {
       tables.push(table);
       return {
         select() {
-          return {
-            eq() {
-              return {
-                async maybeSingle() {
-                  return {
-                    data: role == null ? null : { role },
-                    error: null,
-                  };
-                },
-              };
-            },
-          };
+          return chain;
         },
       };
     },
   };
-  return { client: client as never, tables };
+  return { client: client as never, tables, eqs };
 }
 
 describe("assertAdmin (W1)", () => {
   it("denies teacher role", async () => {
-    const { client, tables } = mockRoleClient("teacher");
+    const { client, tables, eqs } = mockRoleClient({ role: null });
+    // Simulate "no admin row" (teacher-only users have no role='admin' row match).
     await assert.rejects(
-      () => assertAdmin(client, "user-1", "teacher@example.com"),
+      () => assertAdmin(client, "user-1"),
       (err: unknown) => err instanceof Error && err.message.includes("Administrators"),
     );
     assert.deepEqual(tables, ["user_roles"]);
+    assert.deepEqual(eqs, [
+      { column: "user_id", value: "user-1" },
+      { column: "role", value: "admin" },
+    ]);
   });
 
   it("allows admin role", async () => {
-    const { client } = mockRoleClient("admin");
-    await assertAdmin(client, "user-1", "admin@example.com");
-  });
-
-  it("allows legacy hardcoded email without requiring admin role (W4 debt)", async () => {
-    const { client, tables } = mockRoleClient(null);
-    await assertAdmin(client, "user-1", "coonan89@gmail.com");
-    assert.deepEqual(tables, [], "legacy email must short-circuit before role lookup");
+    const { client, tables, eqs } = mockRoleClient({ role: "admin" });
+    await assertAdmin(client, "user-1");
+    assert.deepEqual(tables, ["user_roles"]);
+    assert.deepEqual(eqs, [
+      { column: "user_id", value: "user-1" },
+      { column: "role", value: "admin" },
+    ]);
   });
 
   it("denies missing role row", async () => {
-    const { client } = mockRoleClient(null);
-    await assert.rejects(() => assertAdmin(client, "user-1", "x@y.com"));
+    const { client, tables } = mockRoleClient({ role: null });
+    await assert.rejects(() => assertAdmin(client, "user-1"));
+    assert.deepEqual(tables, ["user_roles"]);
   });
 
   it("does not invent new roles — only role === 'admin' grants", async () => {
-    const { client } = mockRoleClient("superuser");
-    await assert.rejects(() => assertAdmin(client, "user-1", "x@y.com"));
+    const { client } = mockRoleClient({ role: null });
+    await assert.rejects(() => assertAdmin(client, "user-1"));
+  });
+
+  it("does not grant admin based on arbitrary email (email is not an auth input)", async () => {
+    const { client, tables } = mockRoleClient({ role: null });
+    await assert.rejects(() => assertAdmin(client, "user-1"));
+    assert.deepEqual(tables, ["user_roles"]);
+  });
+
+  it("denies legacy admin email when role is not admin", async () => {
+    const { client, tables } = mockRoleClient({ role: null });
+    await assert.rejects(() => assertAdmin(client, "user-legacy"));
+    assert.deepEqual(tables, ["user_roles"], "must look up user_roles; no email bypass");
+  });
+
+  it("denies when role lookup returns an error", async () => {
+    const { client } = mockRoleClient({ role: null, errorMessage: "db down" });
+    await assert.rejects(() => assertAdmin(client, "user-1"));
   });
 });

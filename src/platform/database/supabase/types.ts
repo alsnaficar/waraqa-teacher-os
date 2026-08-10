@@ -1158,6 +1158,13 @@ export type Database = {
         Args: { p_plan_id: string };
         Returns: Database["public"]["Tables"]["semester_plans"]["Row"];
       };
+      admin_set_user_role: {
+        Args: {
+          p_new_role: Database["public"]["Enums"]["app_role"];
+          p_target_user_id: string;
+        };
+        Returns: undefined;
+      };
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"];

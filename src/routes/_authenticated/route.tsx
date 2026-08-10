@@ -1,5 +1,4 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/platform/database/supabase/client";
 import { AppHeader } from "@/components/layout/app-header";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -18,6 +17,13 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   // Initiates database fetch of active year/semesters and populates cache
   useAcademicCalendar();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
+
+  // Admin routes render their own shell — do not wrap with teacher chrome.
+  if (isAdminArea) {
+    return <Outlet />;
+  }
 
   return (
     <>

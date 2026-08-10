@@ -1,7 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Bell, LogOut } from "lucide-react";
+import { Bell, LogOut, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/shared/ui/button";
 import { BackButton } from "@/shared/components/back-button";
@@ -13,6 +13,24 @@ export function AppHeader() {
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const showBack = pathname !== "/dashboard";
+
+  // Presentation only — Admin route/server still enforce authorization.
+  const { data: isAdmin } = useQuery({
+    queryKey: ["header-is-admin"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return false;
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      return data?.role === "admin";
+    },
+  });
 
   async function handleSignOut() {
     await queryClient.cancelQueries();
@@ -32,11 +50,21 @@ export function AppHeader() {
           <BrandLogo size="md" />
         </Link>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {isAdmin ? (
+          <Button
+            variant="outline"
+            className="h-11 min-h-[44px] gap-1.5 px-3 text-primary"
+            onClick={() => navigate({ to: "/admin" })}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            <span className="hidden sm:inline">لوحة الإدارة</span>
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          className="h-11 w-11 min-h-[44px] min-w-[44px]"
           aria-label="الإشعارات"
           onClick={() => navigate({ to: "/notifications" })}
         >
@@ -45,7 +73,7 @@ export function AppHeader() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9"
+          className="h-11 w-11 min-h-[44px] min-w-[44px]"
           aria-label="تسجيل الخروج"
           onClick={handleSignOut}
         >

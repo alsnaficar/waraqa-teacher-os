@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { assertAdmin } from "@/platform/auth/assert-admin";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import {
   addDays,
@@ -386,7 +387,7 @@ export const activateSubscription = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
 
-    await assertAdmin(supabaseAdmin, context.userId, context.claims.email ?? "");
+    await assertAdmin(supabaseAdmin, context.userId);
 
     const { data: subscription, error: loadError } = await supabaseAdmin
       .from("subscriptions")
@@ -430,20 +431,6 @@ export const activateSubscription = createServerFn({ method: "POST" })
 type AdminClient = Awaited<
   typeof import("@/platform/database/supabase/client.server")
 >["supabaseAdmin"];
-
-async function assertAdmin(client: AdminClient, userId: string, email: string): Promise<void> {
-  if (email === "coonan89@gmail.com") return;
-
-  const { data } = await client
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (data?.role === "admin") return;
-
-  throw new Error("عذراً، هذا الإجراء متاح فقط لمديري النظام (Administrators).");
-}
 
 /** Returns an existing pending checkout so retrying does not create duplicates. */
 async function findReusablePending(

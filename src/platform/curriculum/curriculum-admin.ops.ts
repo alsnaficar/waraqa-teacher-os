@@ -2,7 +2,7 @@
  * Curriculum admin catalog operations (W1).
  * Order: assertAdmin → then supabaseAdmin curriculum I/O.
  */
-import { assertAdmin } from "@/platform/auth/assert-admin";
+import { assertAdmin } from "../auth/assert-admin.ts";
 import type { Database } from "@/platform/database/supabase/types";
 import { deserializeLessonNotes, serializeLessonNotes } from "./curriculum-lesson-notes.ts";
 
@@ -36,7 +36,7 @@ export async function adminListCurriculumFiles(
   admin: CurriculumAdminClient,
   auth: CurriculumAdminAuth,
 ): Promise<CurriculumFileRow[]> {
-  await assertAdmin(admin, auth.userId, auth.email);
+  await assertAdmin(admin, auth.userId);
 
   const { data, error } = await admin
     .from("curriculum_files")
@@ -53,7 +53,7 @@ export async function adminGetCurriculumLessons(
   auth: CurriculumAdminAuth,
   fileId: string,
 ): Promise<AdminCurriculumLessonView[]> {
-  await assertAdmin(admin, auth.userId, auth.email);
+  await assertAdmin(admin, auth.userId);
 
   const { data: lessons, error } = await admin
     .from("curriculum_lessons")
@@ -87,7 +87,7 @@ export async function adminPublishCurriculum(
   auth: CurriculumAdminAuth,
   fileId: string,
 ): Promise<{ success: true }> {
-  await assertAdmin(admin, auth.userId, auth.email);
+  await assertAdmin(admin, auth.userId);
 
   const { data: file, error: fetchErr } = await admin
     .from("curriculum_files")
@@ -126,7 +126,7 @@ export async function adminArchiveCurriculum(
   auth: CurriculumAdminAuth,
   fileId: string,
 ): Promise<{ success: true }> {
-  await assertAdmin(admin, auth.userId, auth.email);
+  await assertAdmin(admin, auth.userId);
 
   const { error } = await admin
     .from("curriculum_files")
@@ -146,7 +146,7 @@ export async function adminDeleteCurriculumDraft(
   auth: CurriculumAdminAuth,
   fileId: string,
 ): Promise<{ success: true }> {
-  await assertAdmin(admin, auth.userId, auth.email);
+  await assertAdmin(admin, auth.userId);
 
   const { data: file, error: fetchErr } = await admin
     .from("curriculum_files")
@@ -200,21 +200,18 @@ export async function adminSaveCurriculumDraft(
     }>;
   },
 ): Promise<{ fileId: string }> {
-  await assertAdmin(admin, auth.userId, auth.email);
+  await assertAdmin(admin, auth.userId);
 
-  const { data: fileId, error } = await admin.rpc(
-    "save_curriculum_draft_atomic",
-    {
-      p_user_id: auth.userId,
-      p_file_id: data.id ?? null,
-      p_original_name: data.originalName,
-      p_academic_year: data.academicYear,
-      p_semester: data.semester,
-      p_grade: data.grade,
-      p_subject: data.subject,
-      p_lessons: data.lessons,
-    },
-  );
+  const { data: fileId, error } = await admin.rpc("save_curriculum_draft_atomic", {
+    p_user_id: auth.userId,
+    p_file_id: data.id ?? null,
+    p_original_name: data.originalName,
+    p_academic_year: data.academicYear,
+    p_semester: data.semester,
+    p_grade: data.grade,
+    p_subject: data.subject,
+    p_lessons: data.lessons,
+  });
 
   if (error) {
     if (error.code === "ADMIN_REQUIRED") {

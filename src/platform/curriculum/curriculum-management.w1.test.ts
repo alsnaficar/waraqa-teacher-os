@@ -63,9 +63,20 @@ function mockAdminClient(options: {
             return {
               eq() {
                 return {
+                  eq() {
+                    return {
+                      async maybeSingle() {
+                        // assertAdmin queries specifically for role === 'admin'
+                        return {
+                          data: options.role === "admin" ? { role: "admin" } : null,
+                          error: null,
+                        };
+                      },
+                    };
+                  },
                   async maybeSingle() {
                     return {
-                      data: options.role ? { role: options.role } : null,
+                      data: options.role === "admin" ? { role: "admin" } : null,
                       error: null,
                     };
                   },

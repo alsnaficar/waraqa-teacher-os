@@ -43,10 +43,6 @@ export function AppSidebar() {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user) return;
-        if (user.email === "coonan89@gmail.com") {
-          setIsAdmin(true);
-          return;
-        }
         const { data } = await supabase
           .from("user_roles")
           .select("role")
@@ -90,14 +86,14 @@ export function AppSidebar() {
 
               {isAdmin && (
                 <>
-                  <SidebarMenuItem key="/curriculum-management">
+                  <SidebarMenuItem key="/admin/curriculum-management">
                     <SidebarMenuButton
                       asChild
-                      isActive={pathname === "/curriculum-management"}
+                      isActive={pathname === "/admin/curriculum-management"}
                       tooltip="إدارة المناهج"
                     >
                       <Link
-                        to="/curriculum-management"
+                        to="/admin/curriculum-management"
                         className="flex items-center gap-2 text-primary font-medium"
                       >
                         <ShieldCheck className="h-4 w-4" />
@@ -105,14 +101,14 @@ export function AppSidebar() {
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem key="/google-sheets">
+                  <SidebarMenuItem key="/admin/google-sheets">
                     <SidebarMenuButton
                       asChild
-                      isActive={pathname === "/google-sheets"}
+                      isActive={pathname === "/admin/google-sheets"}
                       tooltip="تكامل Google Sheets"
                     >
                       <Link
-                        to="/google-sheets"
+                        to="/admin/google-sheets"
                         className="flex items-center gap-2 text-emerald-600 font-medium hover:text-emerald-700"
                       >
                         <FileSpreadsheet className="h-4 w-4" />

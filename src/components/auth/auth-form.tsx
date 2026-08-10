@@ -6,6 +6,7 @@ import { Mail, ArrowLeft, CheckCircle2, Lock, User, Chrome } from "lucide-react"
 
 import { Button } from "@/shared/ui/button";
 import { supabase, isSupabaseConfigured } from "@/platform/database/supabase/client";
+import { resolvePostLoginPath } from "@/platform/auth/admin-access.functions";
 import { ar } from "@/i18n/ar";
 import { BrandLogo } from "@/components/layout/brand-logo";
 
@@ -103,7 +104,15 @@ export function AuthForm({
         if (onSuccess) {
           onSuccess();
         }
-        navigate({ to: "/dashboard" });
+        // Role-based home: admin → /admin, otherwise → /dashboard (server-resolved).
+        let destination: "/admin" | "/dashboard" = "/dashboard";
+        try {
+          const home = await resolvePostLoginPath();
+          destination = home.path;
+        } catch (resolveErr) {
+          console.error("[auth] post-login path resolve failed:", resolveErr);
+        }
+        navigate({ to: destination });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "حدث خطأ");
