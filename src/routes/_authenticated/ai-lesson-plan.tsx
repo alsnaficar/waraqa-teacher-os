@@ -37,7 +37,7 @@ import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
 import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
-import { generateLessonPreparation } from "@/platform/ai/functions/ai-lesson-generator.functions";
+import { prepareLessonSession } from "@/platform/lesson-sessions/prepare-lesson-session.functions";
 import { downloadStructuredLessonPrepDocx, copyToClipboard } from "@/platform/ai/docx";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
@@ -144,7 +144,7 @@ ${data.assessmentAndHomework?.summativeAssessment?.map((item: string) => `- ${it
 }
 
 function LessonPlanPage() {
-  const generate = useServerFn(generateLessonPreparation);
+  const prepare = useServerFn(prepareLessonSession);
   const search = Route.useSearch();
   const lessonSessionId = search.lessonSessionId;
 
@@ -243,29 +243,46 @@ function LessonPlanPage() {
   }, [lessonSessionId, getSessionView, getCurrentPreparation]);
 
   const mutation = useMutation({
-    mutationFn: async (input: {
-      lessonSessionId: string;
-      subject: string;
-      grade: string;
-      lessonName: string;
-      objectives?: string;
-      unit?: string;
-      lessonId?: string | null;
-      suggestedDate?: string;
-    }) => {
-      const result = await generate({ data: input });
-      return result;
+    mutationFn: async (input: { lessonSessionId: string }) => {
+      return prepare({ data: input });
     },
-    onSuccess: (data) => {
-      const md = convertStructuredToMarkdown(
-        curriculum.subject,
-        curriculum.grade,
-        lessonName,
-        unit,
-        data.content as StructuredLessonPrep,
-      );
-      setEditedMarkdown(md);
-      toast.success("تم توليد تحضير الدرس بنجاح!");
+    onSuccess: async () => {
+      // The Prepare pipeline persists the generation and marks the session prepared.
+      // Reload the authoritative session/preparation state from the server.
+      if (!lessonSessionId) return;
+
+      try {
+        const [view, preparation] = await Promise.all([
+          getSessionView({ data: { lessonSessionId } }),
+          getCurrentPreparation({ data: { lessonSessionId } }),
+        ]);
+
+        setSessionView(view);
+        setCurrentPreparation(preparation);
+
+        if (preparation?.content) {
+          setEditedMarkdown(
+            convertStructuredToMarkdown(
+              view.subject,
+              view.grade,
+              view.lessonTitle,
+              view.unitTitle ?? "",
+              preparation.content as StructuredLessonPrep,
+            ),
+          );
+        }
+
+        setLessonName(view.lessonTitle);
+        setLessonId(view.curriculumLessonId);
+        setObjectives(view.lessonObjectives ?? "");
+        setUnit(view.unitTitle ?? "");
+        setSuggestedDate(view.sessionDate);
+
+        toast.success("تم توليد تحضير الدرس وحفظه بنجاح!");
+      } catch (error) {
+        console.error("Failed to reload prepared lesson:", error);
+        toast.error("تم التوليد، لكن تعذر تحديث شاشة التحضير.");
+      }
     },
     onError: (error) => {
       console.error(error);
@@ -296,13 +313,6 @@ function LessonPlanPage() {
     setValidationErrors({});
     mutation.mutate({
       lessonSessionId: lessonSessionId!,
-      subject: curriculum.subject,
-      grade: curriculum.grade,
-      lessonName,
-      objectives: objectives || undefined,
-      unit: unit || undefined,
-      lessonId,
-      suggestedDate,
     });
   };
   const handleCopy = async () => {
@@ -344,9 +354,7 @@ function LessonPlanPage() {
   };
 
   const isPending = mutation.isPending;
-  const lessonData =
-    (mutation.data?.content as StructuredLessonPrep | undefined) ??
-    (currentPreparation?.content as StructuredLessonPrep | undefined);
+  const lessonData = currentPreparation?.content as StructuredLessonPrep | undefined;
 
   if (!lessonSessionId) {
     return <SessionBindingRequiredGate toolLabel="تحضير الدرس" />;
