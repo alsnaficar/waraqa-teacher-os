@@ -8,6 +8,18 @@ import {
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 
+function createPlannerId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export interface AcademicCalendarConfig {
   academicYear: string;
   semesterId: string;
@@ -333,7 +345,7 @@ export async function saveUserOverrides(
     .maybeSingle();
 
   const { error } = await resolvedContext.client.from("planner_entries").upsert({
-    id: existing?.id ?? crypto.randomUUID(),
+    id: existing?.id ?? createPlannerId(),
     user_id: resolvedContext.userId,
     week_start_date: CONFIG_SCHEDULE_OVERRIDES_DATE,
     day_of_week: 0,
@@ -810,7 +822,7 @@ export async function syncScheduleToDatabase(
       const weekStart = sun.toISOString().slice(0, 10);
 
       return {
-        id: crypto.randomUUID(),
+        id: createPlannerId(),
         user_id: resolvedContext.userId,
         week_start_date: weekStart,
         day_of_week: e.dayOfWeek,
