@@ -4,6 +4,7 @@ import type { CalculatedLessonEntry } from "../services/planner-engine";
 import { uniqueLessons } from "../services/semester-plan.service";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { addDays, formatHijri, startOfWeekSunday } from "@/shared/utils/date";
 import { cn } from "@/shared/utils/utils";
 
 const DAY_LABELS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -20,6 +21,18 @@ function clip(text: string, max = 80): string {
   const value = text.trim();
   if (!value) return "—";
   return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+/** Present an existing ISO date as the Hijri week range (Sun→Sat). Display only. */
+function formatSuggestedDateHijriRange(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const weekStart = startOfWeekSunday(date);
+  const weekEnd = addDays(weekStart, 6);
+  const stripHeh = (value: string) => value.replace(/\s*هـ\s*$/u, "").trim();
+
+  return `من ${stripHeh(formatHijri(weekStart))} إلى ${stripHeh(formatHijri(weekEnd))}`;
 }
 
 export function SemesterPlanTable({
@@ -81,20 +94,27 @@ export function SemesterPlanTable({
                 <td className="px-2 py-2.5 tabular-nums">
                   {row.teachingWeek || row.weekNumber}
                   <div className="text-[11px] text-muted-foreground">
-                    {DAY_LABELS[row.dayOfWeek] ?? ""} · ح{row.period}
+                    {DAY_LABELS[row.dayOfWeek] ?? ""}
+                    {row.period ? ` · ${row.period}` : ""}
                   </div>
                 </td>
                 <td className="px-2 py-2.5">
-                  <Input
-                    type="date"
-                    className="h-11 w-[146px]"
-                    value={row.suggestedDate}
-                    disabled={locked || !row.lessonId}
-                    onChange={(event) => {
-                      if (!row.lessonId || readOnly) return;
-                      onMoveDate(row.lessonId, event.target.value, row.period);
-                    }}
-                  />
+                  <div className="space-y-1.5" dir="rtl">
+                    <p className="text-xs font-medium leading-relaxed text-foreground sm:text-sm">
+                      {formatSuggestedDateHijriRange(row.suggestedDate)}
+                    </p>
+                    <Input
+                      type="date"
+                      className="h-11 w-[146px]"
+                      value={row.suggestedDate}
+                      disabled={locked || !row.lessonId}
+                      onChange={(event) => {
+                        if (!row.lessonId || readOnly) return;
+                        onMoveDate(row.lessonId, event.target.value, row.period);
+                      }}
+                      aria-label="تعديل تاريخ الحصة"
+                    />
+                  </div>
                 </td>
                 <td className="px-2 py-2.5">{row.unit || "—"}</td>
                 <td className="px-2 py-2.5 font-medium">
