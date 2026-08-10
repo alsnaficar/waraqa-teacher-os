@@ -24,6 +24,18 @@ import {
 
 export { normalisePlanEntry };
 
+function createPlannerId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export interface SemesterPlanMeta {
   teacherName: string;
   schoolName: string;
@@ -288,7 +300,7 @@ export async function moveLessonInPlan(input: {
   const next: ScheduleOverride[] = [
     ...overrides.filter((o) => !(o.type === "move" && o.lessonId === input.lessonId)),
     {
-      id: crypto.randomUUID(),
+      id: createPlannerId(),
       type: "move",
       lessonId: input.lessonId,
       targetDate: input.targetDate,
@@ -322,7 +334,7 @@ export async function swapLessonsInPlan(input: {
         ),
     ),
     {
-      id: crypto.randomUUID(),
+      id: createPlannerId(),
       type: "swap",
       lessonIdA: input.lessonIdA,
       lessonIdB: input.lessonIdB,
