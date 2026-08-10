@@ -1,8 +1,6 @@
 import { useState } from "react";
 
 import { useQueries } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-
 import {
   BookOpen,
   CalendarDays,
@@ -10,11 +8,9 @@ import {
   ChevronRight,
   ClipboardList,
   FileCheck2,
-  Clock,
   FlaskConical,
   Globe,
   KeyRound,
-  MapPin,
   PlaySquare,
   Trash2,
 } from "lucide-react";
@@ -26,14 +22,13 @@ import { Skeleton } from "@/shared/ui/skeleton";
 
 import { useTeacherTimetable } from "../hooks/useTeacherTimetable";
 import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
-
-const DAYS = [
-  { value: 0, label: "الأحد" },
-  { value: 1, label: "الاثنين" },
-  { value: 2, label: "الثلاثاء" },
-  { value: 3, label: "الأربعاء" },
-  { value: 4, label: "الخميس" },
-];
+import {
+  LessonActions,
+  LessonSelector,
+  PreparationStatusIcon,
+} from "./teacher-timetable-lesson-controls";
+import { TIMETABLE_DAYS } from "./teacher-timetable.constants";
+import { TeacherWeeklyTimetableMobile } from "./teacher-weekly-timetable-mobile";
 
 function getWeekRange(weekOffset = 0) {
   const today = new Date();
@@ -66,6 +61,7 @@ function getWeekRange(weekOffset = 0) {
     gregorianEnd: gregorianFormatter.format(thursday),
   };
 }
+
 function formatDayDates(date: Date) {
   const hijri = new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura", {
     day: "numeric",
@@ -83,44 +79,6 @@ function formatDayDates(date: Date) {
     hijri: hijri.format(date),
     gregorian: gregorian.format(date),
   };
-}
-
-function formatTime(value?: string) {
-  if (!value) return null;
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleTimeString("ar-SA", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function LessonActions({ lessonSessionId }: { lessonSessionId?: string }) {
-  return (
-    <div className="mt-2 flex flex-row-reverse items-center justify-center gap-1.5" dir="rtl">
-      {lessonSessionId ? (
-        <Link to="/ai-lesson-plan" search={{ lessonSessionId } as never} aria-label="تحضير الدرس">
-          <BookOpen className="h-3.5 w-3.5 text-emerald-600" />
-        </Link>
-      ) : (
-        <BookOpen className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="تحضير" />
-      )}
-
-      <FileCheck2 className="h-3.5 w-3.5 text-cyan-600" aria-label="واجب" />
-
-      <FlaskConical className="h-3.5 w-3.5 text-purple-500" aria-label="اختبار" />
-
-      <ClipboardList className="h-3.5 w-3.5 text-orange-500" aria-label="ورقة عمل" />
-
-      <Globe className="h-3.5 w-3.5 text-blue-500" aria-label="إثراء" />
-
-      <PlaySquare className="h-3.5 w-3.5 text-indigo-500" aria-label="الوسائل" />
-
-      <Trash2 className="h-3.5 w-3.5 text-red-500" aria-label="حذف" />
-    </div>
-  );
 }
 
 function PlannerLegend() {
@@ -162,6 +120,61 @@ function PlannerLegend() {
     </div>
   );
 }
+
+function TimetableWeekHeader({
+  weekRange,
+  entriesCount,
+  onPreviousWeek,
+  onNextWeek,
+}: {
+  weekRange: ReturnType<typeof getWeekRange>;
+  entriesCount: number;
+  onPreviousWeek: () => void;
+  onNextWeek: () => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2" dir="rtl">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-11 min-h-[44px] shrink-0 gap-1 px-2"
+          onClick={onPreviousWeek}
+          aria-label="الأسبوع السابق"
+        >
+          <ChevronRight className="h-4 w-4" />
+          <span className="hidden sm:inline">السابق</span>
+        </Button>
+
+        <CardTitle className="flex min-w-0 flex-1 flex-col items-center text-center">
+          <span className="text-base font-bold">الجدول الأسبوعي</span>
+          <span className="mt-1 text-[11px] font-normal text-muted-foreground">
+            من {weekRange.hijriStart} إلى {weekRange.hijriEnd} هـ
+          </span>
+          <span className="text-[10px] font-normal text-muted-foreground/80">
+            من {weekRange.gregorianStart} إلى {weekRange.gregorianEnd} م
+          </span>
+        </CardTitle>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-11 min-h-[44px] shrink-0 gap-1 px-2"
+          onClick={onNextWeek}
+          aria-label="الأسبوع التالي"
+        >
+          <span className="hidden sm:inline">التالي</span>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="mt-2 flex justify-center">
+        <Badge variant="secondary">{entriesCount} حصص</Badge>
+      </div>
+    </>
+  );
+}
+
 export function TeacherWeeklyTimetable() {
   const { loading, entries, error } = useTeacherTimetable();
   const [weekOffset, setWeekOffset] = useState(0);
@@ -171,7 +184,11 @@ export function TeacherWeeklyTimetable() {
   const weekDates = Array.from({ length: 5 }, (_, index) => {
     const date = new Date(weekRange.sunday);
     date.setDate(weekRange.sunday.getDate() + index);
-    return date.toISOString().slice(0, 10);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
   });
 
   const sessionQueries = useQueries({
@@ -190,21 +207,30 @@ export function TeacherWeeklyTimetable() {
 
   if (loading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {DAYS.map((day) => (
-          <Card key={day.value}>
-            <CardHeader>
-              <Skeleton className="h-5 w-24" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
-            </CardContent>
-          </Card>
-        ))}
+      <div className="min-w-0 w-full max-w-[100dvw] space-y-3">
+        <div className="lg:hidden space-y-3 px-1">
+          <Skeleton className="h-11 w-full rounded-xl" />
+          {[0, 1, 2].map((key) => (
+            <Skeleton key={key} className="h-40 w-full rounded-xl" />
+          ))}
+        </div>
+        <div className="hidden gap-4 lg:grid lg:grid-cols-3">
+          {TIMETABLE_DAYS.map((day) => (
+            <Card key={day.value}>
+              <CardHeader>
+                <Skeleton className="h-5 w-24" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
+
   if (error) {
     return (
       <Card>
@@ -217,6 +243,7 @@ export function TeacherWeeklyTimetable() {
       </Card>
     );
   }
+
   if (entries.length === 0) {
     return (
       <Card>
@@ -237,135 +264,134 @@ export function TeacherWeeklyTimetable() {
     entries.find((entry) => entry.dayOfWeek === day && entry.period === period);
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="border-b bg-muted/30">
-        <div className="flex items-center justify-between gap-2" dir="rtl">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 shrink-0 gap-1 px-2"
-            onClick={() => setWeekOffset((value) => value - 1)}
-            aria-label="الأسبوع السابق"
-          >
-            <ChevronRight className="h-4 w-4" />
-            <span className="hidden sm:inline">السابق</span>
-          </Button>
+    <div className="min-w-0 w-full max-w-[100dvw]">
+      <Card className="min-w-0 overflow-hidden">
+        <CardHeader className="border-b bg-muted/30">
+          <TimetableWeekHeader
+            weekRange={weekRange}
+            entriesCount={entries.length}
+            onPreviousWeek={() => setWeekOffset((value) => value - 1)}
+            onNextWeek={() => setWeekOffset((value) => value + 1)}
+          />
+        </CardHeader>
 
-          <CardTitle className="flex min-w-0 flex-1 flex-col items-center text-center">
-            <span className="text-base font-bold">الجدول الأسبوعي</span>
-            <span className="mt-1 text-[11px] font-normal text-muted-foreground">
-              من {weekRange.hijriStart} إلى {weekRange.hijriEnd} هـ
-            </span>
-            <span className="text-[10px] font-normal text-muted-foreground/80">
-              من {weekRange.gregorianStart} إلى {weekRange.gregorianEnd} م
-            </span>
-          </CardTitle>
+        <CardContent className="min-w-0 p-0">
+          <div className="px-3 pt-2">
+            <PlannerLegend />
+          </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 shrink-0 gap-1 px-2"
-            onClick={() => setWeekOffset((value) => value + 1)}
-            aria-label="الأسبوع التالي"
-          >
-            <span className="hidden sm:inline">التالي</span>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-        </div>
+          <TeacherWeeklyTimetableMobile
+            weekSunday={weekRange.sunday}
+            maxPeriod={maxPeriod}
+            getEntry={getEntry}
+            sessionBySlot={sessionBySlot}
+          />
 
-        <div className="mt-2 flex justify-center">
-          <Badge variant="secondary">{entries.length} حصص</Badge>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-0">
-        <div className="px-3 pt-2">
-          <PlannerLegend />
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] table-fixed border-collapse text-right" dir="rtl">
-            <thead>
-              <tr>
-                <th className="w-20 border-b border-l bg-muted/70 p-2 text-center text-sm font-bold">
-                  الحصة
-                </th>
-
-                {DAYS.map((day, index) => {
-                  const dayDate = new Date(weekRange.sunday);
-                  dayDate.setDate(weekRange.sunday.getDate() + index);
-
-                  const dayDates = formatDayDates(dayDate);
-
-                  return (
-                    <th
-                      key={day.value}
-                      className="border-b border-l bg-muted/70 p-2 text-center last:border-l-0"
-                    >
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-sm font-bold">{day.label}</span>
-
-                        <span className="text-[11px] font-medium text-foreground/80">
-                          {dayDates.hijri}
-                        </span>
-
-                        <span className="text-[10px] font-normal text-muted-foreground">
-                          {dayDates.gregorian}
-                        </span>
-                      </div>
+          <div className="hidden min-w-0 lg:block">
+            <div className="min-w-0 overflow-x-auto">
+              <table
+                className="w-full min-w-[920px] table-fixed border-collapse text-right"
+                dir="rtl"
+              >
+                <thead>
+                  <tr>
+                    <th className="w-20 border-b border-l bg-muted/70 p-2 text-center text-sm font-bold">
+                      الحصة
                     </th>
-                  );
-                })}
-              </tr>
-            </thead>
 
-            <tbody>
-              {Array.from({ length: maxPeriod }, (_, index) => index + 1).map((period) => (
-                <tr key={period}>
-                  <td className="border-b border-l bg-muted/20 p-2 text-center align-middle">
-                    <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-primary/10 px-2 text-sm font-bold text-primary">
-                      {period}
-                    </span>
-                  </td>
+                    {TIMETABLE_DAYS.map((day, index) => {
+                      const dayDate = new Date(weekRange.sunday);
+                      dayDate.setDate(weekRange.sunday.getDate() + index);
 
-                  {DAYS.map((day) => {
-                    const entry = getEntry(day.value, period);
+                      const dayDates = formatDayDates(dayDate);
 
-                    return (
-                      <td
-                        key={day.value}
-                        className="h-24 border-b border-l p-1.5 align-top last:border-l-0"
-                      >
-                        {entry ? (
-                          <div className="flex h-full flex-col items-center justify-center rounded-lg border bg-card p-2 shadow-sm">
-                            <div className="text-center text-sm font-bold leading-tight">
-                              {entry.subject}
-                            </div>
+                      return (
+                        <th
+                          key={day.value}
+                          className="border-b border-l bg-muted/70 p-2 text-center last:border-l-0"
+                        >
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-sm font-bold">{day.label}</span>
 
-                            <div className="mt-1 text-[11px] text-muted-foreground">
-                              الفصل: {entry.className}
-                              <LessonActions
-                                lessonSessionId={
-                                  sessionBySlot.get(`${entry.dayOfWeek}-${entry.period}`)?.id
-                                }
-                              />
-                            </div>
-                            <LessonActions />
+                            <span className="text-[11px] font-medium text-foreground/80">
+                              {dayDates.hijri}
+                            </span>
+
+                            <span className="text-[10px] font-normal text-muted-foreground">
+                              {dayDates.gregorian}
+                            </span>
                           </div>
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-xs text-muted-foreground/40">
-                            —
-                          </div>
-                        )}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {Array.from({ length: maxPeriod }, (_, index) => index + 1).map((period) => (
+                    <tr key={period}>
+                      <td className="border-b border-l bg-muted/20 p-2 text-center align-middle">
+                        <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-primary/10 px-2 text-sm font-bold text-primary">
+                          {period}
+                        </span>
                       </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+
+                      {TIMETABLE_DAYS.map((day) => {
+                        const entry = getEntry(day.value, period);
+                        const lessonSession = entry
+                          ? sessionBySlot.get(`${entry.dayOfWeek}-${entry.period}`)
+                          : undefined;
+
+                        return (
+                          <td
+                            key={day.value}
+                            className="h-24 border-b border-l p-1.5 align-top last:border-l-0"
+                          >
+                            {entry ? (
+                              <div className="flex h-full min-w-0 max-w-full flex-col items-stretch justify-center overflow-hidden rounded-lg border bg-card p-2 shadow-sm">
+                                <div className="flex min-w-0 items-center justify-center gap-1.5">
+                                  <PreparationStatusIcon
+                                    prepared={Boolean(lessonSession?.lessonLocked)}
+                                  />
+                                  <div className="min-w-0 truncate text-center text-sm font-bold leading-tight">
+                                    {entry.subject}
+                                  </div>
+                                </div>
+
+                                {lessonSession ? (
+                                  <div className="mt-1 w-full min-w-0 max-w-full">
+                                    <LessonSelector
+                                      lessonSessionId={lessonSession.id}
+                                      lessonLocked={lessonSession.lessonLocked}
+                                      compact
+                                      hideLabel
+                                      className="mt-1 w-full min-w-0 max-w-full"
+                                    />
+
+                                    <LessonActions
+                                      lessonSessionId={lessonSession.id}
+                                      compact
+                                      className="mt-1.5"
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-xs text-muted-foreground/40">
+                                —
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
