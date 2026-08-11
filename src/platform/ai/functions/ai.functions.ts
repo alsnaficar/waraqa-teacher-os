@@ -47,11 +47,13 @@ const WorksheetInput = z.object({
 /**
  * Live worksheet entry — thin wrapper over the unified session-bound pipeline.
  * Strategy: AIOrchestrator Markdown (unchanged prompts/model).
+ * Entitlement (`worksheet`) is enforced in runSessionBoundGeneration.
  */
 export const generateWorksheet = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => WorksheetInput.parse(data))
   .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
     const auth = { client: context.supabase, userId: context.userId };
     const result = await runSessionBoundGeneration(
       {
@@ -60,6 +62,7 @@ export const generateWorksheet = createServerFn({ method: "POST" })
         auth,
         supabase: context.supabase,
         userId: context.userId,
+        billingWriteClient: supabaseAdmin,
       },
       (ctx) =>
         executeWorksheetGeneration(ctx, {
@@ -117,11 +120,13 @@ const ActivityIdeasInput = z.object({
 /**
  * Live activity_ideas entry — thin wrapper over the unified session-bound pipeline.
  * Strategy: AIOrchestrator Markdown (unchanged prompts/model).
+ * Entitlement (`activity_ideas`) is enforced in runSessionBoundGeneration.
  */
 export const generateActivityIdeas = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => ActivityIdeasInput.parse(data))
   .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
     const auth = { client: context.supabase, userId: context.userId };
     const result = await runSessionBoundGeneration(
       {
@@ -130,6 +135,7 @@ export const generateActivityIdeas = createServerFn({ method: "POST" })
         auth,
         supabase: context.supabase,
         userId: context.userId,
+        billingWriteClient: supabaseAdmin,
       },
       (ctx) =>
         executeActivityIdeasGeneration(ctx, {

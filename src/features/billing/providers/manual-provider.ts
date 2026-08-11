@@ -5,7 +5,8 @@ import {
   type PaymentConfirmation,
   type PaymentProvider,
 } from "./payment-provider";
-import type { CheckoutInstruction } from "../types";
+import { readPublicBankDetails } from "../public-bank";
+import type { CheckoutInstruction, PublicBankDetails } from "../types";
 
 /**
  * Bank transfer settled outside the system.
@@ -20,12 +21,7 @@ export const manualPaymentProvider: PaymentProvider = {
   label: "تحويل بنكي",
 
   async createCheckout(request: CheckoutRequest): Promise<CheckoutInstruction> {
-    return {
-      kind: "manual",
-      reference: buildReference(request.paymentId),
-      message:
-        "حوّل قيمة الاشتراك ثم أدخل رقم العملية البنكية. سيتم تفعيل اشتراكك بعد مراجعة التحويل.",
-    };
+    return buildManualCheckoutInstruction(request.paymentId);
   },
 
   async confirmPayment(request: ConfirmRequest): Promise<PaymentConfirmation> {
@@ -35,8 +31,22 @@ export const manualPaymentProvider: PaymentProvider = {
 };
 
 /** Short, human-quotable reference derived from the payment id. */
-function buildReference(paymentId: string): string {
+export function buildManualReference(paymentId: string): string {
   return `WRQ-${paymentId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
+
+export function buildManualCheckoutInstruction(
+  paymentId: string,
+  env: Record<string, string | undefined> = process.env,
+): Extract<CheckoutInstruction, { kind: "manual" }> {
+  const bank: PublicBankDetails | null = readPublicBankDetails(env);
+  return {
+    kind: "manual",
+    reference: buildManualReference(paymentId),
+    message:
+      "حوّل قيمة الاشتراك إلى الحساب أدناه ثم أدخل رقم العملية البنكية. سيتم تفعيل اشتراكك بعد مراجعة التحويل.",
+    bank,
+  };
 }
 
 registerPaymentProvider(manualPaymentProvider);

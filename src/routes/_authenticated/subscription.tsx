@@ -6,10 +6,12 @@ import { SubscriptionBadge } from "@/features/billing/components/subscription-ba
 import {
   useBillingHistory,
   useCheckout,
+  useOpenCheckout,
   usePlans,
   useSubscription,
 } from "@/features/billing/hooks/useSubscription";
-import type { CheckoutResult } from "@/features/billing/types";
+import { paymentStatusLabel } from "@/features/billing/billing.logic";
+import type { OpenCheckout, PublicBankDetails } from "@/features/billing/types";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -26,13 +28,20 @@ function SubscriptionPage() {
   const { state, loading } = useSubscription();
   const plans = usePlans();
   const history = useBillingHistory();
+  const openCheckout = useOpenCheckout();
   const { begin, submitReference, checkCoupon } = useCheckout();
 
   const [couponCode, setCouponCode] = useState("");
   const [reference, setReference] = useState("");
-  const [checkout, setCheckout] = useState<CheckoutResult | null>(null);
 
+  const checkout = openCheckout.data ?? null;
   const manualInstruction = checkout?.instruction.kind === "manual" ? checkout.instruction : null;
+  const canSubmitReference = checkout?.paymentStatus === "created";
+  const scheduledConfirmed =
+    !openCheckout.isPending &&
+    !checkout &&
+    state.access === "pending" &&
+    state.subscription !== null;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6">
@@ -52,6 +61,12 @@ function SubscriptionPage() {
             )}
           </div>
 
+          {scheduledConfirmed ? (
+            <p className="text-sm text-emerald-700 dark:text-emerald-300">
+              تم تأكيد اشتراكك. سيبدأ في {state.subscription?.startsAt ?? "موعده الرسمي"}.
+            </p>
+          ) : null}
+
           <dl className="grid gap-3 sm:grid-cols-3">
             <Field label="الباقة" value={state.plan?.name ?? "—"} />
             <Field label="تاريخ الانتهاء" value={state.expiresAt ?? "—"} />
@@ -67,59 +82,24 @@ function SubscriptionPage() {
         </CardContent>
       </Card>
 
-      {manualInstruction ? (
-        <Card className="border-sky-500/30 bg-sky-500/5">
-          <CardContent className="space-y-3 p-4">
-            <h2 className="font-semibold">أكمل عملية الدفع</h2>
-            <p className="text-sm text-muted-foreground">{manualInstruction.message}</p>
-
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background p-3">
-              <span className="text-xs text-muted-foreground">الرقم المرجعي</span>
-              <code className="flex-1 font-mono text-sm font-bold">
-                {manualInstruction.reference}
-              </code>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 shrink-0"
-                aria-label="نسخ الرقم المرجعي"
-                onClick={() => void navigator.clipboard?.writeText(manualInstruction.reference)}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <p className="text-sm font-medium">
-              المبلغ المستحق: {checkout?.amount.toFixed(2)} ريال
-            </p>
-
-            <div className="flex flex-wrap gap-2">
-              <Input
-                value={reference}
-                onChange={(event) => setReference(event.target.value)}
-                placeholder="رقم العملية البنكية"
-                className="h-11 min-w-[180px] flex-1"
-              />
-              <Button
-                className="h-11 w-full sm:w-auto"
-                disabled={reference.trim().length < 3 || submitReference.isPending}
-                onClick={() =>
-                  checkout &&
-                  submitReference.mutate(
-                    { paymentId: checkout.paymentId, reference },
-                    { onSuccess: () => setCheckout(null) },
-                  )
-                }
-              >
-                {submitReference.isPending ? "جارٍ الإرسال..." : "إرسال رقم العملية"}
-              </Button>
-            </div>
-
-            {submitReference.error ? (
-              <p className="text-sm text-red-600">{errorMessage(submitReference.error)}</p>
-            ) : null}
-          </CardContent>
-        </Card>
+      {checkout && manualInstruction ? (
+        <CheckoutCard
+          checkout={checkout}
+          bank={manualInstruction.bank ?? null}
+          referenceQuote={manualInstruction.reference}
+          message={manualInstruction.message}
+          canSubmit={canSubmitReference}
+          bankReference={reference}
+          onBankReferenceChange={setReference}
+          submitPending={submitReference.isPending}
+          submitError={submitReference.error}
+          onSubmit={() =>
+            submitReference.mutate(
+              { paymentId: checkout.paymentId, reference },
+              { onSuccess: () => setReference("") },
+            )
+          }
+        />
       ) : null}
 
       <Card>
@@ -183,13 +163,10 @@ function SubscriptionPage() {
                       className="mt-auto h-11 w-full"
                       disabled={begin.isPending}
                       onClick={() =>
-                        begin.mutate(
-                          {
-                            planCode: plan.code,
-                            couponCode: couponCode.trim() || undefined,
-                          },
-                          { onSuccess: setCheckout },
-                        )
+                        begin.mutate({
+                          planCode: plan.code,
+                          couponCode: couponCode.trim() || undefined,
+                        })
                       }
                     >
                       {begin.isPending ? "جارٍ التجهيز..." : "اشترك الآن"}
@@ -222,7 +199,9 @@ function SubscriptionPage() {
               {history.data.map((payment) => (
                 <li key={payment.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                   <span className="font-medium">{payment.amount} ريال</span>
-                  <span className="text-muted-foreground">{payment.status}</span>
+                  <span className="text-muted-foreground">
+                    {paymentStatusLabel(payment.status)}
+                  </span>
                   <span className="ms-auto text-xs text-muted-foreground">
                     {payment.paidAt?.slice(0, 10) ?? payment.createdAt?.slice(0, 10) ?? "—"}
                   </span>
@@ -234,6 +213,123 @@ function SubscriptionPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function CheckoutCard({
+  checkout,
+  bank,
+  referenceQuote,
+  message,
+  canSubmit,
+  bankReference,
+  onBankReferenceChange,
+  submitPending,
+  submitError,
+  onSubmit,
+}: {
+  checkout: OpenCheckout;
+  bank: PublicBankDetails | null;
+  referenceQuote: string;
+  message: string;
+  canSubmit: boolean;
+  bankReference: string;
+  onBankReferenceChange: (value: string) => void;
+  submitPending: boolean;
+  submitError: unknown;
+  onSubmit: () => void;
+}) {
+  return (
+    <Card className="border-sky-500/30 bg-sky-500/5">
+      <CardContent className="space-y-3 p-4">
+        <h2 className="font-semibold">أكمل عملية الدفع</h2>
+        <p className="text-sm text-muted-foreground">{message}</p>
+
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <Field label="الباقة" value={checkout.planName || "—"} />
+          <Field label="حالة الدفع" value={paymentStatusLabel(checkout.paymentStatus)} />
+        </dl>
+
+        <p className="text-sm font-medium">المبلغ المستحق: {checkout.amount.toFixed(2)} ريال</p>
+
+        {bank ? <BankDetails bank={bank} /> : null}
+
+        <CopyRow label="الرقم المرجعي" value={referenceQuote} copyLabel="نسخ الرقم المرجعي" />
+
+        {canSubmit ? (
+          <div className="flex flex-wrap gap-2">
+            <Input
+              value={bankReference}
+              onChange={(event) => onBankReferenceChange(event.target.value)}
+              placeholder="رقم العملية البنكية"
+              className="h-11 min-w-[180px] flex-1"
+            />
+            <Button
+              className="h-11 w-full sm:w-auto"
+              disabled={bankReference.trim().length < 3 || submitPending}
+              onClick={onSubmit}
+            >
+              {submitPending ? "جارٍ الإرسال..." : "إرسال رقم العملية"}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+            {checkout.transferReference
+              ? `تم إرسال رقم العملية: ${checkout.transferReference}`
+              : "تم إرسال رقم العملية. بانتظار مراجعة التحويل."}
+          </p>
+        )}
+
+        {submitError ? <p className="text-sm text-red-600">{errorMessage(submitError)}</p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BankDetails({ bank }: { bank: PublicBankDetails }) {
+  return (
+    <div className="space-y-2 rounded-xl border border-border bg-background p-3">
+      <p className="text-xs text-muted-foreground">بيانات التحويل</p>
+      <p className="text-sm">
+        <span className="text-muted-foreground">البنك: </span>
+        {bank.name}
+      </p>
+      <p className="text-sm">
+        <span className="text-muted-foreground">المستفيد: </span>
+        {bank.beneficiary}
+      </p>
+      <CopyRow label="الآيبان" value={bank.iban} copyLabel="نسخ الآيبان" ltr />
+    </div>
+  );
+}
+
+function CopyRow({
+  label,
+  value,
+  copyLabel,
+  ltr = false,
+}: {
+  label: string;
+  value: string;
+  copyLabel: string;
+  ltr?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background p-3">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <code dir={ltr ? "ltr" : undefined} className="flex-1 break-all font-mono text-sm font-bold">
+        {value}
+      </code>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-11 w-11 shrink-0"
+        aria-label={copyLabel}
+        onClick={() => void navigator.clipboard?.writeText(value)}
+      >
+        <Copy className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

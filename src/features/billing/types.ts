@@ -71,17 +71,66 @@ export interface CheckoutResult {
   instruction: CheckoutInstruction;
 }
 
+/** Public destination only. Never includes payment_methods.settings. */
+export interface PublicBankDetails {
+  name: string;
+  beneficiary: string;
+  iban: string;
+}
+
 /**
  * What the teacher must do next to complete payment. Manual transfer returns a
  * reference to quote; a hosted gateway returns a URL to redirect to.
  */
 export type CheckoutInstruction =
-  { kind: "manual"; reference: string; message: string } | { kind: "redirect"; url: string };
+  | {
+      kind: "manual";
+      reference: string;
+      message: string;
+      bank?: PublicBankDetails | null;
+    }
+  | { kind: "redirect"; url: string };
+
+/**
+ * Reconstructable unpaid checkout for the authenticated teacher.
+ * `paymentId` is required to submit a reference; IDs are not shown in the UI.
+ */
+export interface OpenCheckout extends CheckoutResult {
+  paymentStatus: string;
+  planName: string;
+  transferReference: string | null;
+}
 
 /** Raised when a teacher tries to act on a subscription that is not theirs. */
 export class BillingAccessError extends Error {
   constructor(message = "لا تملك صلاحية الوصول إلى هذا الاشتراك.") {
     super(message);
     this.name = "BillingAccessError";
+  }
+}
+
+export type BillingErrorCode =
+  | "CALENDAR_UNAVAILABLE"
+  | "INVALID_PLAN"
+  | "UNSUPPORTED_TERM"
+  | "INVALID_PERIOD"
+  | "DUPLICATE_CHECKOUT"
+  | "EXISTING_SUBSCRIPTION"
+  | "INVALID_AMOUNT"
+  | "INVALID_PAYMENT"
+  | "SUBSCRIPTION_NOT_FOUND"
+  | "PERIOD_ENDED"
+  | "FORBIDDEN"
+  | "FEATURE_ENTITLEMENT_REQUIRED"
+  | "PAYMENT_REFERENCE_LOCKED";
+
+/** Controlled billing failure. Message is safe to show in the UI. */
+export class BillingError extends Error {
+  readonly code: BillingErrorCode;
+
+  constructor(code: BillingErrorCode, message: string) {
+    super(message);
+    this.name = "BillingError";
+    this.code = code;
   }
 }

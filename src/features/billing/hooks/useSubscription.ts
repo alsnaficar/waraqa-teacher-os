@@ -4,17 +4,19 @@ import { useCallback } from "react";
 import {
   assessCouponCode,
   getBillingHistory,
+  getOpenCheckout,
   getSubscriptionState,
   listPlans,
   startCheckout,
   submitPaymentReference,
 } from "../billing.functions";
 import { grantsAccess } from "../billing.logic";
-import type { SubscriptionState } from "../types";
+import type { OpenCheckout, SubscriptionState } from "../types";
 
 export const subscriptionQueryKey = ["billing", "subscription-state"] as const;
 export const plansQueryKey = ["billing", "plans"] as const;
 export const billingHistoryQueryKey = ["billing", "history"] as const;
+export const openCheckoutQueryKey = ["billing", "open-checkout"] as const;
 
 const UNSUBSCRIBED: SubscriptionState = {
   access: "none",
@@ -67,6 +69,14 @@ export function useBillingHistory() {
   });
 }
 
+export function useOpenCheckout() {
+  return useQuery<OpenCheckout | null>({
+    queryKey: openCheckoutQueryKey,
+    staleTime: 15_000,
+    queryFn: () => getOpenCheckout(),
+  });
+}
+
 /** Checkout actions, each invalidating subscription state on success. */
 export function useCheckout() {
   const queryClient = useQueryClient();
@@ -75,6 +85,7 @@ export function useCheckout() {
     return Promise.all([
       queryClient.invalidateQueries({ queryKey: subscriptionQueryKey }),
       queryClient.invalidateQueries({ queryKey: billingHistoryQueryKey }),
+      queryClient.invalidateQueries({ queryKey: openCheckoutQueryKey }),
     ]);
   }, [queryClient]);
 

@@ -9,8 +9,15 @@ import {
   prepareOwnedLessonSession,
 } from "./prepare-lesson-session.server.ts";
 import { LessonSessionService } from "./lesson-session.service.ts";
+import { BillingError } from "@/features/billing/types.ts";
 import { LessonSessionBindingError } from "./require-owned-lesson-session.ts";
 import type { SupabaseUserContext } from "@/platform/database/supabase/context";
+import {
+  allowEntitlementTables,
+  createEntitlementTableHandler,
+  emptyEntitlementTables,
+  type EntitlementMockTables,
+} from "@/features/billing/entitlement.test-support.ts";
 
 const TEACHER_A = "11111111-1111-4111-8111-111111111111";
 const TEACHER_B = "22222222-2222-4222-8222-222222222222";
@@ -76,6 +83,7 @@ function mockAuth(options: {
     open: Promise<void>;
     release: () => void;
   };
+  entitlementTables?: EntitlementMockTables;
 }): {
   auth: SupabaseUserContext;
   inserted: { current: Record<string, unknown> | null; rows: Record<string, unknown>[] };
@@ -103,9 +111,15 @@ function mockAuth(options: {
 
   // Serialize status-changing updates (simulates atomic row UPDATE).
   let writeChain: Promise<void> = Promise.resolve();
+  const billingFrom = createEntitlementTableHandler(
+    options.entitlementTables ?? allowEntitlementTables(options.userId),
+  );
 
   const client = {
     from(table: string) {
+      const billing = billingFrom(table);
+      if (billing) return billing;
+
       if (table === "lesson_sessions") {
         const state: {
           filters: Record<string, string | boolean>;
@@ -636,6 +650,36 @@ describe("P3 Step 4 preparing-state claim", () => {
         ?.lessonContext?.curriculumLessonId,
       CURRICULUM_LESSON,
     );
+  });
+
+  it("entitlement denied before claim, Gemini, and persist", async () => {
+    const { auth, inserted, sessionState } = mockAuth({
+      userId: TEACHER_A,
+      sessionRow: makeSessionRow(),
+      entitlementTables: emptyEntitlementTables(),
+    });
+    let providerCalls = 0;
+
+    await assert.rejects(
+      () =>
+        prepareOwnedLessonSession(
+          {
+            lessonSessionId: SESSION_A,
+            auth,
+            supabase: auth.client,
+            userId: TEACHER_A,
+          },
+          async () => {
+            providerCalls += 1;
+            return { content: {}, model: "x", prompt: "x", input: {} };
+          },
+        ),
+      (err: unknown) => err instanceof BillingError && err.code === "FEATURE_ENTITLEMENT_REQUIRED",
+    );
+
+    assert.equal(providerCalls, 0);
+    assert.equal(inserted.current, null);
+    assert.equal(sessionState.current?.status, "scheduled");
   });
 
   it("cross-teacher rejected before claim/AI", async () => {

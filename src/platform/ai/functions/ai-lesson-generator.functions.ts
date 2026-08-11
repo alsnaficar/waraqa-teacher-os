@@ -45,11 +45,13 @@ function requireStructuredLessonPlanContent(
 /**
  * Live lesson_plan entry — thin wrapper over the unified session-bound pipeline.
  * Strategy: direct Gemini structured JSON (unchanged prompts/model/schema).
+ * Entitlement (`lesson_plan`) is enforced in runSessionBoundGeneration.
  */
 export const generateLessonPreparation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => LessonPrepInput.parse(data))
   .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
     const auth = { client: context.supabase, userId: context.userId };
     const result = await runSessionBoundGeneration(
       {
@@ -58,6 +60,7 @@ export const generateLessonPreparation = createServerFn({ method: "POST" })
         auth,
         supabase: context.supabase,
         userId: context.userId,
+        billingWriteClient: supabaseAdmin,
       },
       (ctx) =>
         executeLessonPlanGeneration(ctx, {

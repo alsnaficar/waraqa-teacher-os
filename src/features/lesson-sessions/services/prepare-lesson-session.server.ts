@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { runSessionBoundGeneration } from "@/features/ai/services/session-bound-generation.server";
+import { requireEntitlement } from "@/features/billing/require-entitlement";
 import type {
   GenerationExecuteResult,
   GenerationResult,
@@ -78,9 +79,20 @@ export async function prepareOwnedLessonSession(
     auth: SupabaseUserContext;
     supabase: SupabaseClient;
     userId: string;
+    billingWriteClient?: SupabaseClient;
+    today?: string;
   },
   execute?: (ctx: SessionBoundGenerationContext) => Promise<GenerationExecuteResult>,
 ): Promise<PrepareLessonSessionResult> {
+  // Entitlement before claim so unpaid callers never mutate session state.
+  // runSessionBoundGeneration repeats the gate before Gemini/persist.
+  await requireEntitlement("lesson_plan", {
+    userId: params.userId,
+    supabase: params.supabase,
+    writeClient: params.billingWriteClient ?? params.supabase,
+    today: params.today,
+  });
+
   // Ownership gate before claim (also used after failed claim to classify error).
   await requireOwnedLessonSession(params.lessonSessionId, params.auth);
 
@@ -102,6 +114,8 @@ export async function prepareOwnedLessonSession(
         auth: params.auth,
         supabase: params.supabase,
         userId: params.userId,
+        billingWriteClient: params.billingWriteClient ?? params.supabase,
+        today: params.today,
       },
       execute ??
         ((ctx) =>

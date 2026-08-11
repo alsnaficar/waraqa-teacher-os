@@ -44,11 +44,13 @@ function requireStructuredQuizContent(
 /**
  * Live quiz entry — thin wrapper over the unified session-bound pipeline.
  * Strategy: direct Gemini structured JSON (unchanged prompts/model/schema).
+ * Entitlement (`quiz`) is enforced in runSessionBoundGeneration.
  */
 export const generateQuizAndAssignment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => QuizGeneratorInput.parse(data))
   .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
     const auth = { client: context.supabase, userId: context.userId };
     const result = await runSessionBoundGeneration(
       {
@@ -57,6 +59,7 @@ export const generateQuizAndAssignment = createServerFn({ method: "POST" })
         auth,
         supabase: context.supabase,
         userId: context.userId,
+        billingWriteClient: supabaseAdmin,
       },
       (ctx) =>
         executeQuizGeneration(ctx, {

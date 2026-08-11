@@ -1,38 +1,40 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
-import { assertAdmin } from "@/platform/auth/assert-admin";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import {
-  addDays,
   assessCoupon,
   computeAccess,
-  DEFAULT_TERM_DAYS,
   daysUntil,
   normaliseStatus,
-  roundMoney,
   todayIso,
+  toMoney,
+  validatePlan,
   type CouponLike,
+  type PlanCatalogueRow,
 } from "./billing.logic";
-import { getPaymentProvider } from "./providers/payment-provider";
+import { promoteDueScheduledSubscriptions } from "./promote-scheduled";
+import {
+  activateSubscriptionInputSchema,
+  activateSubscriptionOp,
+  checkoutInputSchema,
+  startCheckoutOp,
+  submitPaymentInputSchema,
+  submitPaymentReferenceOp,
+} from "./billing.operations";
 import "./providers/manual-provider";
+import { buildManualCheckoutInstruction } from "./providers/manual-provider";
 import type {
   CheckoutResult,
   CouponAssessment,
+  OpenCheckout,
   PaymentRecord,
   Plan,
   Subscription,
   SubscriptionState,
 } from "./types";
-
-const DEFAULT_PROVIDER = "manual";
-
-/** Structured payload stored on the checkout audit entry. */
-interface CheckoutNote {
-  planCode: string;
-  couponCode: string | null;
-  discount: number;
-}
+import { BillingError } from "./types";
 
 function toPlan(row: {
   id: string;
@@ -74,63 +76,93 @@ function toSubscription(row: {
   };
 }
 
+export type LoadSubscriptionStateDeps = {
+  userId: string;
+  supabase: SupabaseClient;
+  /** Service-role client for scheduled→active CAS. */
+  writeClient: SupabaseClient;
+  /** Test-only clock. Production omits this. */
+  today?: string;
+};
+
+/**
+ * Promote due scheduled rows, then return the teacher's subscription state.
+ * `today` is server-derived in production; tests may inject it.
+ */
+export async function loadSubscriptionState(
+  deps: LoadSubscriptionStateDeps,
+): Promise<SubscriptionState> {
+  const today = deps.today ?? todayIso();
+
+  await promoteDueScheduledSubscriptions(deps.userId, {
+    client: deps.writeClient,
+    today: deps.today,
+  });
+
+  const { data: rows, error } = await deps.supabase
+    .from("subscriptions")
+    .select("id, plan_id, status, starts_at, expires_at, academic_year_id, semester_id, created_at")
+    .eq("user_id", deps.userId)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (error) throw error;
+
+  if (!rows || rows.length === 0) {
+    return {
+      access: "none",
+      subscription: null,
+      plan: null,
+      daysRemaining: null,
+      expiresAt: null,
+    };
+  }
+
+  const ranked = [...rows].sort(
+    (a, b) => rank(a.status, a.expires_at, today) - rank(b.status, b.expires_at, today),
+  );
+  const current = toSubscription(ranked[0]);
+
+  const { data: planRow } = await deps.supabase
+    .from("plans")
+    .select("id, code, name, price, starts_with, is_active")
+    .eq("id", current.planId)
+    .maybeSingle();
+
+  return {
+    access: computeAccess(current.status, current.expiresAt, today),
+    subscription: current,
+    plan: planRow ? toPlan(planRow) : null,
+    daysRemaining: daysUntil(current.expiresAt, today),
+    expiresAt: current.expiresAt,
+  };
+}
+
 /**
  * The teacher's current subscription, newest first.
  *
  * Read through the caller's own client so RLS still applies even if this
- * function is ever reached without the expected filters.
+ * function is ever reached without the expected filters. Promotion writes
+ * use the service-role client. The client cannot supply today or billing ids.
  */
 export const getSubscriptionState = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<SubscriptionState> => {
-    const { data: rows, error } = await context.supabase
-      .from("subscriptions")
-      .select(
-        "id, plan_id, status, starts_at, expires_at, academic_year_id, semester_id, created_at",
-      )
-      .eq("user_id", context.userId)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (error) throw error;
-
-    if (!rows || rows.length === 0) {
-      return {
-        access: "none",
-        subscription: null,
-        plan: null,
-        daysRemaining: null,
-        expiresAt: null,
-      };
-    }
-
-    // Prefer a live subscription over an older expired or pending one.
-    const ranked = [...rows].sort(
-      (a, b) => rank(a.status, a.expires_at) - rank(b.status, b.expires_at),
-    );
-    const current = toSubscription(ranked[0]);
-
-    const { data: planRow } = await context.supabase
-      .from("plans")
-      .select("id, code, name, price, starts_with, is_active")
-      .eq("id", current.planId)
-      .maybeSingle();
-
-    return {
-      access: computeAccess(current.status, current.expiresAt),
-      subscription: current,
-      plan: planRow ? toPlan(planRow) : null,
-      daysRemaining: daysUntil(current.expiresAt),
-      expiresAt: current.expiresAt,
-    };
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    return loadSubscriptionState({
+      userId: context.userId,
+      supabase: context.supabase,
+      writeClient: supabaseAdmin,
+    });
   });
 
-/** Lower sorts first: a usable subscription beats pending, which beats expired. */
-function rank(status: string, expiresAt: string): number {
-  const normalised = normaliseStatus(status);
-  if (normalised === "active" && daysUntil(expiresAt) >= 0) return 0;
-  if (normalised === "pending") return 1;
-  return 2;
+/** Lower sorts first: live access, then paid-future, then unpaid checkout. */
+function rank(status: string, expiresAt: string, today: string): number {
+  const remaining = daysUntil(expiresAt, today);
+  if (status === "active" && remaining >= 0) return 0;
+  if (status === "scheduled") return 1;
+  if (status === "pending_payment" || status === "pending") return 2;
+  return 3;
 }
 
 export const listPlans = createServerFn({ method: "GET" })
@@ -147,19 +179,24 @@ export const listPlans = createServerFn({ method: "GET" })
     return (data ?? []).map(toPlan);
   });
 
-export const getBillingHistory = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<PaymentRecord[]> => {
-    // RLS restricts this to payments belonging to the caller's subscriptions.
-    const { data, error } = await context.supabase
-      .from("payments")
-      .select("id, amount, status, transaction_number, paid_at, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50);
+export async function loadBillingHistory(deps: {
+  userId: string;
+  supabase: SupabaseClient;
+}): Promise<PaymentRecord[]> {
+  if (!deps.userId) return [];
 
-    if (error) throw error;
+  const { data, error } = await deps.supabase
+    .from("payments")
+    .select("id, amount, status, transaction_number, paid_at, created_at, user_id")
+    .eq("user_id", deps.userId)
+    .order("created_at", { ascending: false })
+    .limit(50);
 
-    return (data ?? []).map((row) => ({
+  if (error) throw error;
+
+  return (data ?? [])
+    .filter((row) => row.user_id === deps.userId)
+    .map((row) => ({
       id: row.id,
       amount: Number(row.amount),
       status: row.status,
@@ -167,6 +204,93 @@ export const getBillingHistory = createServerFn({ method: "GET" })
       paidAt: row.paid_at,
       createdAt: row.created_at,
     }));
+}
+
+/**
+ * Teacher payment history. Always scoped to the authenticated JWT user.
+ * Client cannot supply user_id. Response shape is unchanged.
+ */
+export const getBillingHistory = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<PaymentRecord[]> => {
+    return loadBillingHistory({
+      userId: context.userId,
+      supabase: context.supabase,
+    });
+  });
+
+export async function loadOpenCheckout(deps: {
+  userId: string;
+  supabase: SupabaseClient;
+  /** Test-only env. Production omits this and reads server process.env. */
+  env?: Record<string, string | undefined>;
+}): Promise<OpenCheckout | null> {
+  if (!deps.userId) return null;
+
+  const { data: sub, error: subError } = await deps.supabase
+    .from("subscriptions")
+    .select("id, plan_id, status, user_id")
+    .eq("user_id", deps.userId)
+    .eq("status", "pending_payment")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (subError) throw subError;
+  if (!sub || sub.user_id !== deps.userId || sub.status !== "pending_payment") {
+    return null;
+  }
+
+  const { data: payment, error: payError } = await deps.supabase
+    .from("payments")
+    .select(
+      "id, amount, net_sar, status, user_id, subscription_id, transfer_reference, transaction_number",
+    )
+    .eq("user_id", deps.userId)
+    .eq("subscription_id", sub.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (payError) throw payError;
+  if (!payment || payment.user_id !== deps.userId || payment.subscription_id !== sub.id) {
+    return null;
+  }
+
+  const { data: plan } = await deps.supabase
+    .from("plans")
+    .select("name")
+    .eq("id", sub.plan_id)
+    .maybeSingle();
+
+  const amount = Number(payment.net_sar ?? payment.amount);
+  const instruction = buildManualCheckoutInstruction(payment.id, deps.env);
+
+  return {
+    subscriptionId: sub.id,
+    paymentId: payment.id,
+    amount,
+    instruction,
+    paymentStatus: String(payment.status),
+    planName: plan?.name ?? "",
+    transferReference:
+      (payment.transfer_reference as string | null) ??
+      (payment.transaction_number as string | null) ??
+      null,
+  };
+}
+
+/**
+ * Reconstruct the caller's unpaid checkout from server rows.
+ * No client-supplied ids. Uses pending_payment + latest owned payment.
+ */
+export const getOpenCheckout = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<OpenCheckout | null> => {
+    return loadOpenCheckout({
+      userId: context.userId,
+      supabase: context.supabase,
+    });
   });
 
 /**
@@ -176,377 +300,88 @@ export const getBillingHistory = createServerFn({ method: "GET" })
 export const assessCouponCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) =>
-    z.object({ planCode: z.string().min(1), couponCode: z.string().min(1).max(64) }).parse(data),
+    z
+      .object({ planCode: z.string().min(1), couponCode: z.string().min(1).max(64) })
+      .strict()
+      .parse(data),
   )
   .handler(async ({ data }): Promise<CouponAssessment> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
 
     const { data: plan } = await supabaseAdmin
       .from("plans")
-      .select("price")
+      .select(
+        "id, code, name, price, price_sar, currency, product, term_kind, is_active, starts_with",
+      )
       .eq("code", data.planCode)
-      .eq("is_active", true)
       .maybeSingle();
 
-    if (!plan) {
-      return {
-        valid: false,
-        reason: "الباقة غير متاحة.",
-        code: data.couponCode,
-        discount: 0,
-        finalAmount: 0,
-      };
-    }
-
-    const { data: coupon } = await supabaseAdmin
-      .from("coupons")
-      .select("code, type, value, starts_at, expires_at, max_usage, used_count, is_active")
-      .eq("code", data.couponCode.trim().toUpperCase())
-      .maybeSingle();
-
-    return assessCoupon((coupon as CouponLike | null) ?? null, Number(plan.price));
-  });
-
-/**
- * Opens a pending subscription and its pending payment.
- *
- * Everything that determines price or duration is computed here, never taken
- * from the client. Re-running for an already pending checkout returns the same
- * rows instead of stacking duplicates.
- */
-export const startCheckout = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
-    z
-      .object({
-        planCode: z.string().min(1),
-        couponCode: z.string().max(64).optional(),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data, context }): Promise<CheckoutResult> => {
-    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-
-    const { data: planRow, error: planError } = await supabaseAdmin
-      .from("plans")
-      .select("id, code, name, price, starts_with, is_active")
-      .eq("code", data.planCode)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (planError) throw planError;
-    if (!planRow) throw new Error("الباقة المطلوبة غير متاحة.");
-
-    const plan = toPlan(planRow);
-
-    const existing = await findReusablePending(supabaseAdmin, context.userId, plan);
-    if (existing) return existing;
-
-    const startsAt = todayIso();
-    const { expiresAt, academicYearId } = await resolveTerm(
-      supabaseAdmin,
-      context.userId,
-      startsAt,
-    );
-
-    let amount = plan.price;
-    let couponCode: string | null = null;
-    let discount = 0;
-
-    if (data.couponCode?.trim()) {
+    try {
+      const validated = validatePlan(plan as PlanCatalogueRow | null);
       const { data: coupon } = await supabaseAdmin
         .from("coupons")
         .select("code, type, value, starts_at, expires_at, max_usage, used_count, is_active")
         .eq("code", data.couponCode.trim().toUpperCase())
         .maybeSingle();
 
-      const assessment = assessCoupon((coupon as CouponLike | null) ?? null, plan.price);
-
-      if (assessment.valid) {
-        amount = assessment.finalAmount;
-        discount = assessment.discount;
-        couponCode = assessment.code;
+      return assessCoupon((coupon as CouponLike | null) ?? null, toMoney(validated.priceSar));
+    } catch (error) {
+      if (error instanceof BillingError) {
+        return {
+          valid: false,
+          reason: error.message,
+          code: data.couponCode,
+          discount: 0,
+          finalAmount: 0,
+        };
       }
+      throw error;
     }
+  });
 
-    const { data: subscriptionRow, error: subscriptionError } = await supabaseAdmin
-      .from("subscriptions")
-      .insert({
-        user_id: context.userId,
-        plan_id: plan.id,
-        status: "pending",
-        starts_at: startsAt,
-        expires_at: expiresAt,
-        academic_year_id: academicYearId,
-      })
-      .select(
-        "id, plan_id, status, starts_at, expires_at, academic_year_id, semester_id, created_at",
-      )
-      .single();
-
-    if (subscriptionError) throw subscriptionError;
-
-    const paymentMethodId = await resolvePaymentMethod(supabaseAdmin, DEFAULT_PROVIDER);
-
-    const { data: paymentRow, error: paymentError } = await supabaseAdmin
-      .from("payments")
-      .insert({
-        subscription_id: subscriptionRow.id,
-        payment_method_id: paymentMethodId,
-        amount: roundMoney(amount),
-        status: "pending",
-      })
-      .select("id, amount")
-      .single();
-
-    if (paymentError) throw paymentError;
-
-    const note: CheckoutNote = { planCode: plan.code, couponCode, discount };
-
-    await supabaseAdmin.from("subscription_logs").insert({
-      subscription_id: subscriptionRow.id,
-      action: "checkout_started",
-      performed_by: context.userId,
-      notes: JSON.stringify(note),
+/**
+ * Opens a pending_payment subscription and its created payment using the
+ * official billing calendar. Price and dates are never taken from the client.
+ */
+export const startCheckout = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => checkoutInputSchema.parse(data))
+  .handler(async ({ data, context }): Promise<CheckoutResult> => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    return startCheckoutOp(supabaseAdmin, {
+      userId: context.userId,
+      planCode: data.planCode,
+      couponCode: data.couponCode,
     });
-
-    const provider = getPaymentProvider(DEFAULT_PROVIDER);
-
-    if (!provider) throw new Error("لا توجد وسيلة دفع مفعّلة حالياً.");
-
-    const instruction = await provider.createCheckout({
-      subscriptionId: subscriptionRow.id,
-      paymentId: paymentRow.id,
-      planName: plan.name,
-      amount: Number(paymentRow.amount),
-    });
-
-    return {
-      subscriptionId: subscriptionRow.id,
-      paymentId: paymentRow.id,
-      amount: Number(paymentRow.amount),
-      instruction,
-    };
   });
 
 /** Teacher supplies the bank transaction number for their pending payment. */
 export const submitPaymentReference = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
-    z.object({ paymentId: z.string().uuid(), reference: z.string().min(3).max(128) }).parse(data),
-  )
+  .inputValidator((data: unknown) => submitPaymentInputSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-
-    // Ownership is checked explicitly: service_role bypasses RLS.
-    const { data: payment } = await supabaseAdmin
-      .from("payments")
-      .select("id, status, subscription_id, subscriptions!inner(user_id)")
-      .eq("id", data.paymentId)
-      .maybeSingle();
-
-    const owner = (payment as { subscriptions?: { user_id?: string } } | null)?.subscriptions
-      ?.user_id;
-
-    if (!payment || owner !== context.userId) {
-      throw new Error("لا تملك صلاحية تعديل هذه العملية.");
-    }
-
-    if (payment.status === "paid") {
-      throw new Error("تم تأكيد هذه العملية مسبقاً.");
-    }
-
-    const { error } = await supabaseAdmin
-      .from("payments")
-      .update({ transaction_number: data.reference.trim(), status: "submitted" })
-      .eq("id", data.paymentId);
-
-    if (error) throw error;
-
-    await supabaseAdmin.from("subscription_logs").insert({
-      subscription_id: payment.subscription_id,
-      action: "payment_reference_submitted",
-      performed_by: context.userId,
+    return submitPaymentReferenceOp(supabaseAdmin, {
+      userId: context.userId,
+      paymentId: data.paymentId,
+      reference: data.reference,
     });
-
-    return { ok: true };
   });
 
 /**
- * Admin confirms a transfer landed: marks the payment paid, activates the
- * subscription, and only then consumes the coupon, so abandoned checkouts do
- * not burn a limited code.
+ * Admin confirms a transfer landed. Current official periods become active
+ * from the activation date to the official end. Future periods become
+ * scheduled on the official calendar bounds.
  */
 export const activateSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
-    z
-      .object({ subscriptionId: z.string().uuid(), note: z.string().max(500).optional() })
-      .parse(data),
-  )
+  .inputValidator((data: unknown) => activateSubscriptionInputSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-
-    await assertAdmin(supabaseAdmin, context.userId);
-
-    const { data: subscription, error: loadError } = await supabaseAdmin
-      .from("subscriptions")
-      .select("id, status")
-      .eq("id", data.subscriptionId)
-      .maybeSingle();
-
-    if (loadError) throw loadError;
-    if (!subscription) throw new Error("الاشتراك غير موجود.");
-    if (subscription.status === "active") throw new Error("الاشتراك مفعّل مسبقاً.");
-
-    const { error: activateError } = await supabaseAdmin
-      .from("subscriptions")
-      .update({ status: "active" })
-      .eq("id", data.subscriptionId);
-
-    if (activateError) throw activateError;
-
-    await supabaseAdmin
-      .from("payments")
-      .update({ status: "paid", paid_at: new Date().toISOString() })
-      .eq("subscription_id", data.subscriptionId)
-      .neq("status", "paid");
-
-    await consumeCheckoutCoupon(supabaseAdmin, data.subscriptionId);
-
-    await supabaseAdmin.from("subscription_logs").insert({
-      subscription_id: data.subscriptionId,
-      action: "activated",
-      performed_by: context.userId,
-      notes: data.note ?? null,
+    const result = await activateSubscriptionOp(supabaseAdmin, {
+      actorId: context.userId,
+      subscriptionId: data.subscriptionId,
+      note: data.note,
     });
-
-    return { ok: true };
+    return { ok: result.ok };
   });
-
-// ---------------------------------------------------------------------------
-// helpers (server-only; each receives an already-privileged client)
-// ---------------------------------------------------------------------------
-
-type AdminClient = Awaited<
-  typeof import("@/platform/database/supabase/client.server")
->["supabaseAdmin"];
-
-/** Returns an existing pending checkout so retrying does not create duplicates. */
-async function findReusablePending(
-  client: AdminClient,
-  userId: string,
-  plan: Plan,
-): Promise<CheckoutResult | null> {
-  const { data: pending } = await client
-    .from("subscriptions")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("plan_id", plan.id)
-    .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!pending) return null;
-
-  const { data: payment } = await client
-    .from("payments")
-    .select("id, amount")
-    .eq("subscription_id", pending.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!payment) return null;
-
-  const provider = getPaymentProvider(DEFAULT_PROVIDER);
-  if (!provider) return null;
-
-  const instruction = await provider.createCheckout({
-    subscriptionId: pending.id,
-    paymentId: payment.id,
-    planName: plan.name,
-    amount: Number(payment.amount),
-  });
-
-  return {
-    subscriptionId: pending.id,
-    paymentId: payment.id,
-    amount: Number(payment.amount),
-    instruction,
-  };
-}
-
-/**
- * A subscription runs to the end of the teacher's active academic year when one
- * is defined, which is what `subscriptions.academic_year_id` exists for.
- * Otherwise it falls back to a fixed term.
- */
-async function resolveTerm(
-  client: AdminClient,
-  userId: string,
-  startsAt: string,
-): Promise<{ expiresAt: string; academicYearId: string | null }> {
-  const { data: year } = await client
-    .from("academic_years")
-    .select("id, end_date")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (year?.end_date && daysUntil(year.end_date, startsAt) > 0) {
-    return { expiresAt: year.end_date, academicYearId: year.id };
-  }
-
-  return { expiresAt: addDays(startsAt, DEFAULT_TERM_DAYS), academicYearId: year?.id ?? null };
-}
-
-async function resolvePaymentMethod(client: AdminClient, provider: string): Promise<string | null> {
-  const { data } = await client
-    .from("payment_methods")
-    .select("id")
-    .eq("provider", provider)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-
-  return data?.id ?? null;
-}
-
-/** Increments used_count for the coupon recorded when checkout began. */
-async function consumeCheckoutCoupon(client: AdminClient, subscriptionId: string): Promise<void> {
-  const { data: log } = await client
-    .from("subscription_logs")
-    .select("notes")
-    .eq("subscription_id", subscriptionId)
-    .eq("action", "checkout_started")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!log?.notes) return;
-
-  let note: CheckoutNote;
-
-  try {
-    note = JSON.parse(log.notes) as CheckoutNote;
-  } catch {
-    return;
-  }
-
-  if (!note.couponCode) return;
-
-  const { data: coupon } = await client
-    .from("coupons")
-    .select("id, used_count")
-    .eq("code", note.couponCode)
-    .maybeSingle();
-
-  if (!coupon) return;
-
-  await client
-    .from("coupons")
-    .update({ used_count: (coupon.used_count ?? 0) + 1 })
-    .eq("id", coupon.id);
-}

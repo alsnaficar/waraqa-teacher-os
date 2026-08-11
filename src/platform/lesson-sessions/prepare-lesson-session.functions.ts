@@ -11,17 +11,21 @@ const PrepareInput = z.object({
 /**
  * P3 Step 4 — authenticated Prepare entry point.
  * Input is lessonSessionId only; session ownership and curriculum come from the DB.
+ * Paid entitlement (`lesson_plan`) is enforced in prepareOwnedLessonSession
+ * and again in runSessionBoundGeneration before Gemini/persist.
  */
 export const prepareLessonSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => PrepareInput.parse(data))
   .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
     const auth = { client: context.supabase, userId: context.userId };
     const result = await prepareOwnedLessonSession({
       lessonSessionId: data.lessonSessionId,
       auth,
       supabase: context.supabase,
       userId: context.userId,
+      billingWriteClient: supabaseAdmin,
     });
 
     return {

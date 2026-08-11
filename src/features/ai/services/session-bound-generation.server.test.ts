@@ -5,9 +5,16 @@ import {
   buildSessionCurriculumPrefix,
   runSessionBoundGeneration,
 } from "./session-bound-generation.server.ts";
+import { BillingError } from "@/features/billing/types.ts";
 import { LessonSessionBindingError } from "@/features/lesson-sessions/services/require-owned-lesson-session.ts";
 import type { SupabaseUserContext } from "@/platform/database/supabase/context";
 import type { LessonSession } from "@/features/lesson-sessions/types";
+import {
+  allowEntitlementTables,
+  createEntitlementTableHandler,
+  emptyEntitlementTables,
+  type EntitlementMockTables,
+} from "@/features/billing/entitlement.test-support.ts";
 
 const TEACHER_A = "11111111-1111-4111-8111-111111111111";
 const TEACHER_B = "22222222-2222-4222-8222-222222222222";
@@ -53,14 +60,19 @@ function mockAuth(
     ends_at?: string | null;
     active: boolean;
   }> = [],
+  entitlementTables: EntitlementMockTables = allowEntitlementTables(userId),
 ): {
   auth: SupabaseUserContext;
   inserted: { current: Record<string, unknown> | null };
 } {
   const inserted: { current: Record<string, unknown> | null } = { current: null };
+  const billingFrom = createEntitlementTableHandler(entitlementTables);
 
   const client = {
     from(table: string) {
+      const billing = billingFrom(table);
+      if (billing) return billing;
+
       if (table === "lesson_sessions") {
         const state: { filters: Record<string, string> } = { filters: {} };
         const chain = {
@@ -382,5 +394,90 @@ describe("P3 Step 3 unified session-bound generation", () => {
     );
 
     assert.equal(result.curriculumLessonId, CURRICULUM_LESSON);
+  });
+
+  it("denies generation before strategy and persist when entitlement is missing", async () => {
+    const { auth, inserted } = mockAuth(
+      TEACHER_A,
+      makeSessionRow(),
+      {
+        id: CURRICULUM_LESSON,
+        title: "درس الجلسة",
+        objectives: null,
+        notes: null,
+      },
+      [],
+      emptyEntitlementTables(),
+    );
+    let strategyCalled = false;
+
+    await assert.rejects(
+      () =>
+        runSessionBoundGeneration(
+          {
+            lessonSessionId: SESSION_A,
+            kind: "worksheet",
+            auth,
+            supabase: auth.client,
+            userId: TEACHER_A,
+          },
+          async () => {
+            strategyCalled = true;
+            return { content: "x", model: "x", prompt: "x", input: {} };
+          },
+        ),
+      (err: unknown) => err instanceof BillingError && err.code === "FEATURE_ENTITLEMENT_REQUIRED",
+    );
+
+    assert.equal(strategyCalled, false);
+    assert.equal(inserted.current, null);
+  });
+
+  it("promotion failure fails closed before Gemini", async () => {
+    const { auth, inserted } = mockAuth(
+      TEACHER_A,
+      makeSessionRow(),
+      {
+        id: CURRICULUM_LESSON,
+        title: "درس الجلسة",
+        objectives: null,
+        notes: null,
+      },
+      [],
+      allowEntitlementTables(TEACHER_A, {
+        status: "scheduled",
+        startsOn: "2026-08-23",
+        endsOn: "2027-01-07",
+      }),
+    );
+    let strategyCalled = false;
+    const failingWrite = {
+      from() {
+        throw new Error("promotion write failed");
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        runSessionBoundGeneration(
+          {
+            lessonSessionId: SESSION_A,
+            kind: "lesson_plan",
+            auth,
+            supabase: auth.client,
+            userId: TEACHER_A,
+            billingWriteClient: failingWrite as never,
+            today: "2026-08-23",
+          },
+          async () => {
+            strategyCalled = true;
+            return { content: "x", model: "x", prompt: "x", input: {} };
+          },
+        ),
+      (err: unknown) => err instanceof BillingError && err.code === "FEATURE_ENTITLEMENT_REQUIRED",
+    );
+
+    assert.equal(strategyCalled, false);
+    assert.equal(inserted.current, null);
   });
 });

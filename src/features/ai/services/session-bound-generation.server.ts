@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { saveAiGeneration, type AiGenerationKind } from "@/features/ai/services/persistence.server";
+import { featureKeyForGenerationKind } from "@/features/billing/entitlement.logic";
+import { entitlementDeniedError, requireEntitlement } from "@/features/billing/require-entitlement";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import type { SupabaseUserContext } from "@/platform/database/supabase/context";
 import {
@@ -38,10 +40,11 @@ export function buildSessionCurriculumPrefix(curriculumLesson: SessionCurriculum
 
 /**
  * P3 Step 3 unified pipeline:
- * lessonSessionId → owned session → curriculum → strategy → saveAiGeneration
+ * entitlement → lessonSessionId → owned session → curriculum → strategy → saveAiGeneration
  *
  * Kind-specific provider/prompt/output strategy is injected via `execute`.
- * Does not trust client teacher_id or curriculum_lesson_id.
+ * Does not trust client teacher_id, curriculum_lesson_id, or billing ids.
+ * Gemini and persist never run without requireEntitlement(kind).
  */
 export async function runSessionBoundGeneration(
   params: {
@@ -50,9 +53,25 @@ export async function runSessionBoundGeneration(
     auth: SupabaseUserContext;
     supabase: SupabaseClient;
     userId: string;
+    /** Service-role client for scheduled promotion. Production must pass supabaseAdmin. */
+    billingWriteClient?: SupabaseClient;
+    /** Test-only clock. */
+    today?: string;
   },
   execute: (ctx: SessionBoundGenerationContext) => Promise<GenerationExecuteResult>,
 ): Promise<GenerationResult> {
+  const featureKey = featureKeyForGenerationKind(params.kind);
+  if (!featureKey) {
+    throw entitlementDeniedError();
+  }
+
+  await requireEntitlement(featureKey, {
+    userId: params.userId,
+    supabase: params.supabase,
+    writeClient: params.billingWriteClient ?? params.supabase,
+    today: params.today,
+  });
+
   const session = await requireOwnedLessonSession(params.lessonSessionId, params.auth);
   const curriculumLesson = await loadCurriculumLessonForSession(session, params.auth);
 
