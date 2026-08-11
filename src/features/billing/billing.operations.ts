@@ -75,6 +75,13 @@ export const getAdminReceiptUrlInputSchema = z
   })
   .strict();
 
+export const rejectPaymentInputSchema = z
+  .object({
+    paymentId: z.string().uuid(),
+    reason: z.string().trim().min(3).max(500),
+  })
+  .strict();
+
 type AdminClient = Awaited<
   typeof import("@/platform/database/supabase/client.server")
 >["supabaseAdmin"];
@@ -116,6 +123,12 @@ export interface AttachPaymentReceiptInput {
 export interface GetAdminReceiptUrlInput {
   actorId: string;
   paymentId: string;
+}
+
+export interface RejectPaymentInput {
+  actorId: string;
+  paymentId: string;
+  reason: string;
 }
 
 export const ADMIN_SUBSCRIBER_NAME_FALLBACK = "بدون اسم";
@@ -752,6 +765,14 @@ export async function submitPaymentReferenceOp(
     throw new BillingError("PAYMENT_REFERENCE_LOCKED", "تم حفظ رقم التحويل ولا يمكن تغييره.");
   }
 
+  if (payment.status === "rejected" && storedReference === reference) {
+    throw new BillingError("PAYMENT_REFERENCE_LOCKED", "تم حفظ رقم التحويل ولا يمكن تغييره.");
+  }
+
+  if (payment.status !== "created" && payment.status !== "rejected") {
+    throw new BillingError("INVALID_PAYMENT", "تعذر تحديث عملية الدفع.");
+  }
+
   const { data: taken, error: takenError } = await client
     .from("payments")
     .select("id")
@@ -767,18 +788,27 @@ export async function submitPaymentReferenceOp(
     throw new BillingError("INVALID_PAYMENT", "رقم التحويل البنكي مستخدم مسبقاً.");
   }
 
+  const fromStatus = payment.status;
+  const patch =
+    fromStatus === "rejected"
+      ? {
+          transaction_number: reference,
+          transfer_reference: reference,
+          status: "submitted" as const,
+          rejection_reason: null,
+        }
+      : {
+          transaction_number: reference,
+          transfer_reference: reference,
+          status: "submitted" as const,
+        };
+
   const { data: updated, error: updateError } = await client
     .from("payments")
-    .update({
-      transaction_number: reference,
-      transfer_reference: reference,
-      status: "submitted",
-    })
+    .update(patch)
     .eq("id", input.paymentId)
     .eq("user_id", input.userId)
-    .neq("status", "submitted")
-    .neq("status", "verified")
-    .neq("status", "paid")
+    .eq("status", fromStatus)
     .select("id, transfer_reference, transaction_number, status")
     .maybeSingle();
 
@@ -918,6 +948,10 @@ export async function activateSubscriptionOp(
     throw new BillingError("INVALID_PAYMENT", "لا يمكن تفعيل اشتراك بلا عملية دفع مرتبطة.");
   }
 
+  if (payment.status !== "submitted") {
+    throw new BillingError("INVALID_PAYMENT", "لا يمكن تفعيل هذه الدفعة.");
+  }
+
   const now = input.today ? `${today}T00:00:00.000Z` : new Date().toISOString();
   const subscriptionPatch: {
     status: "active" | "scheduled";
@@ -938,17 +972,7 @@ export async function activateSubscriptionOp(
     subscriptionPatch.activated_at = now;
   }
 
-  const { error: activateError } = await client
-    .from("subscriptions")
-    .update(subscriptionPatch)
-    .eq("id", subscription.id)
-    .eq("user_id", subscription.user_id);
-
-  if (activateError) {
-    failClosed(activateError, new BillingError("INVALID_PERIOD", "تعذر تحديث حالة الاشتراك."));
-  }
-
-  const { error: paymentError } = await client
+  const { data: verifiedPayment, error: paymentError } = await client
     .from("payments")
     .update({
       status: "verified",
@@ -957,10 +981,26 @@ export async function activateSubscriptionOp(
       paid_at: now,
     })
     .eq("id", payment.id)
+    .eq("user_id", subscription.user_id)
+    .eq("status", "submitted")
+    .select("id")
+    .maybeSingle();
+
+  if (paymentError || !verifiedPayment) {
+    failClosed(
+      paymentError ?? new Error("activation payment CAS missed"),
+      new BillingError("INVALID_PAYMENT", "لا يمكن تفعيل هذه الدفعة."),
+    );
+  }
+
+  const { error: activateError } = await client
+    .from("subscriptions")
+    .update(subscriptionPatch)
+    .eq("id", subscription.id)
     .eq("user_id", subscription.user_id);
 
-  if (paymentError) {
-    failClosed(paymentError, new BillingError("INVALID_PAYMENT", "تعذر تحديث عملية الدفع."));
+  if (activateError) {
+    failClosed(activateError, new BillingError("INVALID_PERIOD", "تعذر تحديث حالة الاشتراك."));
   }
 
   await consumeCheckoutCoupon(client, subscription.id);
@@ -1145,7 +1185,7 @@ export async function listAdminSubmittedPaymentsOp(
   return items;
 }
 
-const RECEIPT_ATTACHABLE_PAYMENT_STATUSES = ["created", "submitted"] as const;
+const RECEIPT_ATTACHABLE_PAYMENT_STATUSES = ["created", "submitted", "rejected"] as const;
 const RECEIPT_BLOCKED_SUBSCRIPTION_STATUSES = new Set([
   "scheduled",
   "active",
@@ -1185,7 +1225,7 @@ export async function attachPaymentReceiptOp(
   if (
     payment.status === "verified" ||
     payment.status === "paid" ||
-    payment.status === "rejected" ||
+    payment.status === "failed" ||
     !RECEIPT_ATTACHABLE_PAYMENT_STATUSES.includes(
       payment.status as (typeof RECEIPT_ATTACHABLE_PAYMENT_STATUSES)[number],
     )
@@ -1279,4 +1319,112 @@ export async function getAdminReceiptUrlOp(
 
   const url = await storage.createSignedUrl(receiptPath, RECEIPT_SIGNED_URL_TTL_SECONDS);
   return { url, expiresIn: RECEIPT_SIGNED_URL_TTL_SECONDS };
+}
+
+function normalizeRejectionReason(raw: string): string {
+  const reason = raw.trim();
+  if (reason.length < 3 || reason.length > 500) {
+    throw new BillingError("INVALID_PAYMENT", "سبب الرفض يجب أن يكون بين 3 و500 حرف.");
+  }
+  return reason;
+}
+
+export async function rejectPaymentOp(
+  client: AdminClient,
+  input: RejectPaymentInput,
+): Promise<{ ok: true }> {
+  await assertAdmin(client, input.actorId);
+
+  const reason = normalizeRejectionReason(input.reason);
+
+  const { data: payment, error } = await client
+    .from("payments")
+    .select("id, status, user_id, subscription_id, rejection_reason")
+    .eq("id", input.paymentId)
+    .maybeSingle();
+
+  if (error) {
+    failClosed(error, new BillingError("INVALID_PAYMENT", "تعذر تحديث عملية الدفع."));
+  }
+
+  if (!payment) {
+    throw new BillingError("INVALID_PAYMENT", "عملية الدفع غير موجودة.");
+  }
+
+  if (payment.status === "rejected") {
+    const previous = (payment.rejection_reason ?? "").trim();
+    if (previous === reason) {
+      return { ok: true };
+    }
+    throw new BillingError("INVALID_PAYMENT", "تم رفض هذه العملية مسبقاً.");
+  }
+
+  if (payment.status !== "submitted") {
+    throw new BillingError("INVALID_PAYMENT", "لا يمكن رفض هذه الدفعة.");
+  }
+
+  if (!payment.subscription_id) {
+    throw new BillingError("INVALID_PAYMENT", "لا يمكن ربط هذه العملية باشتراك.");
+  }
+
+  const { data: subscription } = await client
+    .from("subscriptions")
+    .select("id, user_id, status")
+    .eq("id", payment.subscription_id)
+    .maybeSingle();
+
+  if (!subscription || subscription.user_id !== payment.user_id) {
+    throw new BillingError("INVALID_PAYMENT", "لا يمكن ربط هذه العملية باشتراك.");
+  }
+
+  const { data: updated, error: updateError } = await client
+    .from("payments")
+    .update({
+      status: "rejected",
+      rejection_reason: reason,
+    })
+    .eq("id", payment.id)
+    .eq("status", "submitted")
+    .select("id, status, rejection_reason")
+    .maybeSingle();
+
+  if (updateError) {
+    failClosed(updateError, new BillingError("INVALID_PAYMENT", "تعذر تحديث عملية الدفع."));
+  }
+
+  if (!updated) {
+    const { data: latest } = await client
+      .from("payments")
+      .select("status, rejection_reason")
+      .eq("id", payment.id)
+      .maybeSingle();
+    if (latest?.status === "rejected" && (latest.rejection_reason ?? "").trim() === reason) {
+      return { ok: true };
+    }
+    if (latest?.status === "rejected") {
+      throw new BillingError("INVALID_PAYMENT", "تم رفض هذه العملية مسبقاً.");
+    }
+    throw new BillingError("INVALID_PAYMENT", "تعذر تحديث عملية الدفع.");
+  }
+
+  await writeAudit(client, {
+    actorId: input.actorId,
+    action: "payment_rejected",
+    entityType: "payment",
+    entityId: payment.id,
+    newValue: {
+      status: "rejected",
+      rejectionReason: reason,
+      subscriptionId: payment.subscription_id,
+    },
+  });
+
+  await client.from("subscription_logs").insert({
+    subscription_id: payment.subscription_id,
+    action: "payment_rejected",
+    performed_by: input.actorId,
+    notes: reason,
+  });
+
+  return { ok: true };
 }

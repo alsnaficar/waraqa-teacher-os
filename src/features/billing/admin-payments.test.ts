@@ -466,7 +466,7 @@ describe("server function and route contracts", () => {
     assert.match(route, /activateSubscription\(\{\s*data: activationInputFromSubmittedPayment/);
   });
 
-  it("does not modify activateSubscriptionOp / activateSubscription", () => {
+  it("activation requires a submitted payment and remains admin-only", () => {
     const ops = readFileSync(OPERATIONS_FILE, "utf8");
     const fns = readFileSync(FUNCTIONS_FILE, "utf8");
     assert.match(ops, /export async function activateSubscriptionOp/);
@@ -475,7 +475,8 @@ describe("server function and route contracts", () => {
     const listStart = activateOp.indexOf("export async function listAdminSubmittedPaymentsOp");
     const activateBody = listStart >= 0 ? activateOp.slice(0, listStart) : activateOp;
     assert.match(activateBody, /await assertAdmin\(client, input\.actorId\)/);
-    assert.equal(activateBody.includes('.eq("status", "submitted")'), false);
+    assert.match(activateBody, /\.eq\("status", "submitted"\)/);
+    assert.match(activateBody, /payment\.status !== "submitted"/);
   });
 
   it("admin shell and dashboard expose /admin/payments", () => {

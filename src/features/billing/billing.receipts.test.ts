@@ -345,16 +345,14 @@ describe("attachPaymentReceiptOp", () => {
     );
   });
 
-  it("E. rejected denied", async () => {
+  it("E. rejected payment can replace receipt without reopening", async () => {
     const db = seedDb();
     db.payments[0].status = "rejected";
-    await assert.rejects(
-      () => attach(db),
-      (err) => {
-        assertBillingError(err, "INVALID_PAYMENT");
-        return true;
-      },
-    );
+    db.payments[0].rejection_reason = "المبلغ غير مطابق";
+    const { result } = await attach(db);
+    assert.equal(result.hasReceipt, true);
+    assert.equal(db.payments[0].status, "rejected");
+    assert.equal(db.payments[0].rejection_reason, "المبلغ غير مطابق");
   });
 
   it("F. scheduled/active subscription denied", async () => {

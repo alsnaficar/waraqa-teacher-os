@@ -350,6 +350,11 @@ describe("Phase 2 billing operations", () => {
       today: "2026-10-15",
     });
     assert.equal(db.subscriptions[0].starts_on, "2026-08-23");
+    await submitPaymentReferenceOp(client as never, {
+      userId: USER_A,
+      paymentId: checkout.paymentId,
+      reference: "BANK-AAA",
+    });
 
     const result = await activateSubscriptionOp(client as never, {
       actorId: ADMIN,
@@ -376,6 +381,11 @@ describe("Phase 2 billing operations", () => {
       planCode: "core_standard_academic_year",
       today: "2026-10-15",
     });
+    await submitPaymentReferenceOp(client as never, {
+      userId: USER_A,
+      paymentId: checkout.paymentId,
+      reference: "BANK-AAA",
+    });
     const result = await activateSubscriptionOp(client as never, {
       actorId: ADMIN,
       subscriptionId: checkout.subscriptionId,
@@ -397,6 +407,11 @@ describe("Phase 2 billing operations", () => {
       userId: USER_A,
       planCode: "core_standard_semester",
       today: "2026-08-01",
+    });
+    await submitPaymentReferenceOp(client as never, {
+      userId: USER_A,
+      paymentId: checkout.paymentId,
+      reference: "BANK-AAA",
     });
     const result = await activateSubscriptionOp(client as never, {
       actorId: ADMIN,
@@ -421,6 +436,11 @@ describe("Phase 2 billing operations", () => {
       planCode: "core_standard_academic_year",
       today: "2026-08-01",
     });
+    await submitPaymentReferenceOp(client as never, {
+      userId: USER_A,
+      paymentId: checkout.paymentId,
+      reference: "BANK-AAA",
+    });
     const result = await activateSubscriptionOp(client as never, {
       actorId: ADMIN,
       subscriptionId: checkout.subscriptionId,
@@ -442,6 +462,11 @@ describe("Phase 2 billing operations", () => {
       userId: USER_A,
       planCode: "core_standard_semester",
       today: "2026-09-01",
+    });
+    await submitPaymentReferenceOp(client as never, {
+      userId: USER_A,
+      paymentId: first.paymentId,
+      reference: "BANK-AAA",
     });
     await activateSubscriptionOp(client as never, {
       actorId: ADMIN,
@@ -653,6 +678,11 @@ describe("Phase 2 billing operations", () => {
       planCode: "core_standard_semester",
       today: "2026-10-15",
     });
+    await submitPaymentReferenceOp(client as never, {
+      userId: USER_A,
+      paymentId: checkout.paymentId,
+      reference: "BANK-AAA",
+    });
     await activateSubscriptionOp(client as never, {
       actorId: ADMIN,
       subscriptionId: checkout.subscriptionId,
@@ -676,6 +706,11 @@ describe("Phase 2 billing operations", () => {
     });
     db.subscriptions[0].starts_on = "2026-08-23";
     db.subscriptions[0].starts_at = "2026-08-23";
+    await submitPaymentReferenceOp(client as never, {
+      userId: USER_A,
+      paymentId: checkout.paymentId,
+      reference: "BANK-AAA",
+    });
     const result = await activateSubscriptionOp(client as never, {
       actorId: ADMIN,
       subscriptionId: checkout.subscriptionId,

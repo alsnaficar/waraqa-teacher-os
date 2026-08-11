@@ -44,7 +44,8 @@ function SubscriptionPage() {
   const selectedPlan = plans.data?.find((plan) => plan.code === selectedPlanCode) ?? null;
   const checkout = openCheckout.data ?? null;
   const manualInstruction = checkout?.instruction.kind === "manual" ? checkout.instruction : null;
-  const canSubmitReference = checkout?.paymentStatus === "created";
+  const canSubmitReference =
+    checkout?.paymentStatus === "created" || checkout?.paymentStatus === "rejected";
   const scheduledConfirmed =
     !openCheckout.isPending &&
     !checkout &&
@@ -291,8 +292,13 @@ function CheckoutCard({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptValidationError, setReceiptValidationError] = useState<string | null>(null);
+  const isRejected = checkout.paymentStatus === "rejected";
   const canUploadReceipt =
-    checkout.paymentStatus === "created" || checkout.paymentStatus === "submitted";
+    checkout.paymentStatus === "created" || checkout.paymentStatus === "submitted" || isRejected;
+  const sameRejectedReference =
+    isRejected &&
+    Boolean(checkout.transferReference) &&
+    bankReference.trim() === checkout.transferReference?.trim();
 
   async function handleReceiptFile(file: File | undefined) {
     setReceiptValidationError(null);
@@ -310,8 +316,18 @@ function CheckoutCard({
   return (
     <Card className="border-sky-500/30 bg-sky-500/5">
       <CardContent className="space-y-3 p-4">
-        <h2 className="font-semibold">أكمل عملية الدفع</h2>
-        <p className="text-sm text-muted-foreground">{message}</p>
+        <h2 className="font-semibold">{isRejected ? "تم رفض طلب الدفع" : "أكمل عملية الدفع"}</h2>
+        {isRejected ? (
+          <div className="space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-sm font-medium text-destructive">تم رفض طلب الدفع</p>
+            <p className="text-sm text-destructive">سبب الرفض: {checkout.rejectionReason || "—"}</p>
+            <p className="text-xs text-muted-foreground">
+              أرسل رقم تحويل جديداً مختلفاً عن الرقم المرفوض.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{message}</p>
+        )}
 
         <dl className="grid gap-3 sm:grid-cols-2">
           <Field label="الباقة" value={checkout.planName || "—"} />
@@ -329,16 +345,29 @@ function CheckoutCard({
             <Input
               value={bankReference}
               onChange={(event) => onBankReferenceChange(event.target.value)}
-              placeholder="رقم العملية البنكية"
+              placeholder={isRejected ? "رقم التحويل الجديد" : "رقم العملية البنكية"}
+              maxLength={128}
               className="h-11 min-w-[180px] flex-1"
             />
             <Button
               className="h-11 w-full sm:w-auto"
-              disabled={bankReference.trim().length < 3 || submitPending}
+              disabled={
+                bankReference.trim().length < 3 ||
+                bankReference.trim().length > 128 ||
+                submitPending ||
+                Boolean(sameRejectedReference)
+              }
               onClick={onSubmit}
             >
-              {submitPending ? "جارٍ الإرسال..." : "إرسال رقم العملية"}
+              {submitPending
+                ? "جارٍ الإرسال..."
+                : isRejected
+                  ? "إعادة إرسال التحويل"
+                  : "إرسال رقم العملية"}
             </Button>
+            {sameRejectedReference ? (
+              <p className="w-full text-sm text-red-600">يجب إدخال رقم تحويل مختلف عن المرفوض.</p>
+            ) : null}
           </div>
         ) : (
           <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">

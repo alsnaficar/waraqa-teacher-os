@@ -8,6 +8,7 @@ import {
   activateSubscription,
   getAdminReceiptUrl,
   listAdminSubmittedPayments,
+  rejectPayment,
   type AdminSubmittedPayment,
 } from "@/features/billing/billing.functions";
 import { activationInputFromSubmittedPayment } from "@/features/billing/billing.operations";
@@ -31,6 +32,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+import { Textarea } from "@/shared/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/admin/payments")({
   component: AdminPaymentsPage,
@@ -105,8 +107,14 @@ function toAdminPaymentsErrorMessage(err: unknown): string {
   if (upper.includes("SUBSCRIPTION_NOT_FOUND") || raw.includes("الاشتراك غير موجود")) {
     return "الاشتراك غير موجود.";
   }
-  if (upper.includes("INVALID_PAYMENT") || raw.includes("عملية الدفع")) {
-    return "لا يمكن تفعيل هذه الدفعة.";
+  if (raw.includes("سبب الرفض")) {
+    return raw;
+  }
+  if (raw.includes("تم رفض هذه العملية مسبقاً")) {
+    return "تم رفض هذه العملية مسبقاً.";
+  }
+  if (upper.includes("INVALID_PAYMENT") || raw.includes("عملية الدفع") || raw.includes("رفض")) {
+    return raw.includes("رفض") ? raw : "لا يمكن تفعيل هذه الدفعة.";
   }
   if (!raw.trim()) return "تعذر تنفيذ العملية. حاول مرة أخرى.";
   if (/[A-Z_]{4,}/.test(raw) && !/[\u0600-\u06FF]/.test(raw)) {
@@ -139,6 +147,8 @@ function PaymentsTableSkeleton() {
 function AdminPaymentsPage() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<AdminSubmittedPayment | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<AdminSubmittedPayment | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: QUEUE_QUERY_KEY,
@@ -150,6 +160,24 @@ function AdminPaymentsPage() {
     mutationFn: (paymentId: string) => getAdminReceiptUrl({ data: { paymentId } }),
     onSuccess: (result) => {
       window.open(result.url, "_blank", "noopener,noreferrer");
+    },
+    onError: (err: unknown) => {
+      toast.error(toAdminPaymentsErrorMessage(err));
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (input: { paymentId: string; reason: string }) => rejectPayment({ data: input }),
+    onSuccess: async () => {
+      toast.success("تم رفض الدفعة.");
+      setRejectTarget(null);
+      setRejectReason("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUEUE_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: subscriptionQueryKey }),
+        queryClient.invalidateQueries({ queryKey: billingHistoryQueryKey }),
+        queryClient.invalidateQueries({ queryKey: openCheckoutQueryKey }),
+      ]);
     },
     onError: (err: unknown) => {
       toast.error(toAdminPaymentsErrorMessage(err));
@@ -311,10 +339,22 @@ function AdminPaymentsPage() {
                           ) : null}
                           <Button
                             className="h-11 min-h-[44px] w-full whitespace-normal"
-                            disabled={mutation.isPending}
+                            disabled={mutation.isPending || rejectMutation.isPending}
                             onClick={() => setSelected(item)}
                           >
                             تحقق من الدفع
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 min-h-[44px] w-full whitespace-normal"
+                            disabled={mutation.isPending || rejectMutation.isPending}
+                            onClick={() => {
+                              setRejectReason("");
+                              setRejectTarget(item);
+                            }}
+                          >
+                            رفض الدفع
                           </Button>
                         </div>
                       </div>
@@ -411,11 +451,24 @@ function AdminPaymentsPage() {
                             <Button
                               size="sm"
                               className="h-11 min-h-[44px] whitespace-normal"
-                              disabled={mutation.isPending}
+                              disabled={mutation.isPending || rejectMutation.isPending}
                               onClick={() => setSelected(item)}
                               aria-label={`تحقق من دفع ${displayName(item)}`}
                             >
                               تحقق من الدفع
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-11 min-h-[44px] whitespace-normal"
+                              disabled={mutation.isPending || rejectMutation.isPending}
+                              onClick={() => {
+                                setRejectReason("");
+                                setRejectTarget(item);
+                              }}
+                            >
+                              رفض الدفع
                             </Button>
                           </div>
                         </TableCell>
@@ -518,6 +571,136 @@ function AdminPaymentsPage() {
               className="h-11 min-h-[44px] w-full whitespace-normal sm:w-auto"
               disabled={mutation.isPending}
               onClick={() => setSelected(null)}
+            >
+              إلغاء
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rejectTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !rejectMutation.isPending) {
+            setRejectTarget(null);
+            setRejectReason("");
+          }
+        }}
+      >
+        <DialogContent dir="rtl" className="min-w-0 sm:max-w-md">
+          <DialogHeader className="min-w-0 space-y-1 text-right sm:text-right">
+            <DialogTitle className="break-words">رفض الدفع</DialogTitle>
+            <DialogDescription className="break-words text-right">
+              سيتم رفض هذه الدفعة. لن يُفعَّل الاشتراك، ويمكن للمعلم إرسال رقم تحويل جديد.
+            </DialogDescription>
+          </DialogHeader>
+
+          {rejectTarget ? (
+            <div className="min-w-0 space-y-3 py-1">
+              <div className="min-w-0 rounded-xl border border-border bg-zinc-50/80 p-3 dark:bg-zinc-900/40">
+                <p className="text-xs text-muted-foreground">المعلم</p>
+                <p className="mt-0.5 break-words font-semibold leading-snug">
+                  {displayName(rejectTarget)}
+                </p>
+                <p className="break-all text-sm text-muted-foreground" dir="ltr">
+                  {displayEmail(rejectTarget)}
+                </p>
+              </div>
+              <dl className="grid min-w-0 gap-2 text-sm">
+                <div className="flex min-w-0 justify-between gap-3">
+                  <dt className="text-muted-foreground">المبلغ</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {formatSar(rejectTarget.netSar, rejectTarget.currency)}
+                  </dd>
+                </div>
+                <div className="flex min-w-0 justify-between gap-3">
+                  <dt className="text-muted-foreground">رقم التحويل</dt>
+                  <dd className="break-all font-mono" dir="ltr">
+                    {rejectTarget.transferReference || rejectTarget.transactionNumber || "—"}
+                  </dd>
+                </div>
+                <div className="flex min-w-0 justify-between gap-3">
+                  <dt className="text-muted-foreground">الباقة</dt>
+                  <dd className="text-end">
+                    {rejectTarget.plan.name || rejectTarget.plan.code || "—"}
+                  </dd>
+                </div>
+                <div className="flex min-w-0 justify-between gap-3">
+                  <dt className="text-muted-foreground">الفترة</dt>
+                  <dd className="text-end">
+                    {formatPeriod(
+                      rejectTarget.subscription.startsOn,
+                      rejectTarget.subscription.endsOn,
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              {rejectTarget.hasReceipt ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-h-[44px] w-full whitespace-normal"
+                  disabled={previewReceipt.isPending || rejectMutation.isPending}
+                  onClick={() => previewReceipt.mutate(rejectTarget.paymentId)}
+                >
+                  {previewReceipt.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : null}
+                  عرض الإيصال
+                </Button>
+              ) : null}
+              <div className="space-y-2">
+                <label htmlFor="reject-reason" className="text-sm font-medium">
+                  سبب الرفض
+                </label>
+                <Textarea
+                  id="reject-reason"
+                  value={rejectReason}
+                  onChange={(event) => setRejectReason(event.target.value)}
+                  maxLength={500}
+                  rows={4}
+                  disabled={rejectMutation.isPending}
+                  className="min-h-[88px]"
+                  placeholder="اكتب سبب الرفض"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter className="flex min-w-0 flex-col-reverse gap-2 sm:flex-row sm:justify-start">
+            <Button
+              className="h-11 min-h-[44px] w-full whitespace-normal sm:w-auto"
+              disabled={
+                rejectMutation.isPending ||
+                !rejectTarget ||
+                rejectReason.trim().length < 3 ||
+                rejectReason.trim().length > 500
+              }
+              onClick={() => {
+                if (!rejectTarget || rejectMutation.isPending) return;
+                rejectMutation.mutate({
+                  paymentId: rejectTarget.paymentId,
+                  reason: rejectReason.trim(),
+                });
+              }}
+            >
+              {rejectMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  جارٍ الرفض...
+                </>
+              ) : (
+                "رفض الدفع"
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 min-h-[44px] w-full whitespace-normal sm:w-auto"
+              disabled={rejectMutation.isPending}
+              onClick={() => {
+                setRejectTarget(null);
+                setRejectReason("");
+              }}
             >
               إلغاء
             </Button>

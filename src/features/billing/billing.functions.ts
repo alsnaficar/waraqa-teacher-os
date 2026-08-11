@@ -15,6 +15,8 @@ import {
   getAdminReceiptUrlInputSchema,
   getAdminReceiptUrlOp,
   listAdminSubmittedPaymentsOp,
+  rejectPaymentInputSchema,
+  rejectPaymentOp,
   startCheckoutOp,
   submitPaymentInputSchema,
   submitPaymentReferenceOp,
@@ -242,7 +244,7 @@ export async function loadOpenCheckout(deps: {
   const { data: payment, error: payError } = await deps.supabase
     .from("payments")
     .select(
-      "id, amount, net_sar, status, user_id, subscription_id, transfer_reference, transaction_number, receipt_path",
+      "id, amount, net_sar, status, user_id, subscription_id, transfer_reference, transaction_number, receipt_path, rejection_reason",
     )
     .eq("user_id", deps.userId)
     .eq("subscription_id", sub.id)
@@ -276,6 +278,10 @@ export async function loadOpenCheckout(deps: {
       (payment.transaction_number as string | null) ??
       null,
     hasReceipt: Boolean(payment.receipt_path && String(payment.receipt_path).trim().length > 0),
+    rejectionReason:
+      String(payment.status) === "rejected"
+        ? (payment.rejection_reason as string | null)?.trim() || null
+        : null,
   };
 }
 
@@ -418,5 +424,21 @@ export const getAdminReceiptUrl = createServerFn({ method: "POST" })
     return getAdminReceiptUrlOp(supabaseAdmin, {
       actorId: context.userId,
       paymentId: data.paymentId,
+    });
+  });
+
+/**
+ * Admin rejects a submitted bank transfer. JWT → assertAdmin → service_role.
+ * Client supplies paymentId + reason only.
+ */
+export const rejectPayment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => rejectPaymentInputSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    return rejectPaymentOp(supabaseAdmin, {
+      actorId: context.userId,
+      paymentId: data.paymentId,
+      reason: data.reason,
     });
   });

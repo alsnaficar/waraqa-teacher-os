@@ -101,6 +101,8 @@ export interface OpenCheckout extends CheckoutResult {
   transferReference: string | null;
   /** True when the server stored a receipt for this payment. Never includes the path. */
   hasReceipt: boolean;
+  /** Present when the admin rejected this open payment. Never includes storage paths. */
+  rejectionReason: string | null;
 }
 
 /** Raised when a teacher tries to act on a subscription that is not theirs. */
