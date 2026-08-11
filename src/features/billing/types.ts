@@ -99,6 +99,8 @@ export interface OpenCheckout extends CheckoutResult {
   paymentStatus: string;
   planName: string;
   transferReference: string | null;
+  /** True when the server stored a receipt for this payment. Never includes the path. */
+  hasReceipt: boolean;
 }
 
 /** Raised when a teacher tries to act on a subscription that is not theirs. */
@@ -122,7 +124,8 @@ export type BillingErrorCode =
   | "PERIOD_ENDED"
   | "FORBIDDEN"
   | "FEATURE_ENTITLEMENT_REQUIRED"
-  | "PAYMENT_REFERENCE_LOCKED";
+  | "PAYMENT_REFERENCE_LOCKED"
+  | "INVALID_RECEIPT";
 
 /** Controlled billing failure. Message is safe to show in the UI. */
 export class BillingError extends Error {

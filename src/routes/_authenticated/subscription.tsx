@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { BadgeCheck, Copy, Loader2, Receipt } from "lucide-react";
+import { useRef, useState } from "react";
+import { BadgeCheck, Copy, Loader2, Receipt, Upload } from "lucide-react";
 
 import { SubscriptionBadge } from "@/features/billing/components/subscription-badge";
 import {
@@ -15,6 +15,12 @@ import type { OpenCheckout, PublicBankDetails } from "@/features/billing/types";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+
+const RECEIPT_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf";
+const RECEIPT_ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const RECEIPT_ALLOWED_EXT = new Set(["jpg", "jpeg", "png", "webp", "pdf"]);
+const RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
 
 export const Route = createFileRoute("/_authenticated/subscription")({
   component: SubscriptionPage,
@@ -29,7 +35,7 @@ function SubscriptionPage() {
   const plans = usePlans();
   const history = useBillingHistory();
   const openCheckout = useOpenCheckout();
-  const { begin, submitReference, checkCoupon } = useCheckout();
+  const { begin, submitReference, checkCoupon, uploadReceipt } = useCheckout();
 
   const [couponCode, setCouponCode] = useState("");
   const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null);
@@ -100,6 +106,14 @@ function SubscriptionPage() {
               { paymentId: checkout.paymentId, reference },
               { onSuccess: () => setReference("") },
             )
+          }
+          receiptPending={uploadReceipt.isPending}
+          receiptError={uploadReceipt.error}
+          onUploadReceipt={(payload) =>
+            uploadReceipt.mutate({
+              paymentId: checkout.paymentId,
+              ...payload,
+            })
           }
         />
       ) : null}
@@ -253,6 +267,9 @@ function CheckoutCard({
   submitPending,
   submitError,
   onSubmit,
+  receiptPending,
+  receiptError,
+  onUploadReceipt,
 }: {
   checkout: OpenCheckout;
   bank: PublicBankDetails | null;
@@ -264,7 +281,32 @@ function CheckoutCard({
   submitPending: boolean;
   submitError: unknown;
   onSubmit: () => void;
+  receiptPending: boolean;
+  receiptError: unknown;
+  onUploadReceipt: (payload: {
+    contentBase64: string;
+    mimeType?: string;
+    fileName?: string;
+  }) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [receiptValidationError, setReceiptValidationError] = useState<string | null>(null);
+  const canUploadReceipt =
+    checkout.paymentStatus === "created" || checkout.paymentStatus === "submitted";
+
+  async function handleReceiptFile(file: File | undefined) {
+    setReceiptValidationError(null);
+    if (!file) return;
+    try {
+      const payload = await fileToReceiptPayload(file);
+      onUploadReceipt(payload);
+    } catch (err: unknown) {
+      setReceiptValidationError(errorMessage(err));
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   return (
     <Card className="border-sky-500/30 bg-sky-500/5">
       <CardContent className="space-y-3 p-4">
@@ -307,9 +349,95 @@ function CheckoutCard({
         )}
 
         {submitError ? <p className="text-sm text-red-600">{errorMessage(submitError)}</p> : null}
+
+        {canUploadReceipt ? (
+          <div className="space-y-2 rounded-xl border border-border bg-background p-3">
+            <p className="text-sm font-medium">رفع إيصال التحويل</p>
+            {checkout.hasReceipt ? (
+              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                تم رفع الإيصال
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                JPEG أو PNG أو WebP أو PDF، بحد أقصى 5 ميغابايت. اختياري.
+              </p>
+            )}
+            <input
+              ref={fileInputRef}
+              id="receipt-file-upload"
+              type="file"
+              accept={RECEIPT_ACCEPT}
+              className="sr-only"
+              disabled={receiptPending}
+              onChange={(event) => void handleReceiptFile(event.target.files?.[0])}
+            />
+            <Label htmlFor="receipt-file-upload" className="block">
+              <span className="inline-flex h-11 min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
+                {receiptPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Upload className="h-4 w-4" aria-hidden />
+                )}
+                {receiptPending
+                  ? "جارٍ الرفع..."
+                  : checkout.hasReceipt
+                    ? "استبدال الإيصال"
+                    : "اختيار ملف الإيصال"}
+              </span>
+            </Label>
+            {receiptValidationError ? (
+              <p className="text-sm text-red-600">{receiptValidationError}</p>
+            ) : null}
+            {receiptError ? (
+              <p className="text-sm text-red-600">{errorMessage(receiptError)}</p>
+            ) : null}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
+}
+
+function fileToReceiptPayload(file: File): Promise<{
+  contentBase64: string;
+  mimeType?: string;
+  fileName?: string;
+}> {
+  const ext =
+    file.name
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "") ?? "";
+  if (file.size > RECEIPT_MAX_BYTES) {
+    return Promise.reject(new Error("حجم الملف يجب ألا يتجاوز 5 ميغابايت."));
+  }
+  if (ext && !RECEIPT_ALLOWED_EXT.has(ext)) {
+    return Promise.reject(new Error("امتداد الملف غير مسموح."));
+  }
+  if (file.type && !RECEIPT_ALLOWED_MIME.has(file.type)) {
+    return Promise.reject(new Error("نوع الملف غير مسموح. يُقبل JPEG وPNG وWebP وPDF فقط."));
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      const contentBase64 = comma >= 0 ? result.slice(comma + 1) : result;
+      if (!contentBase64) {
+        reject(new Error("تعذر قراءة الملف."));
+        return;
+      }
+      resolve({
+        contentBase64,
+        mimeType: file.type || undefined,
+        fileName: file.name || undefined,
+      });
+    };
+    reader.onerror = () => reject(new Error("تعذر قراءة الملف."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function BankDetails({ bank }: { bank: PublicBankDetails }) {

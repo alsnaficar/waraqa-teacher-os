@@ -108,6 +108,7 @@ function paymentRow(overrides: Row = {}): Row {
     status: "created",
     transfer_reference: null,
     transaction_number: null,
+    receipt_path: null,
     paid_at: null,
     created_at: "2026-08-11T00:00:00Z",
     ...overrides,
@@ -192,6 +193,8 @@ describe("loadOpenCheckout restoration", () => {
     assert.equal(first.amount, 40);
     assert.equal(first.planName, "فصل دراسي");
     assert.equal(first.paymentStatus, "created");
+    assert.equal(first.hasReceipt, false);
+    assert.equal("receipt_path" in first, false);
     assert.equal(first.instruction.kind, "manual");
     if (first.instruction.kind === "manual") {
       assert.equal(first.instruction.reference, buildManualReference(PAY_A));

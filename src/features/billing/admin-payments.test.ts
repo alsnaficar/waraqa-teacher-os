@@ -314,6 +314,8 @@ function assertSafeProjection(item: AdminSubmittedPayment) {
   assert.equal("whatsapp" in item.subscriber, false);
   assert.equal("school" in item.subscriber, false);
   assert.equal("avatar_url" in item.subscriber, false);
+  assert.equal("receipt_path" in item, false);
+  assert.equal(typeof item.hasReceipt, "boolean");
 }
 
 describe("listAdminSubmittedPaymentsOp authorization", () => {
@@ -444,7 +446,9 @@ describe("server function and route contracts", () => {
     const src = readFileSync(FUNCTIONS_FILE, "utf8");
     const start = src.indexOf("export const listAdminSubmittedPayments");
     assert.ok(start >= 0);
-    const fn = src.slice(start);
+    const rest = src.slice(start);
+    const next = rest.indexOf("export const attachPaymentReceipt");
+    const fn = next >= 0 ? rest.slice(0, next) : rest;
     assert.equal(fn.includes(".inputValidator"), false);
     assert.match(fn, /listAdminSubmittedPaymentsOp\(supabaseAdmin,\s*context\.userId\)/);
     assert.equal(fn.includes("data.userId"), false);

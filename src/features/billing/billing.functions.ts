@@ -9,13 +9,18 @@ import {
   activateSubscriptionInputSchema,
   activateSubscriptionOp,
   assessCouponForPlanOp,
+  attachPaymentReceiptInputSchema,
+  attachPaymentReceiptOp,
   checkoutInputSchema,
+  getAdminReceiptUrlInputSchema,
+  getAdminReceiptUrlOp,
   listAdminSubmittedPaymentsOp,
   startCheckoutOp,
   submitPaymentInputSchema,
   submitPaymentReferenceOp,
   type AdminSubmittedPayment,
 } from "./billing.operations";
+import { decodeReceiptBase64 } from "./receipt";
 import "./providers/manual-provider";
 import { buildManualCheckoutInstruction } from "./providers/manual-provider";
 import type {
@@ -237,7 +242,7 @@ export async function loadOpenCheckout(deps: {
   const { data: payment, error: payError } = await deps.supabase
     .from("payments")
     .select(
-      "id, amount, net_sar, status, user_id, subscription_id, transfer_reference, transaction_number",
+      "id, amount, net_sar, status, user_id, subscription_id, transfer_reference, transaction_number, receipt_path",
     )
     .eq("user_id", deps.userId)
     .eq("subscription_id", sub.id)
@@ -270,6 +275,7 @@ export async function loadOpenCheckout(deps: {
       (payment.transfer_reference as string | null) ??
       (payment.transaction_number as string | null) ??
       null,
+    hasReceipt: Boolean(payment.receipt_path && String(payment.receipt_path).trim().length > 0),
   };
 }
 
@@ -379,4 +385,38 @@ export const listAdminSubmittedPayments = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
     const payments = await listAdminSubmittedPaymentsOp(supabaseAdmin, context.userId);
     return { payments };
+  });
+
+/**
+ * Teacher receipt upload. JWT ownership is enforced in the op.
+ * Client may send paymentId + file bytes only — never a storage path.
+ */
+export const attachPaymentReceipt = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => attachPaymentReceiptInputSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ ok: true; hasReceipt: true }> => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    const bytes = decodeReceiptBase64(data.contentBase64);
+    return attachPaymentReceiptOp(supabaseAdmin, {
+      userId: context.userId,
+      paymentId: data.paymentId,
+      bytes,
+      declaredMime: data.mimeType,
+      declaredName: data.fileName,
+    });
+  });
+
+/**
+ * Admin short-lived signed URL for a payment receipt.
+ * JWT → assertAdmin → service_role. Client supplies paymentId only.
+ */
+export const getAdminReceiptUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => getAdminReceiptUrlInputSchema.parse(data))
+  .handler(async ({ data, context }): Promise<{ url: string; expiresIn: number }> => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    return getAdminReceiptUrlOp(supabaseAdmin, {
+      actorId: context.userId,
+      paymentId: data.paymentId,
+    });
   });

@@ -26,6 +26,15 @@ import {
   type ValidatedPlan,
 } from "./billing.logic";
 import { getPaymentProvider } from "./providers/payment-provider";
+import {
+  RECEIPT_MAX_BASE64_CHARS,
+  RECEIPT_SIGNED_URL_TTL_SECONDS,
+  createSupabaseReceiptStorage,
+  generateReceiptObjectPath,
+  isOwnedReceiptPath,
+  validateReceiptFile,
+  type ReceiptStorage,
+} from "./receipt";
 
 const DEFAULT_PROVIDER = "manual";
 const PAYMENT_PROVIDER = "bank";
@@ -48,6 +57,21 @@ export const activateSubscriptionInputSchema = z
   .object({
     subscriptionId: z.string().uuid(),
     note: z.string().max(500).optional(),
+  })
+  .strict();
+
+export const attachPaymentReceiptInputSchema = z
+  .object({
+    paymentId: z.string().uuid(),
+    contentBase64: z.string().min(1).max(RECEIPT_MAX_BASE64_CHARS),
+    mimeType: z.string().max(128).optional(),
+    fileName: z.string().max(255).optional(),
+  })
+  .strict();
+
+export const getAdminReceiptUrlInputSchema = z
+  .object({
+    paymentId: z.string().uuid(),
   })
   .strict();
 
@@ -81,6 +105,19 @@ export interface SubmitPaymentInput {
   reference: string;
 }
 
+export interface AttachPaymentReceiptInput {
+  userId: string;
+  paymentId: string;
+  bytes: Uint8Array;
+  declaredMime?: string;
+  declaredName?: string;
+}
+
+export interface GetAdminReceiptUrlInput {
+  actorId: string;
+  paymentId: string;
+}
+
 export const ADMIN_SUBSCRIBER_NAME_FALLBACK = "بدون اسم";
 export const ADMIN_SUBSCRIBER_EMAIL_FALLBACK = "بدون بريد";
 
@@ -97,6 +134,7 @@ export type AdminSubmittedPayment = {
   createdAt: string | null;
   paidAt: string | null;
   verifiedAt: string | null;
+  hasReceipt: boolean;
   subscriptionId: string;
   subscription: {
     id: string;
@@ -984,7 +1022,7 @@ export async function listAdminSubmittedPaymentsOp(
   const { data: paymentRows, error: paymentError } = await client
     .from("payments")
     .select(
-      "id, user_id, amount_sar, discount_sar, net_sar, currency, transfer_reference, transaction_number, created_at, paid_at, verified_at, subscription_id, status",
+      "id, user_id, amount_sar, discount_sar, net_sar, currency, transfer_reference, transaction_number, created_at, paid_at, verified_at, receipt_path, subscription_id, status",
     )
     .eq("status", "submitted")
     .order("created_at", { ascending: false });
@@ -1081,6 +1119,7 @@ export async function listAdminSubmittedPaymentsOp(
       createdAt: payment.created_at ?? null,
       paidAt: payment.paid_at ?? null,
       verifiedAt: payment.verified_at ?? null,
+      hasReceipt: Boolean(payment.receipt_path && String(payment.receipt_path).trim()),
       subscriptionId,
       subscription: {
         id: subscription.id,
@@ -1104,4 +1143,140 @@ export async function listAdminSubmittedPaymentsOp(
   }
 
   return items;
+}
+
+const RECEIPT_ATTACHABLE_PAYMENT_STATUSES = ["created", "submitted"] as const;
+const RECEIPT_BLOCKED_SUBSCRIPTION_STATUSES = new Set([
+  "scheduled",
+  "active",
+  "expired",
+  "cancelled",
+]);
+
+export async function attachPaymentReceiptOp(
+  client: AdminClient,
+  input: AttachPaymentReceiptInput,
+  storage: ReceiptStorage = createSupabaseReceiptStorage(client as never),
+): Promise<{ ok: true; hasReceipt: true }> {
+  const validated = validateReceiptFile({
+    bytes: input.bytes,
+    declaredMime: input.declaredMime,
+    declaredName: input.declaredName,
+  });
+
+  const { data: payment, error } = await client
+    .from("payments")
+    .select("id, status, user_id, subscription_id, receipt_path")
+    .eq("id", input.paymentId)
+    .maybeSingle();
+
+  if (error) {
+    failClosed(error, new BillingError("INVALID_PAYMENT", "تعذر تحديث عملية الدفع."));
+  }
+
+  if (!payment) {
+    throw new BillingError("INVALID_PAYMENT", "عملية الدفع غير موجودة.");
+  }
+
+  if (payment.user_id !== input.userId) {
+    throw new BillingAccessError("لا تملك صلاحية تعديل هذه العملية.");
+  }
+
+  if (
+    payment.status === "verified" ||
+    payment.status === "paid" ||
+    payment.status === "rejected" ||
+    !RECEIPT_ATTACHABLE_PAYMENT_STATUSES.includes(
+      payment.status as (typeof RECEIPT_ATTACHABLE_PAYMENT_STATUSES)[number],
+    )
+  ) {
+    throw new BillingError("INVALID_PAYMENT", "لا يمكن رفع إيصال لهذه العملية.");
+  }
+
+  if (!payment.subscription_id) {
+    throw new BillingError("INVALID_PAYMENT", "لا يمكن ربط هذه العملية باشتراك.");
+  }
+
+  const { data: subscription } = await client
+    .from("subscriptions")
+    .select("id, user_id, status")
+    .eq("id", payment.subscription_id)
+    .maybeSingle();
+
+  if (!subscription || subscription.user_id !== input.userId) {
+    throw new BillingAccessError("لا تملك صلاحية تعديل هذه العملية.");
+  }
+
+  if (RECEIPT_BLOCKED_SUBSCRIPTION_STATUSES.has(subscription.status)) {
+    throw new BillingError("INVALID_PAYMENT", "لا يمكن رفع إيصال لهذه العملية.");
+  }
+
+  const objectPath = generateReceiptObjectPath(input.userId, payment.id, validated.ext);
+  const previousPath =
+    typeof payment.receipt_path === "string" && payment.receipt_path.trim()
+      ? payment.receipt_path.trim()
+      : null;
+
+  await storage.upload(objectPath, input.bytes, validated.mime);
+
+  const { data: updated, error: updateError } = await client
+    .from("payments")
+    .update({ receipt_path: objectPath })
+    .eq("id", payment.id)
+    .eq("user_id", input.userId)
+    .in("status", [...RECEIPT_ATTACHABLE_PAYMENT_STATUSES])
+    .select("id, receipt_path, status")
+    .maybeSingle();
+
+  if (updateError || !updated) {
+    try {
+      await storage.remove(objectPath);
+    } catch (cleanupError) {
+      console.error("[billing] failed to clean uploaded receipt after CAS miss:", cleanupError);
+    }
+    failClosed(
+      updateError ?? new Error("receipt CAS missed"),
+      new BillingError("INVALID_PAYMENT", "تعذر حفظ الإيصال."),
+    );
+  }
+
+  if (previousPath && previousPath !== objectPath) {
+    try {
+      await storage.remove(previousPath);
+    } catch (cleanupError) {
+      console.error("[billing] failed to delete replaced receipt object:", cleanupError);
+    }
+  }
+
+  return { ok: true, hasReceipt: true };
+}
+
+export async function getAdminReceiptUrlOp(
+  client: AdminClient,
+  input: GetAdminReceiptUrlInput,
+  storage: ReceiptStorage = createSupabaseReceiptStorage(client as never),
+): Promise<{ url: string; expiresIn: number }> {
+  await assertAdmin(client, input.actorId);
+
+  const { data: payment, error } = await client
+    .from("payments")
+    .select("id, user_id, receipt_path")
+    .eq("id", input.paymentId)
+    .maybeSingle();
+
+  if (error) {
+    failClosed(error, new BillingError("INVALID_PAYMENT", "تعذر عرض الإيصال."));
+  }
+
+  if (!payment) {
+    throw new BillingError("INVALID_PAYMENT", "عملية الدفع غير موجودة.");
+  }
+
+  const receiptPath = typeof payment.receipt_path === "string" ? payment.receipt_path.trim() : "";
+  if (!receiptPath || !isOwnedReceiptPath(payment.user_id, receiptPath)) {
+    throw new BillingError("INVALID_PAYMENT", "لا يوجد إيصال لهذه العملية.");
+  }
+
+  const url = await storage.createSignedUrl(receiptPath, RECEIPT_SIGNED_URL_TTL_SECONDS);
+  return { url, expiresIn: RECEIPT_SIGNED_URL_TTL_SECONDS };
 }

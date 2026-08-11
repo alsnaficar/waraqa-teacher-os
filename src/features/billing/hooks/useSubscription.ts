@@ -3,6 +3,7 @@ import { useCallback } from "react";
 
 import {
   assessCouponCode,
+  attachPaymentReceipt,
   getBillingHistory,
   getOpenCheckout,
   getSubscriptionState,
@@ -106,5 +107,15 @@ export function useCheckout() {
       assessCouponCode({ data: input }),
   });
 
-  return { begin, submitReference, checkCoupon };
+  const uploadReceipt = useMutation({
+    mutationFn: (input: {
+      paymentId: string;
+      contentBase64: string;
+      mimeType?: string;
+      fileName?: string;
+    }) => attachPaymentReceipt({ data: input }),
+    onSuccess: invalidate,
+  });
+
+  return { begin, submitReference, checkCoupon, uploadReceipt };
 }

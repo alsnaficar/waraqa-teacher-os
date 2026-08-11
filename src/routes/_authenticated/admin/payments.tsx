@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   activateSubscription,
+  getAdminReceiptUrl,
   listAdminSubmittedPayments,
   type AdminSubmittedPayment,
 } from "@/features/billing/billing.functions";
@@ -143,6 +144,16 @@ function AdminPaymentsPage() {
     queryKey: QUEUE_QUERY_KEY,
     queryFn: () => listAdminSubmittedPayments(),
     staleTime: 15_000,
+  });
+
+  const previewReceipt = useMutation({
+    mutationFn: (paymentId: string) => getAdminReceiptUrl({ data: { paymentId } }),
+    onSuccess: (result) => {
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    },
+    onError: (err: unknown) => {
+      toast.error(toAdminPaymentsErrorMessage(err));
+    },
   });
 
   const mutation = useMutation({
@@ -283,13 +294,29 @@ function AdminPaymentsPage() {
                             <dd>{formatDate(item.createdAt)}</dd>
                           </div>
                         </dl>
-                        <Button
-                          className="h-11 min-h-[44px] w-full whitespace-normal"
-                          disabled={mutation.isPending}
-                          onClick={() => setSelected(item)}
-                        >
-                          تحقق من الدفع
-                        </Button>
+                        <div className="flex min-w-0 flex-col gap-2">
+                          {item.hasReceipt ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-11 min-h-[44px] w-full whitespace-normal"
+                              disabled={previewReceipt.isPending || mutation.isPending}
+                              onClick={() => previewReceipt.mutate(item.paymentId)}
+                            >
+                              {previewReceipt.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                              ) : null}
+                              عرض الإيصال
+                            </Button>
+                          ) : null}
+                          <Button
+                            className="h-11 min-h-[44px] w-full whitespace-normal"
+                            disabled={mutation.isPending}
+                            onClick={() => setSelected(item)}
+                          >
+                            تحقق من الدفع
+                          </Button>
+                        </div>
                       </div>
                     </article>
                   </li>
@@ -365,15 +392,32 @@ function AdminPaymentsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="py-3.5 align-top">
-                          <Button
-                            size="sm"
-                            className="h-11 min-h-[44px] whitespace-normal"
-                            disabled={mutation.isPending}
-                            onClick={() => setSelected(item)}
-                            aria-label={`تحقق من دفع ${displayName(item)}`}
-                          >
-                            تحقق من الدفع
-                          </Button>
+                          <div className="flex min-w-0 flex-col gap-2">
+                            {item.hasReceipt ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-11 min-h-[44px] whitespace-normal"
+                                disabled={previewReceipt.isPending || mutation.isPending}
+                                onClick={() => previewReceipt.mutate(item.paymentId)}
+                              >
+                                {previewReceipt.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                ) : null}
+                                عرض الإيصال
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="sm"
+                              className="h-11 min-h-[44px] whitespace-normal"
+                              disabled={mutation.isPending}
+                              onClick={() => setSelected(item)}
+                              aria-label={`تحقق من دفع ${displayName(item)}`}
+                            >
+                              تحقق من الدفع
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -434,6 +478,20 @@ function AdminPaymentsPage() {
                   </dd>
                 </div>
               </dl>
+              {selected.hasReceipt ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-h-[44px] w-full whitespace-normal"
+                  disabled={previewReceipt.isPending || mutation.isPending}
+                  onClick={() => previewReceipt.mutate(selected.paymentId)}
+                >
+                  {previewReceipt.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : null}
+                  عرض الإيصال
+                </Button>
+              ) : null}
             </div>
           ) : null}
 
