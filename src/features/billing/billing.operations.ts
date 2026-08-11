@@ -3,7 +3,7 @@ import { z } from "zod";
 import { assertAdmin } from "@/platform/auth/assert-admin";
 import type { Json } from "@/platform/database/supabase/types";
 import { BillingAccessError, BillingError } from "./types";
-import type { CheckoutResult } from "./types";
+import type { CheckoutResult, CouponAssessment } from "./types";
 import {
   activationStatusForPeriod,
   assessCoupon,
@@ -79,6 +79,50 @@ export interface SubmitPaymentInput {
   userId: string;
   paymentId: string;
   reference: string;
+}
+
+export const ADMIN_SUBSCRIBER_NAME_FALLBACK = "بدون اسم";
+export const ADMIN_SUBSCRIBER_EMAIL_FALLBACK = "بدون بريد";
+
+/** Explicit admin-review DTO. Not a raw payments/subscriptions row. */
+export type AdminSubmittedPayment = {
+  paymentId: string;
+  userId: string;
+  amountSar: number;
+  discountSar: number;
+  netSar: number;
+  currency: string;
+  transferReference: string | null;
+  transactionNumber: string | null;
+  createdAt: string | null;
+  paidAt: string | null;
+  verifiedAt: string | null;
+  subscriptionId: string;
+  subscription: {
+    id: string;
+    status: string;
+    startsOn: string;
+    endsOn: string;
+    billingAcademicYearId: string | null;
+    billingSemesterId: string | null;
+  };
+  plan: {
+    code: string;
+    name: string;
+    priceSar: number;
+    termKind: string;
+  };
+  subscriber: {
+    fullName: string;
+    email: string;
+  };
+};
+
+/** Activation payload from a trusted queue row. Never includes amount/user/dates. */
+export function activationInputFromSubmittedPayment(item: AdminSubmittedPayment): {
+  subscriptionId: string;
+} {
+  return { subscriptionId: item.subscription.id };
 }
 
 function failClosed(error: unknown, fallback: BillingError): never {
@@ -421,22 +465,74 @@ async function insertSubscription(input: {
   return data.id;
 }
 
-async function applyCoupon(
+async function loadCouponRow(
   client: AdminClient,
-  couponCode: string | undefined,
-  listPrice: number,
-): Promise<{ amount: number; discount: number; code: string | null; couponId: string | null }> {
-  if (!couponCode?.trim()) {
-    return { amount: listPrice, discount: 0, code: null, couponId: null };
-  }
-
-  const { data: coupon } = await client
+  couponCode: string,
+): Promise<(CouponLike & { id: string }) | null> {
+  const { data } = await client
     .from("coupons")
     .select("id, code, type, value, starts_at, expires_at, max_usage, used_count, is_active")
     .eq("code", couponCode.trim().toUpperCase())
     .maybeSingle();
 
-  const assessment = assessCoupon((coupon as CouponLike | null) ?? null, listPrice);
+  return (data as (CouponLike & { id: string }) | null) ?? null;
+}
+
+async function couponAppliesToPlan(
+  client: AdminClient,
+  couponId: string,
+  planId: string,
+): Promise<boolean> {
+  const { data, error } = await client
+    .from("coupon_plans")
+    .select("coupon_id")
+    .eq("coupon_id", couponId)
+    .eq("plan_id", planId)
+    .maybeSingle();
+
+  if (error || !data) return false;
+  return data.coupon_id === couponId;
+}
+
+/** Coupon is usable only when coupon_plans links it to the selected plan. */
+async function loadBoundCoupon(
+  client: AdminClient,
+  couponCode: string,
+  planId: string,
+): Promise<(CouponLike & { id: string }) | null> {
+  const coupon = await loadCouponRow(client, couponCode);
+  if (!coupon) return null;
+  const allowed = await couponAppliesToPlan(client, coupon.id, planId);
+  return allowed ? coupon : null;
+}
+
+/**
+ * Preview a coupon against the selected planCode.
+ * Plan and price come from the database. Unbound coupons use the existing
+ * invalid-coupon assessment (valid: false, "رمز الخصم غير صحيح.").
+ */
+export async function assessCouponForPlanOp(
+  client: AdminClient,
+  input: { planCode: string; couponCode: string },
+): Promise<CouponAssessment> {
+  const plan = await loadValidatedPlan(client, input.planCode);
+  const listPrice = authoritativePlanPrice(plan);
+  const coupon = await loadBoundCoupon(client, input.couponCode, plan.id);
+  return assessCoupon(coupon, listPrice);
+}
+
+async function applyCoupon(
+  client: AdminClient,
+  couponCode: string | undefined,
+  plan: ValidatedPlan,
+): Promise<{ amount: number; discount: number; code: string | null; couponId: string | null }> {
+  const listPrice = authoritativePlanPrice(plan);
+  if (!couponCode?.trim()) {
+    return { amount: listPrice, discount: 0, code: null, couponId: null };
+  }
+
+  const coupon = await loadBoundCoupon(client, couponCode, plan.id);
+  const assessment = assessCoupon(coupon, listPrice);
 
   if (!assessment.valid) {
     return { amount: listPrice, discount: 0, code: null, couponId: null };
@@ -474,7 +570,7 @@ export async function startCheckoutOp(
   }
 
   const listPrice = authoritativePlanPrice(plan);
-  const coupon = await applyCoupon(client, input.couponCode, listPrice);
+  const coupon = await applyCoupon(client, input.couponCode, plan);
   const idempotencyKey = checkoutIdempotencyKey(
     input.userId,
     plan.id,
@@ -847,4 +943,165 @@ export async function activateSubscriptionOp(
   });
 
   return { ok: true, status: nextStatus };
+}
+
+async function listAuthEmailsByUserId(
+  client: AdminClient,
+): Promise<Map<string, string | undefined>> {
+  const perPage = 200;
+  let page = 1;
+  const emails = new Map<string, string | undefined>();
+
+  for (;;) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.error("[billing] admin listUsers failed:", error.message);
+      throw new Error("تعذّر جلب بيانات المشتركين");
+    }
+    const batch = data?.users ?? [];
+    for (const user of batch) {
+      emails.set(user.id, user.email);
+    }
+    if (batch.length < perPage) break;
+    page += 1;
+    if (page > 50) break;
+  }
+
+  return emails;
+}
+
+/**
+ * Admin-only submitted bank-transfer queue.
+ * Authorization: JWT actorId → assertAdmin → service_role reads.
+ * Status filter is hardcoded to `submitted`. Client cannot supply filters.
+ */
+export async function listAdminSubmittedPaymentsOp(
+  client: AdminClient,
+  actorId: string,
+): Promise<AdminSubmittedPayment[]> {
+  await assertAdmin(client, actorId);
+
+  const { data: paymentRows, error: paymentError } = await client
+    .from("payments")
+    .select(
+      "id, user_id, amount_sar, discount_sar, net_sar, currency, transfer_reference, transaction_number, created_at, paid_at, verified_at, subscription_id, status",
+    )
+    .eq("status", "submitted")
+    .order("created_at", { ascending: false });
+
+  if (paymentError) {
+    console.error("[billing] admin submitted payments read failed:", paymentError.message);
+    throw new Error("تعذّر جلب الدفعات بانتظار المراجعة");
+  }
+
+  const submitted = (paymentRows ?? []).filter(
+    (row) =>
+      row.status === "submitted" && typeof row.subscription_id === "string" && row.subscription_id,
+  );
+
+  if (submitted.length === 0) {
+    return [];
+  }
+
+  const subscriptionIds = [...new Set(submitted.map((row) => row.subscription_id as string))];
+  const userIds = [...new Set(submitted.map((row) => row.user_id))];
+
+  const { data: subscriptionRows, error: subscriptionError } = await client
+    .from("subscriptions")
+    .select(
+      "id, status, starts_on, ends_on, billing_academic_year_id, billing_semester_id, plan_id, user_id",
+    )
+    .in("id", subscriptionIds);
+
+  if (subscriptionError) {
+    console.error(
+      "[billing] admin submitted subscriptions read failed:",
+      subscriptionError.message,
+    );
+    throw new Error("تعذّر جلب الدفعات بانتظار المراجعة");
+  }
+
+  const subscriptionById = new Map((subscriptionRows ?? []).map((row) => [row.id, row]));
+  const planIds = [
+    ...new Set(
+      (subscriptionRows ?? [])
+        .map((row) => row.plan_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+
+  const { data: planRows, error: planError } =
+    planIds.length > 0
+      ? await client.from("plans").select("id, code, name, price_sar, term_kind").in("id", planIds)
+      : { data: [], error: null };
+
+  if (planError) {
+    console.error("[billing] admin submitted plans read failed:", planError.message);
+    throw new Error("تعذّر جلب الدفعات بانتظار المراجعة");
+  }
+
+  const planById = new Map((planRows ?? []).map((row) => [row.id, row]));
+
+  const { data: profileRows, error: profileError } = await client
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", userIds);
+
+  if (profileError) {
+    console.error("[billing] admin submitted profiles read failed:", profileError.message);
+    throw new Error("تعذّر جلب بيانات المشتركين");
+  }
+
+  const nameById = new Map(
+    (profileRows ?? []).map((row) => [row.id, row.full_name as string | null]),
+  );
+  const emailById = await listAuthEmailsByUserId(client);
+
+  const items: AdminSubmittedPayment[] = [];
+  for (const payment of submitted) {
+    const subscriptionId = payment.subscription_id as string;
+    const subscription = subscriptionById.get(subscriptionId);
+    if (!subscription || subscription.user_id !== payment.user_id) {
+      continue;
+    }
+
+    const plan = planById.get(subscription.plan_id);
+    const fullName = nameById.get(payment.user_id)?.trim();
+    const email = emailById.get(payment.user_id)?.trim();
+
+    items.push({
+      paymentId: payment.id,
+      userId: payment.user_id,
+      amountSar: Number(payment.amount_sar ?? 0),
+      discountSar: Number(payment.discount_sar ?? 0),
+      netSar: Number(payment.net_sar ?? payment.amount_sar ?? 0),
+      currency: payment.currency || "SAR",
+      transferReference: payment.transfer_reference ?? null,
+      transactionNumber: payment.transaction_number ?? null,
+      createdAt: payment.created_at ?? null,
+      paidAt: payment.paid_at ?? null,
+      verifiedAt: payment.verified_at ?? null,
+      subscriptionId,
+      subscription: {
+        id: subscription.id,
+        status: subscription.status,
+        startsOn: subscription.starts_on,
+        endsOn: subscription.ends_on,
+        billingAcademicYearId: subscription.billing_academic_year_id,
+        billingSemesterId: subscription.billing_semester_id,
+      },
+      plan: {
+        code: plan?.code ?? "",
+        name: plan?.name ?? "",
+        priceSar: Number(plan?.price_sar ?? 0),
+        termKind: plan?.term_kind ?? "",
+      },
+      subscriber: {
+        fullName: fullName || ADMIN_SUBSCRIBER_NAME_FALLBACK,
+        email: email || ADMIN_SUBSCRIBER_EMAIL_FALLBACK,
+      },
+    });
+  }
+
+  return items;
 }

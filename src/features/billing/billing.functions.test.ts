@@ -299,4 +299,31 @@ describe("teacher billing function contracts", () => {
     assert.doesNotMatch(src, /payment_methods\.settings/);
     assert.doesNotMatch(src, /from\("payment_methods"\)/);
   });
+
+  it("E. coupon preview and checkout never use plans[0]", () => {
+    const functionsSrc = readFileSync(new URL("./billing.functions.ts", import.meta.url), "utf8");
+    const operationsSrc = readFileSync(new URL("./billing.operations.ts", import.meta.url), "utf8");
+    const subscriptionSrc = readFileSync(
+      new URL("../../routes/_authenticated/subscription.tsx", import.meta.url),
+      "utf8",
+    );
+
+    assert.doesNotMatch(functionsSrc, /plans\.data\[0\]/);
+    assert.doesNotMatch(operationsSrc, /plans\[0\]/);
+    assert.doesNotMatch(subscriptionSrc, /plans\.data\[0\]/);
+    assert.match(functionsSrc, /assessCouponForPlanOp/);
+    assert.match(operationsSrc, /from\("coupon_plans"\)/);
+    assert.match(subscriptionSrc, /selectedPlan\.code/);
+  });
+
+  it("assessCouponCode has no client amount or user_id", () => {
+    const src = readFileSync(new URL("./billing.functions.ts", import.meta.url), "utf8");
+    const fn = src.slice(src.indexOf("export const assessCouponCode"));
+    const next = fn.indexOf("export const startCheckout");
+    const body = next >= 0 ? fn.slice(0, next) : fn;
+    assert.match(body, /planCode: z\.string\(\)\.min\(1\)/);
+    assert.doesNotMatch(body, /data\.amount/);
+    assert.doesNotMatch(body, /data\.userId/);
+    assert.match(body, /planCode: data\.planCode/);
+  });
 });

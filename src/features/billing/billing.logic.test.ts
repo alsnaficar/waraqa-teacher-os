@@ -13,6 +13,7 @@ import {
   paymentStatusLabel,
   resolveBillingPeriod,
   subscriptionBoundsForPeriod,
+  assessCoupon,
   validatePlan,
   type ExistingSubscriptionRef,
   type OfficialBillingSemester,
@@ -272,5 +273,53 @@ describe("Phase 2 billing logic", () => {
         today: "1999-01-01",
       }),
     );
+  });
+});
+
+describe("assessCoupon existing rules", () => {
+  const now = new Date("2026-09-01T00:00:00Z");
+  const active = {
+    code: "SAVE10",
+    type: "fixed",
+    value: 10,
+    starts_at: null,
+    expires_at: null,
+    max_usage: 0,
+    used_count: 0,
+    is_active: true,
+  };
+
+  it("I. missing coupon keeps the existing invalid reason", () => {
+    const result = assessCoupon(null, 40, now);
+    assert.equal(result.valid, false);
+    assert.equal(result.reason, "رمز الخصم غير صحيح.");
+    assert.equal(result.finalAmount, 40);
+  });
+
+  it("I. inactive / expired / exhausted coupons still reject", () => {
+    assert.equal(
+      assessCoupon({ ...active, is_active: false }, 40, now).reason,
+      "رمز الخصم غير مفعّل.",
+    );
+    assert.equal(
+      assessCoupon({ ...active, expires_at: "2026-08-01T00:00:00Z" }, 40, now).reason,
+      "انتهت صلاحية رمز الخصم.",
+    );
+    assert.equal(
+      assessCoupon({ ...active, max_usage: 1, used_count: 1 }, 40, now).reason,
+      "تم استخدام رمز الخصم بالكامل.",
+    );
+  });
+
+  it("I. percent and fixed discounts are unchanged", () => {
+    const percent = assessCoupon({ ...active, type: "percent", value: 25 }, 40, now);
+    assert.equal(percent.valid, true);
+    assert.equal(percent.discount, 10);
+    assert.equal(percent.finalAmount, 30);
+
+    const fixed = assessCoupon(active, 40, now);
+    assert.equal(fixed.valid, true);
+    assert.equal(fixed.discount, 10);
+    assert.equal(fixed.finalAmount, 30);
   });
 });

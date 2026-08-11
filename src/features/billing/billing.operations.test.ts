@@ -5,6 +5,8 @@ import { BillingAccessError, BillingError } from "./types.ts";
 import {
   activateSubscriptionInputSchema,
   activateSubscriptionOp,
+  assessCouponForPlanOp,
+  checkoutInputSchema,
   startCheckoutOp,
   submitPaymentInputSchema,
   submitPaymentReferenceOp,
@@ -95,6 +97,7 @@ function seedDb(overrides: Partial<Record<string, Row[]>> = {}): Record<string, 
     payments: [],
     payment_methods: [{ id: METHOD_ID, provider: "manual", is_active: true }],
     coupons: [],
+    coupon_plans: [],
     subscription_logs: [],
     billing_audit_log: [],
     user_roles: [{ user_id: ADMIN, role: "admin" }],
@@ -715,5 +718,165 @@ describe("Phase 2 billing operations", () => {
         today: "2026-09-01",
       }),
     );
+  });
+});
+
+const COUPON_SEM_ID = "66666666-6666-4666-8666-666666666666";
+const COUPON_YEAR_ID = "77777777-7777-4777-8777-777777777777";
+const COUPON_NONE_ID = "88888888-8888-4888-8888-888888888888";
+
+function couponRow(id: string, code: string, value: number): Row {
+  return {
+    id,
+    code,
+    type: "fixed",
+    value,
+    starts_at: null,
+    expires_at: null,
+    max_usage: 0,
+    used_count: 0,
+    is_active: true,
+  };
+}
+
+function seedWithCoupons(): Record<string, Row[]> {
+  return seedDb({
+    coupons: [
+      couponRow(COUPON_SEM_ID, "SEM10", 10),
+      couponRow(COUPON_YEAR_ID, "YEAR10", 10),
+      couponRow(COUPON_NONE_ID, "NONE10", 10),
+    ],
+    coupon_plans: [
+      { coupon_id: COUPON_SEM_ID, plan_id: PLAN_SEM },
+      { coupon_id: COUPON_YEAR_ID, plan_id: PLAN_YEAR },
+    ],
+  });
+}
+
+describe("Phase 4.7 coupon plan binding", () => {
+  it("A. coupon allowed for semester plan applies to semester price", async () => {
+    const { client } = createMockClient(seedWithCoupons());
+    const preview = await assessCouponForPlanOp(client as never, {
+      planCode: "core_standard_semester",
+      couponCode: "SEM10",
+    });
+    assert.equal(preview.valid, true);
+    assert.equal(preview.discount, 10);
+    assert.equal(preview.finalAmount, 30);
+  });
+
+  it("B. same semester coupon does not apply to academic-year plan", async () => {
+    const { client } = createMockClient(seedWithCoupons());
+    const preview = await assessCouponForPlanOp(client as never, {
+      planCode: "core_standard_academic_year",
+      couponCode: "SEM10",
+    });
+    assert.equal(preview.valid, false);
+    assert.equal(preview.reason, "رمز الخصم غير صحيح.");
+    assert.equal(preview.discount, 0);
+    assert.equal(preview.finalAmount, 70);
+  });
+
+  it("C. coupon allowed for academic-year plan applies to year price", async () => {
+    const { client } = createMockClient(seedWithCoupons());
+    const preview = await assessCouponForPlanOp(client as never, {
+      planCode: "core_standard_academic_year",
+      couponCode: "YEAR10",
+    });
+    assert.equal(preview.valid, true);
+    assert.equal(preview.discount, 10);
+    assert.equal(preview.finalAmount, 60);
+  });
+
+  it("D. coupon not linked to the selected plan does not apply", async () => {
+    const { client } = createMockClient(seedWithCoupons());
+    const preview = await assessCouponForPlanOp(client as never, {
+      planCode: "core_standard_semester",
+      couponCode: "NONE10",
+    });
+    assert.equal(preview.valid, false);
+    assert.equal(preview.reason, "رمز الخصم غير صحيح.");
+  });
+
+  it("E. coupon resolution uses the requested planCode, not plans[0]", async () => {
+    const db = seedWithCoupons();
+    db.plans = [...db.plans].reverse();
+    assert.equal(db.plans[0].code, "inactive_plan");
+    const { client } = createMockClient(db);
+    const preview = await assessCouponForPlanOp(client as never, {
+      planCode: "core_standard_semester",
+      couponCode: "SEM10",
+    });
+    assert.equal(preview.valid, true);
+    assert.equal(preview.finalAmount, 30);
+  });
+
+  it("F. checkout with semester plan uses semester price + coupon", async () => {
+    const { client, db } = createMockClient(seedWithCoupons());
+    const result = await startCheckoutOp(client as never, {
+      userId: USER_A,
+      planCode: "core_standard_semester",
+      couponCode: "SEM10",
+      today: "2026-09-01",
+    });
+    assert.equal(result.amount, 30);
+    assert.equal(db.payments[0].amount_sar, 40);
+    assert.equal(db.payments[0].discount_sar, 10);
+    assert.equal(db.payments[0].net_sar, 30);
+    assert.equal(db.payments[0].coupon_id, COUPON_SEM_ID);
+  });
+
+  it("G. checkout with academic-year plan uses year price + coupon", async () => {
+    const { client, db } = createMockClient(seedWithCoupons());
+    const result = await startCheckoutOp(client as never, {
+      userId: USER_A,
+      planCode: "core_standard_academic_year",
+      couponCode: "YEAR10",
+      today: "2026-09-01",
+    });
+    assert.equal(result.amount, 60);
+    assert.equal(db.payments[0].amount_sar, 70);
+    assert.equal(db.payments[0].discount_sar, 10);
+    assert.equal(db.payments[0].net_sar, 60);
+    assert.equal(db.payments[0].coupon_id, COUPON_YEAR_ID);
+  });
+
+  it("H. client cannot override amount via checkout input", () => {
+    assert.throws(() =>
+      checkoutInputSchema.parse({
+        planCode: "core_standard_semester",
+        couponCode: "SEM10",
+        amount: 1,
+      }),
+    );
+  });
+
+  it("I. unbound coupon is ignored at checkout (full selected-plan price)", async () => {
+    const { client, db } = createMockClient(seedWithCoupons());
+    const result = await startCheckoutOp(client as never, {
+      userId: USER_A,
+      planCode: "core_standard_academic_year",
+      couponCode: "SEM10",
+      today: "2026-09-01",
+    });
+    assert.equal(result.amount, 70);
+    assert.equal(db.payments[0].discount_sar, 0);
+    assert.equal(db.payments[0].net_sar, 70);
+    assert.equal(db.payments[0].coupon_id, null);
+  });
+
+  it("preview and checkout use the same selected plan price", async () => {
+    const { client } = createMockClient(seedWithCoupons());
+    const preview = await assessCouponForPlanOp(client as never, {
+      planCode: "core_standard_semester",
+      couponCode: "SEM10",
+    });
+    const checkout = await startCheckoutOp(client as never, {
+      userId: USER_A,
+      planCode: "core_standard_semester",
+      couponCode: "SEM10",
+      today: "2026-09-01",
+    });
+    assert.equal(preview.finalAmount, checkout.amount);
   });
 });

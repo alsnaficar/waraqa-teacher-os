@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   Archive,
+  Banknote,
   BookOpen,
   FileSpreadsheet,
   FileText,
@@ -217,6 +218,12 @@ function AdminDashboardPage() {
                   <Link to="/admin/users">
                     <Users className="h-4 w-4" />
                     إدارة المستخدمين
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="h-11 min-h-[44px] justify-start gap-2">
+                  <Link to="/admin/payments">
+                    <Banknote className="h-4 w-4" />
+                    مراجعة الدفعات
                   </Link>
                 </Button>
                 <Button asChild variant="outline" className="h-11 min-h-[44px] justify-start gap-2">

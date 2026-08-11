@@ -37,6 +37,7 @@ import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authent
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminCurriculumManagementRouteImport } from './routes/_authenticated/admin/curriculum-management'
 import { Route as AuthenticatedAdminGoogleSheetsRouteImport } from './routes/_authenticated/admin/google-sheets'
+import { Route as AuthenticatedAdminPaymentsRouteImport } from './routes/_authenticated/admin/payments'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 
 const IndexRoute = IndexRouteImport.update({
@@ -190,6 +191,11 @@ const AuthenticatedAdminGoogleSheetsRoute =
     path: '/google-sheets',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
+const AuthenticatedAdminPaymentsRoute = AuthenticatedAdminPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -223,6 +229,7 @@ export interface FileRoutesByFullPath {
   '/subscription': typeof AuthenticatedSubscriptionRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
 }
@@ -252,6 +259,7 @@ export interface FileRoutesByTo {
   '/subscription': typeof AuthenticatedSubscriptionRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
 }
@@ -284,6 +292,7 @@ export interface FileRoutesById {
   '/_authenticated/subscription': typeof AuthenticatedSubscriptionRoute
   '/_authenticated/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/_authenticated/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/_authenticated/admin/payments': typeof AuthenticatedAdminPaymentsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
 }
@@ -316,6 +325,7 @@ export interface FileRouteTypes {
     | '/subscription'
     | '/admin/curriculum-management'
     | '/admin/google-sheets'
+    | '/admin/payments'
     | '/admin/users'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -345,6 +355,7 @@ export interface FileRouteTypes {
     | '/subscription'
     | '/admin/curriculum-management'
     | '/admin/google-sheets'
+    | '/admin/payments'
     | '/admin/users'
     | '/admin'
   id:
@@ -376,6 +387,7 @@ export interface FileRouteTypes {
     | '/_authenticated/subscription'
     | '/_authenticated/admin/curriculum-management'
     | '/_authenticated/admin/google-sheets'
+    | '/_authenticated/admin/payments'
     | '/_authenticated/admin/users'
     | '/_authenticated/admin/'
   fileRoutesById: FileRoutesById
@@ -588,6 +600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminGoogleSheetsRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/payments': {
+      id: '/_authenticated/admin/payments'
+      path: '/payments'
+      fullPath: '/admin/payments'
+      preLoaderRoute: typeof AuthenticatedAdminPaymentsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
       path: '/users'
@@ -601,6 +620,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminCurriculumManagementRoute: typeof AuthenticatedAdminCurriculumManagementRoute
   AuthenticatedAdminGoogleSheetsRoute: typeof AuthenticatedAdminGoogleSheetsRoute
+  AuthenticatedAdminPaymentsRoute: typeof AuthenticatedAdminPaymentsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
@@ -610,6 +630,7 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
     AuthenticatedAdminCurriculumManagementRoute:
       AuthenticatedAdminCurriculumManagementRoute,
     AuthenticatedAdminGoogleSheetsRoute: AuthenticatedAdminGoogleSheetsRoute,
+    AuthenticatedAdminPaymentsRoute: AuthenticatedAdminPaymentsRoute,
     AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   }

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  Banknote,
   FileSpreadsheet,
   LayoutDashboard,
   LogOut,
@@ -18,7 +19,12 @@ import { supabase } from "@/platform/database/supabase/client";
 import { cn } from "@/shared/utils/utils";
 
 type AdminNavItem = {
-  to: "/admin" | "/admin/users" | "/admin/curriculum-management" | "/admin/google-sheets";
+  to:
+    | "/admin"
+    | "/admin/users"
+    | "/admin/payments"
+    | "/admin/curriculum-management"
+    | "/admin/google-sheets";
   label: string;
   shortLabel: string;
   icon: LucideIcon;
@@ -28,6 +34,7 @@ type AdminNavItem = {
 const ADMIN_NAV: AdminNavItem[] = [
   { to: "/admin", label: "لوحة التحكم", shortLabel: "اللوحة", icon: LayoutDashboard, exact: true },
   { to: "/admin/users", label: "المستخدمون", shortLabel: "المستخدمون", icon: Users },
+  { to: "/admin/payments", label: "الدفعات", shortLabel: "الدفعات", icon: Banknote },
   { to: "/admin/curriculum-management", label: "المناهج", shortLabel: "المناهج", icon: BookOpen },
   {
     to: "/admin/google-sheets",

@@ -3,25 +3,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
-import {
-  assessCoupon,
-  computeAccess,
-  daysUntil,
-  normaliseStatus,
-  todayIso,
-  toMoney,
-  validatePlan,
-  type CouponLike,
-  type PlanCatalogueRow,
-} from "./billing.logic";
+import { computeAccess, daysUntil, normaliseStatus, todayIso } from "./billing.logic";
 import { promoteDueScheduledSubscriptions } from "./promote-scheduled";
 import {
   activateSubscriptionInputSchema,
   activateSubscriptionOp,
+  assessCouponForPlanOp,
   checkoutInputSchema,
+  listAdminSubmittedPaymentsOp,
   startCheckoutOp,
   submitPaymentInputSchema,
   submitPaymentReferenceOp,
+  type AdminSubmittedPayment,
 } from "./billing.operations";
 import "./providers/manual-provider";
 import { buildManualCheckoutInstruction } from "./providers/manual-provider";
@@ -308,23 +301,11 @@ export const assessCouponCode = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<CouponAssessment> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
 
-    const { data: plan } = await supabaseAdmin
-      .from("plans")
-      .select(
-        "id, code, name, price, price_sar, currency, product, term_kind, is_active, starts_with",
-      )
-      .eq("code", data.planCode)
-      .maybeSingle();
-
     try {
-      const validated = validatePlan(plan as PlanCatalogueRow | null);
-      const { data: coupon } = await supabaseAdmin
-        .from("coupons")
-        .select("code, type, value, starts_at, expires_at, max_usage, used_count, is_active")
-        .eq("code", data.couponCode.trim().toUpperCase())
-        .maybeSingle();
-
-      return assessCoupon((coupon as CouponLike | null) ?? null, toMoney(validated.priceSar));
+      return await assessCouponForPlanOp(supabaseAdmin, {
+        planCode: data.planCode,
+        couponCode: data.couponCode,
+      });
     } catch (error) {
       if (error instanceof BillingError) {
         return {
@@ -384,4 +365,18 @@ export const activateSubscription = createServerFn({ method: "POST" })
       note: data.note,
     });
     return { ok: result.ok };
+  });
+
+export type { AdminSubmittedPayment };
+
+/**
+ * Admin submitted-payment queue. JWT actor only. Status is enforced in the op.
+ * Client cannot supply user_id, status, amount, or payment_id.
+ */
+export const listAdminSubmittedPayments = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ payments: AdminSubmittedPayment[] }> => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    const payments = await listAdminSubmittedPaymentsOp(supabaseAdmin, context.userId);
+    return { payments };
   });

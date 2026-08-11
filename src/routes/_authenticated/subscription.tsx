@@ -32,8 +32,10 @@ function SubscriptionPage() {
   const { begin, submitReference, checkCoupon } = useCheckout();
 
   const [couponCode, setCouponCode] = useState("");
+  const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null);
   const [reference, setReference] = useState("");
 
+  const selectedPlan = plans.data?.find((plan) => plan.code === selectedPlanCode) ?? null;
   const checkout = openCheckout.data ?? null;
   const manualInstruction = checkout?.instruction.kind === "manual" ? checkout.instruction : null;
   const canSubmitReference = checkout?.paymentStatus === "created";
@@ -119,18 +121,23 @@ function SubscriptionPage() {
                 />
                 <Button
                   variant="outline"
-                  className="h-11 w-full sm:w-auto"
-                  disabled={!couponCode.trim() || !plans.data[0] || checkCoupon.isPending}
-                  onClick={() =>
+                  className="h-11 min-h-[44px] w-full sm:w-auto"
+                  disabled={!couponCode.trim() || !selectedPlan || checkCoupon.isPending}
+                  onClick={() => {
+                    if (!selectedPlan) return;
                     checkCoupon.mutate({
-                      planCode: plans.data[0].code,
+                      planCode: selectedPlan.code,
                       couponCode,
-                    })
-                  }
+                    });
+                  }}
                 >
                   تحقق من الرمز
                 </Button>
               </div>
+
+              {!selectedPlan ? (
+                <p className="text-sm text-muted-foreground">اختر باقة ثم تحقق من رمز الخصم.</p>
+              ) : null}
 
               {checkCoupon.data ? (
                 <p
@@ -139,7 +146,7 @@ function SubscriptionPage() {
                   }
                 >
                   {checkCoupon.data.valid
-                    ? `تم تطبيق خصم ${checkCoupon.data.discount} ريال. السعر بعد الخصم ${checkCoupon.data.finalAmount} ريال.`
+                    ? `تم تطبيق خصم ${checkCoupon.data.discount} ريال على ${selectedPlan?.name ?? "الباقة المختارة"}. السعر بعد الخصم ${checkCoupon.data.finalAmount} ريال.`
                     : checkCoupon.data.reason}
                 </p>
               ) : null}
@@ -148,7 +155,11 @@ function SubscriptionPage() {
                 {plans.data.map((plan) => (
                   <div
                     key={plan.id}
-                    className="flex flex-col gap-2 rounded-2xl border border-border p-4"
+                    className={
+                      selectedPlanCode === plan.code
+                        ? "flex flex-col gap-2 rounded-2xl border border-primary bg-primary/5 p-4"
+                        : "flex flex-col gap-2 rounded-2xl border border-border p-4"
+                    }
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-semibold">{plan.name}</p>
@@ -160,14 +171,28 @@ function SubscriptionPage() {
                     </p>
 
                     <Button
-                      className="mt-auto h-11 w-full"
+                      type="button"
+                      variant={selectedPlanCode === plan.code ? "default" : "outline"}
+                      className="h-11 min-h-[44px] w-full"
+                      aria-pressed={selectedPlanCode === plan.code}
+                      onClick={() => {
+                        setSelectedPlanCode(plan.code);
+                        checkCoupon.reset();
+                      }}
+                    >
+                      {selectedPlanCode === plan.code ? "الباقة المختارة" : "اختيار هذه الباقة"}
+                    </Button>
+
+                    <Button
+                      className="mt-auto h-11 min-h-[44px] w-full"
                       disabled={begin.isPending}
-                      onClick={() =>
+                      onClick={() => {
+                        setSelectedPlanCode(plan.code);
                         begin.mutate({
                           planCode: plan.code,
                           couponCode: couponCode.trim() || undefined,
-                        })
-                      }
+                        });
+                      }}
                     >
                       {begin.isPending ? "جارٍ التجهيز..." : "اشترك الآن"}
                     </Button>
