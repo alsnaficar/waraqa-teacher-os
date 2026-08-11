@@ -41,6 +41,151 @@ export type Database = {
         };
         Relationships: [];
       };
+      billing_academic_years: {
+        Row: {
+          code: string;
+          created_at: string;
+          ends_on: string;
+          id: string;
+          is_current: boolean;
+          label: string;
+          starts_on: string;
+          updated_at: string;
+        };
+        Insert: {
+          code: string;
+          created_at?: string;
+          ends_on: string;
+          id?: string;
+          is_current?: boolean;
+          label: string;
+          starts_on: string;
+          updated_at?: string;
+        };
+        Update: {
+          code?: string;
+          created_at?: string;
+          ends_on?: string;
+          id?: string;
+          is_current?: boolean;
+          label?: string;
+          starts_on?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      billing_audit_log: {
+        Row: {
+          action: string;
+          actor_id: string | null;
+          created_at: string;
+          entity_id: string | null;
+          entity_type: string;
+          id: string;
+          new_value: Json | null;
+          old_value: Json | null;
+          reason: string | null;
+        };
+        Insert: {
+          action: string;
+          actor_id?: string | null;
+          created_at?: string;
+          entity_id?: string | null;
+          entity_type: string;
+          id?: string;
+          new_value?: Json | null;
+          old_value?: Json | null;
+          reason?: string | null;
+        };
+        Update: {
+          action?: string;
+          actor_id?: string | null;
+          created_at?: string;
+          entity_id?: string | null;
+          entity_type?: string;
+          id?: string;
+          new_value?: Json | null;
+          old_value?: Json | null;
+          reason?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "billing_audit_log_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      billing_semesters: {
+        Row: {
+          academic_year_id: string;
+          code: string;
+          created_at: string;
+          ends_on: string;
+          id: string;
+          is_current: boolean;
+          label: string;
+          sequence: number;
+          starts_on: string;
+          updated_at: string;
+        };
+        Insert: {
+          academic_year_id: string;
+          code: string;
+          created_at?: string;
+          ends_on: string;
+          id?: string;
+          is_current?: boolean;
+          label: string;
+          sequence: number;
+          starts_on: string;
+          updated_at?: string;
+        };
+        Update: {
+          academic_year_id?: string;
+          code?: string;
+          created_at?: string;
+          ends_on?: string;
+          id?: string;
+          is_current?: boolean;
+          label?: string;
+          sequence?: number;
+          starts_on?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "billing_semesters_academic_year_id_fkey";
+            columns: ["academic_year_id"];
+            isOneToOne: false;
+            referencedRelation: "billing_academic_years";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      billing_settings: {
+        Row: {
+          active_electronic_provider: string | null;
+          created_at: string;
+          id: number;
+          updated_at: string;
+        };
+        Insert: {
+          active_electronic_provider?: string | null;
+          created_at?: string;
+          id?: number;
+          updated_at?: string;
+        };
+        Update: {
+          active_electronic_provider?: string | null;
+          created_at?: string;
+          id?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       ai_generations: {
         Row: {
           created_at: string;
@@ -200,42 +345,130 @@ export type Database = {
       };
       coupons: {
         Row: {
+          applies_to_upgrades: boolean;
           code: string;
           created_at: string | null;
           expires_at: string | null;
           id: string;
-          is_active: boolean | null;
-          max_usage: number | null;
+          is_active: boolean;
+          max_redemptions_per_user: number;
+          max_usage: number;
           starts_at: string | null;
           type: string;
-          used_count: number | null;
+          updated_at: string | null;
+          used_count: number;
           value: number;
         };
         Insert: {
+          applies_to_upgrades?: boolean;
           code: string;
           created_at?: string | null;
           expires_at?: string | null;
           id?: string;
-          is_active?: boolean | null;
-          max_usage?: number | null;
+          is_active?: boolean;
+          max_redemptions_per_user?: number;
+          max_usage?: number;
           starts_at?: string | null;
           type: string;
-          used_count?: number | null;
+          updated_at?: string | null;
+          used_count?: number;
           value: number;
         };
         Update: {
+          applies_to_upgrades?: boolean;
           code?: string;
           created_at?: string | null;
           expires_at?: string | null;
           id?: string;
-          is_active?: boolean | null;
-          max_usage?: number | null;
+          is_active?: boolean;
+          max_redemptions_per_user?: number;
+          max_usage?: number;
           starts_at?: string | null;
           type?: string;
-          used_count?: number | null;
+          updated_at?: string | null;
+          used_count?: number;
           value?: number;
         };
         Relationships: [];
+      };
+      coupon_plans: {
+        Row: {
+          coupon_id: string;
+          created_at: string;
+          plan_id: string;
+        };
+        Insert: {
+          coupon_id: string;
+          created_at?: string;
+          plan_id: string;
+        };
+        Update: {
+          coupon_id?: string;
+          created_at?: string;
+          plan_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "coupon_plans_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "coupon_plans_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      coupon_redemptions: {
+        Row: {
+          coupon_id: string;
+          created_at: string;
+          id: string;
+          payment_id: string;
+          user_id: string;
+        };
+        Insert: {
+          coupon_id: string;
+          created_at?: string;
+          id?: string;
+          payment_id: string;
+          user_id: string;
+        };
+        Update: {
+          coupon_id?: string;
+          created_at?: string;
+          id?: string;
+          payment_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "coupon_redemptions_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "coupon_redemptions_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "coupon_redemptions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       curricula: {
         Row: {
@@ -580,35 +813,87 @@ export type Database = {
       payments: {
         Row: {
           amount: number;
+          amount_sar: number;
+          coupon_id: string | null;
           created_at: string | null;
+          currency: string;
+          discount_sar: number;
           id: string;
+          idempotency_key: string | null;
+          net_sar: number;
           paid_at: string | null;
           payment_method_id: string | null;
+          provider: string;
+          provider_payment_id: string | null;
+          receipt_path: string | null;
+          rejection_reason: string | null;
           status: string;
-          subscription_id: string;
+          subscription_id: string | null;
           transaction_number: string | null;
+          transfer_reference: string | null;
+          updated_at: string | null;
+          user_id: string;
+          verified_at: string | null;
+          verified_by: string | null;
         };
         Insert: {
-          amount: number;
+          amount?: number;
+          amount_sar?: number;
+          coupon_id?: string | null;
           created_at?: string | null;
+          currency?: string;
+          discount_sar?: number;
           id?: string;
+          idempotency_key?: string | null;
+          net_sar?: number;
           paid_at?: string | null;
           payment_method_id?: string | null;
+          provider?: string;
+          provider_payment_id?: string | null;
+          receipt_path?: string | null;
+          rejection_reason?: string | null;
           status?: string;
-          subscription_id: string;
+          subscription_id?: string | null;
           transaction_number?: string | null;
+          transfer_reference?: string | null;
+          updated_at?: string | null;
+          user_id?: string;
+          verified_at?: string | null;
+          verified_by?: string | null;
         };
         Update: {
           amount?: number;
+          amount_sar?: number;
+          coupon_id?: string | null;
           created_at?: string | null;
+          currency?: string;
+          discount_sar?: number;
           id?: string;
+          idempotency_key?: string | null;
+          net_sar?: number;
           paid_at?: string | null;
           payment_method_id?: string | null;
+          provider?: string;
+          provider_payment_id?: string | null;
+          receipt_path?: string | null;
+          rejection_reason?: string | null;
           status?: string;
-          subscription_id?: string;
+          subscription_id?: string | null;
           transaction_number?: string | null;
+          transfer_reference?: string | null;
+          updated_at?: string | null;
+          user_id?: string;
+          verified_at?: string | null;
+          verified_by?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "payments_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "payments_payment_method_id_fkey";
             columns: ["payment_method_id"];
@@ -621,6 +906,20 @@ export type Database = {
             columns: ["subscription_id"];
             isOneToOne: false;
             referencedRelation: "subscriptions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payments_verified_by_fkey";
+            columns: ["verified_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -686,34 +985,84 @@ export type Database = {
         Row: {
           code: string;
           created_at: string | null;
+          currency: string;
           id: string;
-          is_active: boolean | null;
+          is_active: boolean;
           name: string;
           price: number;
+          price_sar: number;
+          product: string;
+          sort_order: number;
           starts_with: string;
+          term_kind: string;
+          tier: string;
           updated_at: string | null;
+          vat_included: boolean;
         };
         Insert: {
           code: string;
           created_at?: string | null;
+          currency?: string;
           id?: string;
-          is_active?: boolean | null;
+          is_active?: boolean;
           name: string;
-          price: number;
+          price?: number;
+          price_sar?: number;
+          product?: string;
+          sort_order?: number;
           starts_with: string;
+          term_kind?: string;
+          tier?: string;
           updated_at?: string | null;
+          vat_included?: boolean;
         };
         Update: {
           code?: string;
           created_at?: string | null;
+          currency?: string;
           id?: string;
-          is_active?: boolean | null;
+          is_active?: boolean;
           name?: string;
           price?: number;
+          price_sar?: number;
+          product?: string;
+          sort_order?: number;
           starts_with?: string;
+          term_kind?: string;
+          tier?: string;
           updated_at?: string | null;
+          vat_included?: boolean;
         };
         Relationships: [];
+      };
+      plan_entitlements: {
+        Row: {
+          created_at: string;
+          feature_key: string;
+          id: string;
+          plan_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          feature_key: string;
+          id?: string;
+          plan_id: string;
+        };
+        Update: {
+          created_at?: string;
+          feature_key?: string;
+          id?: string;
+          plan_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "plan_entitlements_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       profiles: {
         Row: {
@@ -989,40 +1338,67 @@ export type Database = {
       subscriptions: {
         Row: {
           academic_year_id: string | null;
+          activated_at: string | null;
+          billing_academic_year_id: string | null;
+          billing_semester_id: string | null;
           created_at: string | null;
+          created_from_payment_id: string | null;
+          ends_on: string;
           expires_at: string;
           id: string;
           plan_id: string;
+          product: string;
           renewed_from: string | null;
           semester_id: string | null;
           starts_at: string;
+          starts_on: string;
           status: string;
+          suspend_reason: string | null;
+          suspended_at: string | null;
           updated_at: string | null;
           user_id: string;
         };
         Insert: {
           academic_year_id?: string | null;
+          activated_at?: string | null;
+          billing_academic_year_id?: string | null;
+          billing_semester_id?: string | null;
           created_at?: string | null;
-          expires_at: string;
+          created_from_payment_id?: string | null;
+          ends_on?: string;
+          expires_at?: string;
           id?: string;
           plan_id: string;
+          product?: string;
           renewed_from?: string | null;
           semester_id?: string | null;
-          starts_at: string;
+          starts_at?: string;
+          starts_on?: string;
           status?: string;
+          suspend_reason?: string | null;
+          suspended_at?: string | null;
           updated_at?: string | null;
           user_id: string;
         };
         Update: {
           academic_year_id?: string | null;
+          activated_at?: string | null;
+          billing_academic_year_id?: string | null;
+          billing_semester_id?: string | null;
           created_at?: string | null;
+          created_from_payment_id?: string | null;
+          ends_on?: string;
           expires_at?: string;
           id?: string;
           plan_id?: string;
+          product?: string;
           renewed_from?: string | null;
           semester_id?: string | null;
           starts_at?: string;
+          starts_on?: string;
           status?: string;
+          suspend_reason?: string | null;
+          suspended_at?: string | null;
           updated_at?: string | null;
           user_id?: string;
         };
@@ -1032,6 +1408,27 @@ export type Database = {
             columns: ["academic_year_id"];
             isOneToOne: false;
             referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_billing_semester_fkey";
+            columns: ["billing_semester_id"];
+            isOneToOne: false;
+            referencedRelation: "billing_semesters";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_billing_year_fkey";
+            columns: ["billing_academic_year_id"];
+            isOneToOne: false;
+            referencedRelation: "billing_academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_created_from_payment_fkey";
+            columns: ["created_from_payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
             referencedColumns: ["id"];
           },
           {
@@ -1135,7 +1532,14 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      payment_methods_public: {
+        Row: {
+          id: string | null;
+          name: string | null;
+          provider: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       approve_semester_plan: {
