@@ -16,6 +16,7 @@ import {
 import { loadOpenCheckout } from "./billing.functions.ts";
 import type { ReceiptStorage } from "./receipt.ts";
 import { registerPaymentProvider } from "./providers/payment-provider.ts";
+import { attachTryInsertCouponRedemptionRpc } from "./try-insert-coupon-redemption.mock.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const OPERATIONS_FILE = join(ROOT, "features/billing/billing.operations.ts");
@@ -279,6 +280,7 @@ function createMockClient(db: Record<string, Row[]>) {
       return api;
     },
   };
+  attachTryInsertCouponRedemptionRpc(client, db);
   return { client, db };
 }
 

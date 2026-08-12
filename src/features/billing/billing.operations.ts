@@ -903,6 +903,10 @@ export async function submitPaymentReferenceOp(
 }
 
 const COUPON_EXHAUSTED = new BillingError("INVALID_PAYMENT", "تم استخدام رمز الخصم بالكامل.");
+const COUPON_PER_USER_EXHAUSTED = new BillingError(
+  "INVALID_PAYMENT",
+  "تم استنفاد الحد المسموح لاستخدام هذا الكوبون.",
+);
 const COUPON_CONSUME_FAILED = new BillingError("INVALID_PAYMENT", "تعذر استخدام رمز الخصم.");
 
 type ActivationCoupon = {
@@ -910,6 +914,8 @@ type ActivationCoupon = {
   used_count: number;
   max_usage: number;
 };
+
+type CouponRedemptionInsertResult = "inserted" | "existing" | "per_user_exhausted";
 
 type CouponRedemptionSlot =
   | { kind: "none" }
@@ -1027,32 +1033,29 @@ async function incrementCouponUsageCas(
   return Boolean(data?.id);
 }
 
+/**
+ * Atomic per-user redemption insert via SECURITY DEFINER RPC.
+ * Owner must be payment.user_id — never the admin actor.
+ */
 async function insertCouponRedemption(
   client: AdminClient,
   input: { couponId: string; userId: string; paymentId: string },
-): Promise<"inserted" | "existing"> {
-  const { data, error } = await client
-    .from("coupon_redemptions")
-    .insert({
-      coupon_id: input.couponId,
-      user_id: input.userId,
-      payment_id: input.paymentId,
-    })
-    .select("id")
-    .maybeSingle();
+): Promise<CouponRedemptionInsertResult> {
+  const { data, error } = await client.rpc("try_insert_coupon_redemption", {
+    p_coupon_id: input.couponId,
+    p_user_id: input.userId,
+    p_payment_id: input.paymentId,
+  });
 
   if (error) {
-    if (isUniqueViolation(error)) {
-      return "existing";
-    }
     failClosed(error, COUPON_CONSUME_FAILED);
   }
 
-  if (!data?.id) {
-    throw COUPON_CONSUME_FAILED;
+  if (data === "inserted" || data === "existing" || data === "per_user_exhausted") {
+    return data;
   }
 
-  return "inserted";
+  throw COUPON_CONSUME_FAILED;
 }
 
 async function deleteCouponRedemption(
@@ -1093,8 +1096,9 @@ async function decrementCouponUsageCas(
 
 /**
  * Obtain a finite coupon slot before payment verification.
- * Same payment is idempotent via coupon_redemptions unique (coupon_id, payment_id).
- * max_usage = 0 never blocks. Does not implement max_redemptions_per_user.
+ * Same payment is idempotent via try_insert_coupon_redemption (coupon_id, payment_id).
+ * Per-user cap is enforced atomically in that RPC (payment.user_id owner).
+ * max_usage = 0 never blocks. Global capacity still uses incrementCouponUsageCas.
  */
 async function obtainCouponRedemptionSlot(
   client: AdminClient,
@@ -1116,6 +1120,10 @@ async function obtainCouponRedemptionSlot(
 
   if (insertResult === "existing") {
     return { kind: "existing" };
+  }
+
+  if (insertResult === "per_user_exhausted") {
+    throw COUPON_PER_USER_EXHAUSTED;
   }
 
   try {

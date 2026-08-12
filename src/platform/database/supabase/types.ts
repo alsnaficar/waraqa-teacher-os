@@ -1613,6 +1613,14 @@ export type Database = {
         Args: { p_email: string };
         Returns: Json;
       };
+      try_insert_coupon_redemption: {
+        Args: {
+          p_coupon_id: string;
+          p_payment_id: string;
+          p_user_id: string;
+        };
+        Returns: "inserted" | "existing" | "per_user_exhausted";
+      };
     };
     Enums: {
       app_role: "admin" | "teacher";

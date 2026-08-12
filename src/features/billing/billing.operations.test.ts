@@ -13,6 +13,7 @@ import {
   submitPaymentReferenceOp,
 } from "./billing.operations.ts";
 import { registerPaymentProvider } from "./providers/payment-provider.ts";
+import { attachTryInsertCouponRedemptionRpc } from "./try-insert-coupon-redemption.mock.ts";
 
 const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -289,6 +290,7 @@ function createMockClient(
     },
   };
 
+  attachTryInsertCouponRedemptionRpc(client, db);
   return { client, fromCalls, db };
 }
 
