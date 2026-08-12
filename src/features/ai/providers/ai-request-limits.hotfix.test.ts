@@ -17,11 +17,15 @@ import {
   isAiGeminiTimeoutError,
 } from "@/features/ai/providers/ai-request-limits.ts";
 import { generateContent } from "@/features/ai/providers/gemini.ts";
-import { AIOrchestrator } from "@/features/ai/orchestrator/index.ts";
+import { AIOrchestrator, aiOrchestrator } from "@/features/ai/orchestrator/index.ts";
 import type { AIProvider } from "@/features/ai/orchestrator/types.ts";
 import type { SessionBoundGenerationContext } from "@/features/ai/services/session-bound-generation.types";
 import { executeLessonPlanGeneration } from "@/features/ai/strategies/lesson-plan.strategy.ts";
 import { executeQuizGeneration } from "@/features/ai/strategies/quiz.strategy.ts";
+import {
+  executeActivityIdeasGeneration,
+  executeWorksheetGeneration,
+} from "@/features/ai/strategies/orchestrator.strategy.ts";
 import { LessonPrepInput } from "@/platform/ai/functions/ai-lesson-generator.functions.ts";
 import { QuizGeneratorInput } from "@/platform/ai/functions/ai-quiz-generator.functions.ts";
 
@@ -480,6 +484,264 @@ describe("Hotfix #2.4 — timeout error handling", () => {
         return true;
       },
     );
+  });
+});
+
+describe("Hotfix #2.5 — worksheet/activity orchestrator retries=0", () => {
+  type GenerateFn = typeof aiOrchestrator.generate;
+
+  async function withMockedOrchestratorProvider<T>(
+    provider: AIProvider,
+    run: () => Promise<T>,
+  ): Promise<{ result: T; seenRetries: Array<number | undefined> }> {
+    const seenRetries: Array<number | undefined> = [];
+    const original: GenerateFn = aiOrchestrator.generate.bind(aiOrchestrator);
+    aiOrchestrator.generate = (async (type, input, options = {}) => {
+      seenRetries.push(options.retries);
+      return original(type, input, {
+        ...options,
+        provider,
+        skipAutoCurriculum: true,
+      });
+    }) as GenerateFn;
+
+    try {
+      const result = await run();
+      return { result, seenRetries };
+    } finally {
+      aiOrchestrator.generate = original;
+    }
+  }
+
+  it("strategy sources pass retries: 0 for worksheet and activity_ideas only", () => {
+    const strategySrc = readFileSync(
+      join(ROOT, "src/features/ai/strategies/orchestrator.strategy.ts"),
+      "utf8",
+    );
+    assert.match(
+      strategySrc,
+      /generate\("worksheet"[\s\S]*?retries:\s*0[\s\S]*?generate\("activity_ideas"[\s\S]*?retries:\s*0/,
+    );
+
+    const orchSrc = readFileSync(join(ROOT, "src/features/ai/orchestrator/index.ts"), "utf8");
+    assert.match(orchSrc, /options\.retries !== undefined \? options\.retries : 2/);
+  });
+
+  it("1. worksheet success → provider calls = 1", async () => {
+    let calls = 0;
+    const provider: AIProvider = {
+      name: "mock-success",
+      async generate() {
+        calls += 1;
+        return { content: "# واجب\n1. سؤال", model: "mock" };
+      },
+    };
+
+    const { seenRetries } = await withMockedOrchestratorProvider(provider, () =>
+      executeWorksheetGeneration(makeContext(), {
+        questionCount: 3,
+        difficulty: "easy",
+      }),
+    );
+
+    assert.deepEqual(seenRetries, [0]);
+    assert.equal(calls, 1);
+  });
+
+  it("2. worksheet ordinary Gemini failure → calls = 1 (no retry)", async () => {
+    let calls = 0;
+    const provider: AIProvider = {
+      name: "mock-fail",
+      async generate() {
+        calls += 1;
+        throw new Error("provider unavailable");
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        withMockedOrchestratorProvider(provider, () =>
+          executeWorksheetGeneration(makeContext(), {
+            questionCount: 3,
+            difficulty: "easy",
+          }),
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /provider unavailable/);
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+  });
+
+  it("3. worksheet timeout/AbortError → calls = 1 (no retry)", async () => {
+    let calls = 0;
+    const provider: AIProvider = {
+      name: "mock-timeout",
+      async generate() {
+        calls += 1;
+        const err = new Error("The operation was aborted");
+        err.name = "AbortError";
+        throw err;
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        withMockedOrchestratorProvider(provider, () =>
+          executeWorksheetGeneration(makeContext(), {
+            questionCount: 3,
+            difficulty: "easy",
+          }),
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.name, "AbortError");
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+  });
+
+  it("4. activity success → provider calls = 1", async () => {
+    let calls = 0;
+    const provider: AIProvider = {
+      name: "mock-activity-success",
+      async generate() {
+        calls += 1;
+        return { content: "# أنشطة\n1. نشاط", model: "mock" };
+      },
+    };
+
+    const { seenRetries } = await withMockedOrchestratorProvider(provider, () =>
+      executeActivityIdeasGeneration(makeContext(), {
+        count: 3,
+        duration: "short",
+        groupType: "group",
+      }),
+    );
+
+    assert.deepEqual(seenRetries, [0]);
+    assert.equal(calls, 1);
+  });
+
+  it("5. activity ordinary Gemini failure → calls = 1 (no retry)", async () => {
+    let calls = 0;
+    const provider: AIProvider = {
+      name: "mock-activity-fail",
+      async generate() {
+        calls += 1;
+        throw new Error("quota exceeded");
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        withMockedOrchestratorProvider(provider, () =>
+          executeActivityIdeasGeneration(makeContext(), {
+            count: 3,
+            duration: "short",
+            groupType: "group",
+          }),
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /quota exceeded/);
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+  });
+
+  it("6/7. activity timeout → calls = 1 and no second attempt", async () => {
+    let calls = 0;
+    const provider: AIProvider = {
+      name: "mock-activity-timeout",
+      async generate() {
+        calls += 1;
+        throw new Error(AI_REQUEST_TIMEOUT_MESSAGE);
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        withMockedOrchestratorProvider(provider, () =>
+          executeActivityIdeasGeneration(makeContext(), {
+            count: 3,
+            duration: "short",
+            groupType: "group",
+          }),
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, AI_REQUEST_TIMEOUT_MESSAGE);
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+  });
+
+  it("8. global orchestrator default remains 2 (3 attempts) when retries omitted", async () => {
+    let calls = 0;
+    const provider: AIProvider = {
+      name: "default-retry",
+      async generate() {
+        calls += 1;
+        throw new Error("transient");
+      },
+    };
+
+    const orchestrator = new AIOrchestrator(provider);
+    await assert.rejects(
+      () =>
+        orchestrator.generate(
+          "worksheet",
+          {
+            grade: "الصف السادس",
+            subject: "الرياضيات",
+            title: "درس",
+            questionCount: 3,
+            difficulty: "easy",
+          },
+          { skipAutoCurriculum: true },
+        ),
+      /transient/,
+    );
+    assert.equal(calls, 3);
+  });
+
+  it("9. lesson/quiz still single-call (unaffected by worksheet retries override)", async () => {
+    let lessonCalls = 0;
+    let quizCalls = 0;
+
+    await executeLessonPlanGeneration(
+      makeContext(),
+      { objectives: "أهداف", unit: "وحدة", lessonName: "درس" },
+      {
+        models: {
+          async generateContent() {
+            lessonCalls += 1;
+            return { text: JSON.stringify(lessonPlanPayload()) };
+          },
+        },
+      },
+    );
+    assert.equal(lessonCalls, 1);
+
+    await executeQuizGeneration(
+      makeContext(),
+      { title: "درس" },
+      {
+        models: {
+          async generateContent() {
+            quizCalls += 1;
+            return { text: JSON.stringify(quizPayload()) };
+          },
+        },
+      },
+    );
+    assert.equal(quizCalls, 1);
   });
 });
 

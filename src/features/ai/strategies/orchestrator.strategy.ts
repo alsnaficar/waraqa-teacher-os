@@ -51,9 +51,11 @@ export async function executeWorksheetGeneration(
     estimatedTime: options.estimatedTime,
   };
 
+  // Paid path: at most one Gemini attempt (no orchestrator retries).
   const result = await aiOrchestrator.generate("worksheet", bound, {
     curriculumPrefix: sessionCurriculum.promptPrefix,
     skipAutoCurriculum: true,
+    retries: 0,
   });
 
   return {
@@ -85,9 +87,11 @@ export async function executeActivityIdeasGeneration(
     groupType: options.groupType,
   };
 
+  // Paid path: at most one Gemini attempt (no orchestrator retries).
   const result = await aiOrchestrator.generate("activity_ideas", bound, {
     curriculumPrefix: sessionCurriculum.promptPrefix,
     skipAutoCurriculum: true,
+    retries: 0,
   });
 
   return {
