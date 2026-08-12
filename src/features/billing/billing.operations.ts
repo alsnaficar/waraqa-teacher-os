@@ -383,6 +383,71 @@ async function loadPaymentForSubscription(
   return data;
 }
 
+async function linkPaymentToSubscription(
+  client: AdminClient,
+  input: { paymentId: string; userId: string; subscriptionId: string },
+): Promise<void> {
+  const { error } = await client
+    .from("payments")
+    .update({ subscription_id: input.subscriptionId })
+    .eq("id", input.paymentId)
+    .eq("user_id", input.userId);
+
+  if (error) {
+    failClosed(error, new BillingError("INVALID_PAYMENT", "تعذر ربط عملية الدفع بالاشتراك."));
+  }
+}
+
+/**
+ * After payment insert/reuse, re-read the official period row before creating a
+ * subscription. Closes the checkout race where payment idempotency serializes
+ * payment creation but two requests could still insert duplicate pending rows.
+ */
+async function resolveCheckoutSubscription(
+  client: AdminClient,
+  input: {
+    userId: string;
+    plan: ValidatedPlan;
+    period: ResolvedBillingPeriod;
+    paymentId: string;
+  },
+): Promise<{ subscriptionId: string; created: boolean }> {
+  const raced = await loadExistingForPeriod(client, input.userId, input.plan.id, input.period);
+  const racedDecision = duplicateSubscriptionDecision(raced);
+
+  if (racedDecision === "reuse_checkout" && raced) {
+    await linkPaymentToSubscription(client, {
+      paymentId: input.paymentId,
+      userId: input.userId,
+      subscriptionId: raced.id,
+    });
+    return { subscriptionId: raced.id, created: false };
+  }
+
+  if (racedDecision === "block" && raced) {
+    throw new BillingError(
+      "EXISTING_SUBSCRIPTION",
+      "لديك اشتراك قائم لهذه الفترة. لا حاجة لإنشاء طلب جديد.",
+    );
+  }
+
+  const subscriptionId = await insertSubscription({
+    client,
+    userId: input.userId,
+    plan: input.plan,
+    period: input.period,
+    paymentId: input.paymentId,
+  });
+
+  await linkPaymentToSubscription(client, {
+    paymentId: input.paymentId,
+    userId: input.userId,
+    subscriptionId,
+  });
+
+  return { subscriptionId, created: true };
+}
+
 async function reuseCheckout(
   client: AdminClient,
   plan: ValidatedPlan,
@@ -640,68 +705,60 @@ export async function startCheckoutOp(
   });
 
   let subscriptionId = payment.subscriptionId;
+  let subscriptionCreated = false;
 
   if (!subscriptionId) {
-    subscriptionId = await insertSubscription({
-      client,
+    const resolved = await resolveCheckoutSubscription(client, {
       userId: input.userId,
       plan,
       period,
       paymentId: payment.id,
     });
+    subscriptionId = resolved.subscriptionId;
+    subscriptionCreated = resolved.created;
+  }
 
-    const { error: linkError } = await client
-      .from("payments")
-      .update({ subscription_id: subscriptionId })
-      .eq("id", payment.id)
-      .eq("user_id", input.userId);
-
-    if (linkError) {
-      failClosed(linkError, new BillingError("INVALID_PAYMENT", "تعذر ربط عملية الدفع بالاشتراك."));
-    }
-
-    if (!payment.reused) {
-      await writeAudit(client, {
-        actorId: input.userId,
-        action: "checkout_created",
-        entityType: "payment",
-        entityId: payment.id,
-        newValue: {
-          planCode: plan.code,
-          amountSar: listPrice,
-          netSar: coupon.amount,
-          billingAcademicYearId: period.billingAcademicYearId,
-          billingSemesterId: period.billingSemesterId,
-        },
-      });
-
-      await writeAudit(client, {
-        actorId: input.userId,
-        action: "subscription_created",
-        entityType: "subscription",
-        entityId: subscriptionId,
-        newValue: {
-          planId: plan.id,
-          status: "pending_payment",
-          startsOn: period.startsOn,
-          endsOn: period.endsOn,
-          window: period.window,
-        },
-      });
-
-      const note: CheckoutNote = {
+  if (!payment.reused && subscriptionCreated) {
+    await writeAudit(client, {
+      actorId: input.userId,
+      action: "checkout_created",
+      entityType: "payment",
+      entityId: payment.id,
+      newValue: {
         planCode: plan.code,
-        couponCode: coupon.code,
-        discount: coupon.discount,
-      };
+        amountSar: listPrice,
+        netSar: coupon.amount,
+        billingAcademicYearId: period.billingAcademicYearId,
+        billingSemesterId: period.billingSemesterId,
+      },
+    });
 
-      await client.from("subscription_logs").insert({
-        subscription_id: subscriptionId,
-        action: "checkout_started",
-        performed_by: input.userId,
-        notes: JSON.stringify(note),
-      });
-    }
+    await writeAudit(client, {
+      actorId: input.userId,
+      action: "subscription_created",
+      entityType: "subscription",
+      entityId: subscriptionId,
+      newValue: {
+        planId: plan.id,
+        status: "pending_payment",
+        startsOn: period.startsOn,
+        endsOn: period.endsOn,
+        window: period.window,
+      },
+    });
+
+    const note: CheckoutNote = {
+      planCode: plan.code,
+      couponCode: coupon.code,
+      discount: coupon.discount,
+    };
+
+    await client.from("subscription_logs").insert({
+      subscription_id: subscriptionId,
+      action: "checkout_started",
+      performed_by: input.userId,
+      notes: JSON.stringify(note),
+    });
   }
 
   const instruction = await checkoutInstruction(
@@ -1124,6 +1181,10 @@ export async function activateSubscriptionOp(
     throw new BillingError("EXISTING_SUBSCRIPTION", "الاشتراك مفعّل مسبقاً.");
   }
 
+  if (subscription.status !== "pending_payment") {
+    throw new BillingError("INVALID_PERIOD", "تعذر تحديث حالة الاشتراك.");
+  }
+
   const official = await loadOfficialPeriodForSubscription(
     client,
     subscription.billing_academic_year_id,
@@ -1229,13 +1290,16 @@ export async function activateSubscriptionOp(
     );
   }
 
-  const { error: activateError } = await client
+  const { data: activatedSubscription, error: activateError } = await client
     .from("subscriptions")
     .update(subscriptionPatch)
     .eq("id", subscription.id)
-    .eq("user_id", subscription.user_id);
+    .eq("user_id", subscription.user_id)
+    .eq("status", "pending_payment")
+    .select("id")
+    .maybeSingle();
 
-  if (activateError) {
+  if (activateError || !activatedSubscription) {
     const { error: revertError } = await client
       .from("payments")
       .update({
@@ -1253,7 +1317,10 @@ export async function activateSubscriptionOp(
     }
 
     await rollbackCouponRedemptionSlot(client, couponSlot, payment.id);
-    failClosed(activateError, new BillingError("INVALID_PERIOD", "تعذر تحديث حالة الاشتراك."));
+    failClosed(
+      activateError ?? new Error("activation subscription CAS missed"),
+      new BillingError("INVALID_PERIOD", "تعذر تحديث حالة الاشتراك."),
+    );
   }
 
   await client.from("subscription_logs").insert({

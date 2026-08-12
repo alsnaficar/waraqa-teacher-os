@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import { BillingAccessError, BillingError } from "./types.ts";
@@ -128,7 +129,13 @@ function matches(
   });
 }
 
-function createMockClient(db: Record<string, Row[]>) {
+function createMockClient(
+  db: Record<string, Row[]>,
+  hooks: {
+    afterPaymentInsert?: (db: Record<string, Row[]>) => void;
+    failSubscriptionCasMiss?: boolean;
+  } = {},
+) {
   const fromCalls: string[] = [];
   let seq = 0;
 
@@ -185,12 +192,18 @@ function createMockClient(db: Record<string, Row[]>) {
             };
             db[table] = [...(db[table] ?? []), saved];
             inserted.push(saved);
+            if (table === "payments") {
+              hooks.afterPaymentInsert?.(db);
+            }
           }
           const data = mode === "many" ? inserted : (inserted[0] ?? null);
           return { data, error: null };
         }
 
         if (pendingUpdate) {
+          if (hooks.failSubscriptionCasMiss && table === "subscriptions") {
+            return { data: null, error: null };
+          }
           const rows = (db[table] ?? []).filter((row) => matches(row, filters));
           for (const row of rows) {
             Object.assign(row, pendingUpdate);
@@ -534,6 +547,222 @@ describe("Phase 2 billing operations", () => {
     assert.equal(db.payments.length, 1);
   });
 
+  describe("concurrent checkout guard", () => {
+    const PEER_PENDING_SUB = "peer-pending-sub-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+    it("A. normal checkout creates one payment and one subscription", async () => {
+      const { client, db } = createMockClient(seedDb());
+      const result = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-09-01",
+      });
+      assert.equal(db.payments.length, 1);
+      assert.equal(db.subscriptions.length, 1);
+      assert.equal(result.subscriptionId, db.subscriptions[0].id);
+      assert.equal(db.payments[0].subscription_id, db.subscriptions[0].id);
+    });
+
+    it("B. sequential checkout reuses the same payment and subscription", async () => {
+      const { client, db } = createMockClient(seedDb());
+      const first = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-09-01",
+      });
+      const second = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-09-01",
+      });
+      assert.equal(second.paymentId, first.paymentId);
+      assert.equal(second.subscriptionId, first.subscriptionId);
+      assert.equal(db.payments.length, 1);
+      assert.equal(db.subscriptions.length, 1);
+    });
+
+    it("C. re-read after payment reuses peer pending_payment (deterministic; not full PG concurrency)", async () => {
+      const db = seedDb();
+      const { client } = createMockClient(db, {
+        afterPaymentInsert: () => {
+          if (db.subscriptions.some((row) => row.id === PEER_PENDING_SUB)) return;
+          db.subscriptions.push({
+            id: PEER_PENDING_SUB,
+            user_id: USER_A,
+            plan_id: PLAN_SEM,
+            status: "pending_payment",
+            billing_academic_year_id: YEAR_ID,
+            billing_semester_id: SEM_ID,
+            starts_on: "2026-08-23",
+            ends_on: "2027-01-07",
+            starts_at: "2026-08-23",
+            expires_at: "2027-01-07",
+            academic_year_id: null,
+            semester_id: null,
+          });
+        },
+      });
+
+      const result = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-09-01",
+      });
+
+      assert.equal(db.subscriptions.length, 1);
+      assert.equal(result.subscriptionId, PEER_PENDING_SUB);
+      assert.equal(db.payments[0].subscription_id, PEER_PENDING_SUB);
+      assert.equal(
+        db.subscription_logs.filter((row) => row.action === "checkout_started").length,
+        0,
+      );
+    });
+
+    it("D. existing pending_payment at entry reuses checkout without a new subscription", async () => {
+      const existingSubId = "existing-pending-sub-id";
+      const existingPayId = "existing-pay-id";
+      const { client, db } = createMockClient(
+        seedDb({
+          subscriptions: [
+            {
+              id: existingSubId,
+              user_id: USER_A,
+              plan_id: PLAN_SEM,
+              status: "pending_payment",
+              billing_academic_year_id: YEAR_ID,
+              billing_semester_id: SEM_ID,
+              starts_on: "2026-08-23",
+              ends_on: "2027-01-07",
+              starts_at: "2026-08-23",
+              expires_at: "2027-01-07",
+              academic_year_id: null,
+              semester_id: null,
+            },
+          ],
+          payments: [
+            {
+              id: existingPayId,
+              user_id: USER_A,
+              subscription_id: existingSubId,
+              amount: 40,
+              amount_sar: 40,
+              net_sar: 40,
+              status: "created",
+            },
+          ],
+        }),
+      );
+
+      const result = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-09-01",
+      });
+
+      assert.equal(result.subscriptionId, existingSubId);
+      assert.equal(result.paymentId, existingPayId);
+      assert.equal(db.subscriptions.length, 1);
+    });
+
+    it("E. existing active subscription still blocks checkout with EXISTING_SUBSCRIPTION", async () => {
+      const { client, db } = createMockClient(
+        seedDb({
+          subscriptions: [
+            {
+              id: "active-sub-id",
+              user_id: USER_A,
+              plan_id: PLAN_SEM,
+              status: "active",
+              billing_academic_year_id: YEAR_ID,
+              billing_semester_id: SEM_ID,
+              starts_on: "2026-08-23",
+              ends_on: "2027-01-07",
+            },
+          ],
+        }),
+      );
+
+      await assert.rejects(
+        () =>
+          startCheckoutOp(client as never, {
+            userId: USER_A,
+            planCode: "core_standard_semester",
+            today: "2026-09-01",
+          }),
+        (err: unknown) => err instanceof BillingError && err.code === "EXISTING_SUBSCRIPTION",
+      );
+      assert.equal(db.payments.length, 0);
+      assert.equal(db.subscriptions.length, 1);
+    });
+
+    it("F. coupon checkout pricing is unchanged", async () => {
+      const { client, db } = createMockClient(seedWithCoupons());
+      const result = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        couponCode: "SEM10",
+        today: "2026-09-01",
+      });
+      assert.equal(result.amount, 30);
+      assert.equal(db.payments[0].net_sar, 30);
+      assert.equal(db.payments[0].coupon_id, COUPON_SEM_ID);
+    });
+
+    it("G. payment idempotency still deduplicates concurrent payment inserts", async () => {
+      const { client, db } = createMockClient(seedDb());
+      const [first, second] = await Promise.all([
+        startCheckoutOp(client as never, {
+          userId: USER_A,
+          planCode: "core_standard_semester",
+          today: "2026-09-01",
+        }),
+        startCheckoutOp(client as never, {
+          userId: USER_A,
+          planCode: "core_standard_semester",
+          today: "2026-09-01",
+        }),
+      ]);
+      assert.equal(first.paymentId, second.paymentId);
+      assert.equal(db.payments.length, 1);
+    });
+
+    it("H. guard leaves no orphan subscriptions without a linked payment", async () => {
+      const db = seedDb();
+      const { client } = createMockClient(db, {
+        afterPaymentInsert: () => {
+          if (db.subscriptions.some((row) => row.id === PEER_PENDING_SUB)) return;
+          db.subscriptions.push({
+            id: PEER_PENDING_SUB,
+            user_id: USER_A,
+            plan_id: PLAN_SEM,
+            status: "pending_payment",
+            billing_academic_year_id: YEAR_ID,
+            billing_semester_id: SEM_ID,
+            starts_on: "2026-08-23",
+            ends_on: "2027-01-07",
+            starts_at: "2026-08-23",
+            expires_at: "2027-01-07",
+            academic_year_id: null,
+            semester_id: null,
+          });
+        },
+      });
+
+      await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-09-01",
+      });
+
+      for (const sub of db.subscriptions) {
+        assert.ok(
+          db.payments.some((payment) => payment.subscription_id === sub.id),
+          "every subscription must be linked from a payment",
+        );
+      }
+    });
+  });
+
   it("enforces payment ownership on reference submit", async () => {
     const { client } = createMockClient(seedDb());
     const checkout = await startCheckoutOp(client as never, {
@@ -692,6 +921,249 @@ describe("Phase 2 billing operations", () => {
         }),
       (err: unknown) => err instanceof BillingError && err.code === "INVALID_PAYMENT",
     );
+  });
+
+  describe("subscription activation CAS", () => {
+    async function checkoutSubmitted(
+      client: Awaited<ReturnType<typeof createMockClient>>["client"],
+    ) {
+      const checkout = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-10-15",
+      });
+      await submitPaymentReferenceOp(client as never, {
+        userId: USER_A,
+        paymentId: checkout.paymentId,
+        reference: "BANK-AAA",
+      });
+      return checkout;
+    }
+
+    it("A. pending_payment activates to active for the current official period", async () => {
+      const { client, db } = createMockClient(seedDb());
+      const checkout = await checkoutSubmitted(client);
+      const result = await activateSubscriptionOp(client as never, {
+        actorId: ADMIN,
+        subscriptionId: checkout.subscriptionId,
+        today: "2026-10-16",
+      });
+      assert.equal(result.status, "active");
+      assert.equal(db.subscriptions[0].status, "active");
+      assert.equal(db.payments[0].status, "verified");
+    });
+
+    it("B. pending_payment activates to scheduled for a future official period", async () => {
+      const { client, db } = createMockClient(seedDb());
+      const checkout = await startCheckoutOp(client as never, {
+        userId: USER_A,
+        planCode: "core_standard_semester",
+        today: "2026-08-01",
+      });
+      await submitPaymentReferenceOp(client as never, {
+        userId: USER_A,
+        paymentId: checkout.paymentId,
+        reference: "BANK-AAA",
+      });
+      const result = await activateSubscriptionOp(client as never, {
+        actorId: ADMIN,
+        subscriptionId: checkout.subscriptionId,
+        today: "2026-08-01",
+      });
+      assert.equal(result.status, "scheduled");
+      assert.equal(db.subscriptions[0].status, "scheduled");
+    });
+
+    it("C. active subscription returns EXISTING_SUBSCRIPTION", async () => {
+      const { client } = createMockClient(
+        seedDb({
+          subscriptions: [
+            {
+              id: "active-sub-id",
+              user_id: USER_A,
+              plan_id: PLAN_SEM,
+              status: "active",
+              billing_academic_year_id: YEAR_ID,
+              billing_semester_id: SEM_ID,
+              starts_on: "2026-08-23",
+              ends_on: "2027-01-07",
+            },
+          ],
+        }),
+      );
+      await assert.rejects(
+        () =>
+          activateSubscriptionOp(client as never, {
+            actorId: ADMIN,
+            subscriptionId: "active-sub-id",
+            today: "2026-10-16",
+          }),
+        (err: unknown) => err instanceof BillingError && err.code === "EXISTING_SUBSCRIPTION",
+      );
+    });
+
+    it("D. scheduled subscription returns EXISTING_SUBSCRIPTION", async () => {
+      const { client } = createMockClient(
+        seedDb({
+          subscriptions: [
+            {
+              id: "scheduled-sub-id",
+              user_id: USER_A,
+              plan_id: PLAN_SEM,
+              status: "scheduled",
+              billing_academic_year_id: YEAR_ID,
+              billing_semester_id: SEM_ID,
+              starts_on: "2026-08-23",
+              ends_on: "2027-01-07",
+            },
+          ],
+        }),
+      );
+      await assert.rejects(
+        () =>
+          activateSubscriptionOp(client as never, {
+            actorId: ADMIN,
+            subscriptionId: "scheduled-sub-id",
+            today: "2026-10-16",
+          }),
+        (err: unknown) => err instanceof BillingError && err.code === "EXISTING_SUBSCRIPTION",
+      );
+    });
+
+    it("E. subscription CAS miss (0 rows) fails activation", async () => {
+      const { client, db } = createMockClient(seedDb(), { failSubscriptionCasMiss: true });
+      const checkout = await checkoutSubmitted(client);
+      await assert.rejects(
+        () =>
+          activateSubscriptionOp(client as never, {
+            actorId: ADMIN,
+            subscriptionId: checkout.subscriptionId,
+            today: "2026-10-16",
+          }),
+        (err: unknown) => err instanceof BillingError && err.code === "INVALID_PERIOD",
+      );
+      assert.equal(db.subscriptions[0].status, "pending_payment");
+      assert.equal(db.payments[0].status, "submitted");
+    });
+
+    it("F. CAS failure does not write subscription_activated audit", async () => {
+      const { client, db } = createMockClient(seedDb(), { failSubscriptionCasMiss: true });
+      const checkout = await checkoutSubmitted(client);
+      await assert.rejects(() =>
+        activateSubscriptionOp(client as never, {
+          actorId: ADMIN,
+          subscriptionId: checkout.subscriptionId,
+          today: "2026-10-16",
+        }),
+      );
+      assert.equal(
+        db.billing_audit_log.some((row) => row.action === "subscription_activated"),
+        false,
+      );
+    });
+
+    it("G. CAS failure does not return ok: true", async () => {
+      const { client } = createMockClient(seedDb(), { failSubscriptionCasMiss: true });
+      const checkout = await checkoutSubmitted(client);
+      await assert.rejects(
+        () =>
+          activateSubscriptionOp(client as never, {
+            actorId: ADMIN,
+            subscriptionId: checkout.subscriptionId,
+            today: "2026-10-16",
+          }),
+        (err: unknown) => err instanceof BillingError,
+      );
+    });
+
+    it("H. payment CAS behavior remains submitted-only verification", () => {
+      const src = readFileSync(new URL("./billing.operations.ts", import.meta.url), "utf8");
+      const body = src.slice(src.indexOf("export async function activateSubscriptionOp"));
+      const paymentCas = body.indexOf('.eq("status", "submitted")');
+      const subscriptionCas = body.indexOf('.eq("status", "pending_payment")');
+      assert.equal(paymentCas >= 0, true);
+      assert.equal(subscriptionCas > paymentCas, true);
+    });
+
+    it("I. coupon redemption order is unchanged (before payment verify)", () => {
+      const src = readFileSync(new URL("./billing.operations.ts", import.meta.url), "utf8");
+      const body = src.slice(src.indexOf("export async function activateSubscriptionOp"));
+      const coupon = body.indexOf("obtainCouponRedemptionSlot");
+      const verify = body.indexOf('.eq("status", "submitted")');
+      assert.equal(coupon >= 0, true);
+      assert.equal(coupon < verify, true);
+    });
+
+    it("J. subscription CAS filters by pending_payment and user_id", () => {
+      const src = readFileSync(new URL("./billing.operations.ts", import.meta.url), "utf8");
+      const body = src.slice(src.indexOf("export async function activateSubscriptionOp"));
+      const update = body.indexOf("const { data: activatedSubscription");
+      assert.equal(update >= 0, true);
+      const slice = body.slice(update, update + 500);
+      assert.match(slice, /\.eq\("user_id", subscription\.user_id\)/);
+      assert.match(slice, /\.eq\("status", "pending_payment"\)/);
+      assert.match(slice, /\.select\("id"\)/);
+      assert.match(slice, /\.maybeSingle\(\)/);
+    });
+
+    it("rejects cancelled subscription before payment verification", async () => {
+      const subId = "cancelled-sub-id";
+      const { client } = createMockClient(
+        seedDb({
+          subscriptions: [
+            {
+              id: subId,
+              user_id: USER_A,
+              plan_id: PLAN_SEM,
+              status: "cancelled",
+              billing_academic_year_id: YEAR_ID,
+              billing_semester_id: SEM_ID,
+              starts_on: "2026-08-23",
+              ends_on: "2027-01-07",
+              created_from_payment_id: "pay-cancelled",
+            },
+          ],
+          payments: [
+            {
+              id: "pay-cancelled",
+              user_id: USER_A,
+              subscription_id: subId,
+              status: "submitted",
+            },
+          ],
+        }),
+      );
+      await assert.rejects(
+        () =>
+          activateSubscriptionOp(client as never, {
+            actorId: ADMIN,
+            subscriptionId: subId,
+            today: "2026-10-16",
+          }),
+        (err: unknown) => err instanceof BillingError && err.code === "INVALID_PERIOD",
+      );
+    });
+
+    it("deterministic CAS loser: second activation after success is blocked", async () => {
+      const { client, db } = createMockClient(seedDb());
+      const checkout = await checkoutSubmitted(client);
+      await activateSubscriptionOp(client as never, {
+        actorId: ADMIN,
+        subscriptionId: checkout.subscriptionId,
+        today: "2026-10-16",
+      });
+      await assert.rejects(
+        () =>
+          activateSubscriptionOp(client as never, {
+            actorId: ADMIN,
+            subscriptionId: checkout.subscriptionId,
+            today: "2026-10-16",
+          }),
+        (err: unknown) => err instanceof BillingError && err.code === "EXISTING_SUBSCRIPTION",
+      );
+      assert.equal(db.subscriptions[0].status, "active");
+      assert.equal(db.payments[0].status, "verified");
+    });
   });
 
   it("activation ignores client-supplied dates and keeps the stored plan", async () => {

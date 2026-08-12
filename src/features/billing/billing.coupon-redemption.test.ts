@@ -197,12 +197,8 @@ function createMockClient(db: Record<string, Row[]>, options: MockOptions = {}) 
           ) {
             return { data: null, error: { message: "payment verify failed" } };
           }
-          if (
-            options.failSubscriptionUpdate &&
-            table === "subscriptions" &&
-            (pendingUpdate.status === "active" || pendingUpdate.status === "scheduled")
-          ) {
-            return { data: null, error: { message: "subscription update failed" } };
+          if (options.failSubscriptionUpdate && table === "subscriptions") {
+            return { data: null, error: null };
           }
           const rows = (db[table] ?? []).filter((row) => matches(row, filters));
           for (const row of rows) Object.assign(row, pendingUpdate);
