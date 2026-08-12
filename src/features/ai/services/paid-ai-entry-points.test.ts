@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { beforeEach, describe, it } from "node:test";
 
 import { runSessionBoundGeneration } from "./session-bound-generation.server.ts";
 import { prepareOwnedLessonSession } from "@/features/lesson-sessions/services/prepare-lesson-session.server.ts";
+import { resetPaidAiRequestGuardForTests } from "@/features/ai/providers/paid-ai-request-guard.ts";
 import { BillingError } from "@/features/billing/types.ts";
 import type { AiGenerationKind } from "./persistence.server.ts";
 import type { SupabaseUserContext } from "@/platform/database/supabase/context";
@@ -244,6 +245,10 @@ async function runEntry(
 }
 
 describe("paid AI entry points — entitlement gate", () => {
+  beforeEach(() => {
+    resetPaidAiRequestGuardForTests();
+  });
+
   for (const entry of ENTRY_POINTS) {
     it(`${entry.name} denied → Gemini=0 persist=0`, async () => {
       const { auth, geminiCalls, persistCalls } = mockPaidAi(emptyEntitlementTables());

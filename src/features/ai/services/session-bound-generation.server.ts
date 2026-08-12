@@ -3,6 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { saveAiGeneration, type AiGenerationKind } from "@/features/ai/services/persistence.server";
 import { featureKeyForGenerationKind } from "@/features/billing/entitlement.logic";
 import { entitlementDeniedError, requireEntitlement } from "@/features/billing/require-entitlement";
+import {
+  acquirePaidAiRequest,
+  paidAiGuardReasonMessage,
+} from "@/features/ai/providers/paid-ai-request-guard";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import type { SupabaseUserContext } from "@/platform/database/supabase/context";
 import {
@@ -40,11 +44,12 @@ export function buildSessionCurriculumPrefix(curriculumLesson: SessionCurriculum
 
 /**
  * P3 Step 3 unified pipeline:
- * entitlement → lessonSessionId → owned session → curriculum → strategy → saveAiGeneration
+ * entitlement → owned session → paid-AI guard → curriculum → strategy → saveAiGeneration
  *
  * Kind-specific provider/prompt/output strategy is injected via `execute`.
  * Does not trust client teacher_id, curriculum_lesson_id, or billing ids.
  * Gemini and persist never run without requireEntitlement(kind).
+ * Process-local paid AI concurrency/rate guard (Hotfix #2.6) wraps execute+persist.
  */
 export async function runSessionBoundGeneration(
   params: {
@@ -73,60 +78,70 @@ export async function runSessionBoundGeneration(
   });
 
   const session = await requireOwnedLessonSession(params.lessonSessionId, params.auth);
-  const curriculumLesson = await loadCurriculumLessonForSession(session, params.auth);
 
-  const timetable = await TeacherTimetableService.getTimetable(params.auth);
+  const guard = acquirePaidAiRequest(params.userId);
+  if (!guard.ok) {
+    throw new Error(paidAiGuardReasonMessage(guard.reason));
+  }
 
-  const timetableEntry =
-    timetable.find(
-      (entry) => entry.dayOfWeek === session.dayOfWeek && entry.period === session.periodNumber,
-    ) ?? null;
+  try {
+    const curriculumLesson = await loadCurriculumLessonForSession(session, params.auth);
 
-  const ctx: SessionBoundGenerationContext = {
-    session,
-    curriculumLesson,
-    timetableEntry,
-    auth: params.auth,
-    supabase: params.supabase,
-    userId: params.userId,
-  };
+    const timetable = await TeacherTimetableService.getTimetable(params.auth);
 
-  const executed = await execute(ctx);
+    const timetableEntry =
+      timetable.find(
+        (entry) => entry.dayOfWeek === session.dayOfWeek && entry.period === session.periodNumber,
+      ) ?? null;
 
-  const extra = executed.extraOutput ?? {};
-  const extraLessonContext =
-    extra.lessonContext && typeof extra.lessonContext === "object"
-      ? (extra.lessonContext as Record<string, unknown>)
-      : {};
-  const { lessonContext: _, ...restExtra } = extra;
+    const ctx: SessionBoundGenerationContext = {
+      session,
+      curriculumLesson,
+      timetableEntry,
+      auth: params.auth,
+      supabase: params.supabase,
+      userId: params.userId,
+    };
 
-  const row = await saveAiGeneration(params.supabase, {
-    userId: params.userId,
-    kind: params.kind,
-    prompt: executed.prompt,
-    lessonSessionId: session.id,
-    output: {
-      content: executed.content,
-      input: executed.input,
-      model: executed.model,
-      ...(executed.curriculumContextUsed !== undefined
-        ? { curriculumContextUsed: executed.curriculumContextUsed }
-        : {}),
-      ...restExtra,
-      lessonContext: {
-        lessonSessionId: session.id,
-        curriculumLessonId: session.curriculumLessonId,
-        sessionStatus: session.status,
-        ...extraLessonContext,
+    const executed = await execute(ctx);
+
+    const extra = executed.extraOutput ?? {};
+    const extraLessonContext =
+      extra.lessonContext && typeof extra.lessonContext === "object"
+        ? (extra.lessonContext as Record<string, unknown>)
+        : {};
+    const { lessonContext: _, ...restExtra } = extra;
+
+    const row = await saveAiGeneration(params.supabase, {
+      userId: params.userId,
+      kind: params.kind,
+      prompt: executed.prompt,
+      lessonSessionId: session.id,
+      output: {
+        content: executed.content,
+        input: executed.input,
+        model: executed.model,
+        ...(executed.curriculumContextUsed !== undefined
+          ? { curriculumContextUsed: executed.curriculumContextUsed }
+          : {}),
+        ...restExtra,
+        lessonContext: {
+          lessonSessionId: session.id,
+          curriculumLessonId: session.curriculumLessonId,
+          sessionStatus: session.status,
+          ...extraLessonContext,
+        },
       },
-    },
-  });
+    });
 
-  return {
-    id: row.id,
-    content: executed.content,
-    createdAt: row.createdAt,
-    lessonSessionId: session.id,
-    curriculumLessonId: session.curriculumLessonId as string,
-  };
+    return {
+      id: row.id,
+      content: executed.content,
+      createdAt: row.createdAt,
+      lessonSessionId: session.id,
+      curriculumLessonId: session.curriculumLessonId as string,
+    };
+  } finally {
+    guard.release();
+  }
 }

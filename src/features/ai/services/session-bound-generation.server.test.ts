@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { beforeEach, describe, it } from "node:test";
 
 import {
   buildSessionCurriculumPrefix,
   runSessionBoundGeneration,
 } from "./session-bound-generation.server.ts";
+import { resetPaidAiRequestGuardForTests } from "@/features/ai/providers/paid-ai-request-guard.ts";
 import { BillingError } from "@/features/billing/types.ts";
 import { LessonSessionBindingError } from "@/features/lesson-sessions/services/require-owned-lesson-session.ts";
 import type { SupabaseUserContext } from "@/platform/database/supabase/context";
@@ -182,6 +183,10 @@ function mockAuth(
 }
 
 describe("P3 Step 3 unified session-bound generation", () => {
+  beforeEach(() => {
+    resetPaidAiRequestGuardForTests();
+  });
+
   it("runs bind → curriculum → strategy → persist for owned session", async () => {
     const { auth, inserted } = mockAuth(TEACHER_A, makeSessionRow(), {
       id: CURRICULUM_LESSON,
