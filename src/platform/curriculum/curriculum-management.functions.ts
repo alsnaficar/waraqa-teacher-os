@@ -14,7 +14,10 @@ import {
 import {
   assertCurriculumPdfMagicBytes,
   CURRICULUM_PDF_INVALID_MESSAGE,
+  CURRICULUM_PDF_TIMEOUT_MESSAGE,
   CURRICULUM_PDF_TOO_LARGE_MESSAGE,
+  GEMINI_EXTRACTION_TIMEOUT_MS,
+  isCurriculumGeminiTimeoutError,
   MAX_CURRICULUM_PDF_BASE64_CHARS,
   MAX_CURRICULUM_PDF_BYTES,
 } from "./curriculum-pdf-limits.ts";
@@ -23,7 +26,10 @@ export { deserializeLessonNotes, serializeLessonNotes } from "./curriculum-lesso
 export {
   assertCurriculumPdfMagicBytes,
   CURRICULUM_PDF_INVALID_MESSAGE,
+  CURRICULUM_PDF_TIMEOUT_MESSAGE,
   CURRICULUM_PDF_TOO_LARGE_MESSAGE,
+  GEMINI_EXTRACTION_TIMEOUT_MS,
+  isCurriculumGeminiTimeoutError,
   MAX_CURRICULUM_PDF_BASE64_CHARS,
   MAX_CURRICULUM_PDF_BYTES,
 } from "./curriculum-pdf-limits.ts";
@@ -155,6 +161,7 @@ You MUST return valid JSON matching this schema structure. Do not wrap in markdo
 /**
  * Admin-authorized PDF → Gemini extraction.
  * Size + magic-byte validation runs after assertAdmin and before any Gemini call.
+ * Gemini generateContent is bounded by GEMINI_EXTRACTION_TIMEOUT_MS.
  */
 export async function extractCurriculumFromPdfAuthorized(
   client: AdminClient,
@@ -179,6 +186,9 @@ export async function extractCurriculumFromPdfAuthorized(
         CURRICULUM_PDF_EXTRACTION_PROMPT,
       ],
       config: {
+        httpOptions: {
+          timeout: GEMINI_EXTRACTION_TIMEOUT_MS,
+        },
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
@@ -218,9 +228,16 @@ export async function extractCurriculumFromPdfAuthorized(
   } catch (err: unknown) {
     if (
       err instanceof Error &&
-      (err.message.includes("حجم ملف PDF") || err.message.includes("ملف PDF غير صالح"))
+      (err.message === CURRICULUM_PDF_TOO_LARGE_MESSAGE ||
+        err.message === CURRICULUM_PDF_INVALID_MESSAGE ||
+        err.message === CURRICULUM_PDF_TIMEOUT_MESSAGE ||
+        err.message.includes("حجم ملف PDF") ||
+        err.message.includes("ملف PDF غير صالح"))
     ) {
       throw err;
+    }
+    if (isCurriculumGeminiTimeoutError(err)) {
+      throw new Error(CURRICULUM_PDF_TIMEOUT_MESSAGE);
     }
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[curriculum-management] PDF extraction failed:", err);

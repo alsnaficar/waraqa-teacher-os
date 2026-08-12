@@ -8,11 +8,14 @@ import {
   extractCurriculumFromPdfAuthorized,
   assertCurriculumPdfBase64WithinLimit,
   assertCurriculumPdfMagicBytes,
+  isCurriculumGeminiTimeoutError,
 } from "./curriculum-management.functions.ts";
 import {
   CURRICULUM_PDF_INVALID_MESSAGE,
   CURRICULUM_PDF_MIN_BYTES,
+  CURRICULUM_PDF_TIMEOUT_MESSAGE,
   CURRICULUM_PDF_TOO_LARGE_MESSAGE,
+  GEMINI_EXTRACTION_TIMEOUT_MS,
   MAX_CURRICULUM_PDF_BASE64_CHARS,
   MAX_CURRICULUM_PDF_BYTES,
 } from "./curriculum-pdf-limits.ts";
@@ -239,7 +242,7 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
     };
     const ai = {
       models: {
-        async generateContent(input: { contents: unknown }) {
+        async generateContent(input: { contents: unknown; config?: unknown }) {
           geminiCalls += 1;
           const contents = input.contents as Array<Record<string, unknown>>;
           assert.ok(Array.isArray(contents));
@@ -247,6 +250,11 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
             (contents[0] as { inlineData?: { mimeType?: string } }).inlineData?.mimeType,
             "application/pdf",
           );
+          const config = input.config as {
+            httpOptions?: { timeout?: number; retryOptions?: unknown };
+          };
+          assert.equal(config.httpOptions?.timeout, GEMINI_EXTRACTION_TIMEOUT_MS);
+          assert.equal(config.httpOptions?.retryOptions, undefined);
           return { text: JSON.stringify(extracted) };
         },
       },
@@ -261,6 +269,101 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
     assert.equal(geminiCalls, 1);
     assert.deepEqual(result, extracted);
   });
+
+  it("B. ordinary Gemini error preserves existing failure wrapping", async () => {
+    const { client } = mockRoleClient("admin");
+    let geminiCalls = 0;
+    const ai = {
+      models: {
+        async generateContent() {
+          geminiCalls += 1;
+          throw new Error("provider boom: quota xyz");
+        },
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(128), {
+          ai,
+        }),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message === "Failed to extract curriculum details: provider boom: quota xyz",
+    );
+    assert.equal(geminiCalls, 1);
+  });
+
+  it("C. Gemini AbortError maps to stable timeout message (no raw details)", async () => {
+    const { client } = mockRoleClient("admin");
+    let geminiCalls = 0;
+    const ai = {
+      models: {
+        async generateContent(input: { config?: unknown }) {
+          geminiCalls += 1;
+          const config = input.config as { httpOptions?: { timeout?: number } };
+          assert.equal(config.httpOptions?.timeout, GEMINI_EXTRACTION_TIMEOUT_MS);
+          throw new DOMException("This operation was aborted", "AbortError");
+        },
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(128), {
+          ai,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.equal(err.message, CURRICULUM_PDF_TIMEOUT_MESSAGE);
+        assert.doesNotMatch(err.message, /AbortError|aborted|provider|Gemini|timeout/i);
+        return true;
+      },
+    );
+    assert.equal(geminiCalls, 1);
+  });
+
+  it("D/E. hanging mock still receives timeout config; abort path call count = 1", async () => {
+    const { client } = mockRoleClient("admin");
+    let geminiCalls = 0;
+    let seenTimeout: number | undefined;
+    const ai = {
+      models: {
+        async generateContent(input: { config?: unknown }) {
+          geminiCalls += 1;
+          const config = input.config as {
+            httpOptions?: { timeout?: number; retryOptions?: unknown };
+          };
+          seenTimeout = config.httpOptions?.timeout;
+          assert.equal(config.httpOptions?.retryOptions, undefined);
+          // Simulate SDK timeout abort without waiting 90s or using a real network.
+          throw new DOMException("This operation was aborted", "AbortError");
+        },
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(256), {
+          ai,
+        }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_TIMEOUT_MESSAGE,
+    );
+    assert.equal(seenTimeout, GEMINI_EXTRACTION_TIMEOUT_MS);
+    assert.equal(geminiCalls, 1);
+  });
+});
+
+describe("isCurriculumGeminiTimeoutError", () => {
+  it("detects AbortError / DOMException ABORT_ERR and ignores ordinary errors", () => {
+    assert.equal(isCurriculumGeminiTimeoutError(new DOMException("aborted", "AbortError")), true);
+    const named = new Error("This operation was aborted");
+    named.name = "AbortError";
+    assert.equal(isCurriculumGeminiTimeoutError(named), true);
+    assert.equal(isCurriculumGeminiTimeoutError(new Error("network down")), false);
+    assert.equal(isCurriculumGeminiTimeoutError(new Error("Request timeout from edge")), false);
+    assert.equal(GEMINI_EXTRACTION_TIMEOUT_MS, 90_000);
+  });
 });
 
 describe("curriculum PDF size source contracts", () => {
@@ -269,6 +372,9 @@ describe("curriculum PDF size source contracts", () => {
     assert.match(src, /assertCurriculumPdfBase64WithinLimit/);
     assert.match(src, /assertCurriculumPdfMagicBytes/);
     assert.match(src, /MAX_CURRICULUM_PDF_BASE64_CHARS/);
+    assert.match(src, /GEMINI_EXTRACTION_TIMEOUT_MS/);
+    assert.match(src, /httpOptions:\s*\{\s*timeout:\s*GEMINI_EXTRACTION_TIMEOUT_MS/);
+    assert.doesNotMatch(src, /retryOptions/);
     assert.match(src, /await assertAdmin/);
 
     const authorized = src.slice(
@@ -279,8 +385,10 @@ describe("curriculum PDF size source contracts", () => {
     const sizeIdx = authorized.indexOf("assertCurriculumPdfBase64WithinLimit");
     const geminiIdx = authorized.indexOf("getGemini");
     const generateIdx = authorized.indexOf("generateContent");
+    const timeoutIdx = authorized.indexOf("GEMINI_EXTRACTION_TIMEOUT_MS");
     assert.ok(adminIdx >= 0 && sizeIdx > adminIdx);
     assert.ok(sizeIdx < generateIdx);
+    assert.ok(timeoutIdx > generateIdx || timeoutIdx > sizeIdx);
     assert.ok(geminiIdx < 0 || sizeIdx < geminiIdx || generateIdx > sizeIdx);
 
     const assertFn = src.slice(
@@ -296,6 +404,7 @@ describe("curriculum PDF size source contracts", () => {
     const limits = readFileSync(LIMITS_FILE, "utf8");
     const receipt = readFileSync(RECEIPT_FILE, "utf8");
     assert.match(limits, /0x25,\s*0x50,\s*0x44,\s*0x46/);
+    assert.match(limits, /GEMINI_EXTRACTION_TIMEOUT_MS = 90_000/);
     assert.match(
       receipt,
       /0x25 && bytes\[1\] === 0x50 && bytes\[2\] === 0x44 && bytes\[3\] === 0x46/,
