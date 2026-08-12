@@ -1,8 +1,16 @@
 import { Type } from "@google/genai";
 
 import {
+  AI_PROMPT_CURRICULUM_NOTES_MAX,
+  AI_PROMPT_CURRICULUM_OBJECTIVES_MAX,
+  AI_PROMPT_CURRICULUM_TITLE_MAX,
+  AI_PROMPT_GRADE_MAX,
+  AI_PROMPT_SUBJECT_MAX,
+  AI_PROMPT_SUGGESTED_DATE_MAX,
+  AI_PROMPT_UNIT_MAX,
   AI_REQUEST_TIMEOUT_MESSAGE,
   GEMINI_REQUEST_TIMEOUT_MS,
+  clampAiPromptText,
   isAiGeminiTimeoutError,
 } from "@/features/ai/providers/ai-request-limits.ts";
 import { getGemini } from "@/features/ai/providers/gemini";
@@ -36,6 +44,7 @@ type LessonPlanAiClient = {
 /**
  * Direct Gemini structured-JSON strategy for lesson_plan.
  * Preserves existing prompts, model, and responseSchema.
+ * Curriculum/timetable text is clamped for AI prompts only (Hotfix #2.7).
  */
 export async function executeLessonPlanGeneration(
   ctx: SessionBoundGenerationContext,
@@ -48,34 +57,59 @@ export async function executeLessonPlanGeneration(
   const timetableEntry = ctx.timetableEntry;
 
   // Session-bound timetable is authoritative for subject, grade and class.
-  const subject = timetableEntry?.subject?.trim() || "المادة";
-  const grade = timetableEntry?.grade?.trim() || "الصف";
-  const className = timetableEntry?.className?.trim() || "";
+  const subject = clampAiPromptText(
+    timetableEntry?.subject?.trim() || "المادة",
+    AI_PROMPT_SUBJECT_MAX,
+  );
+  const grade = clampAiPromptText(timetableEntry?.grade?.trim() || "الصف", AI_PROMPT_GRADE_MAX);
+  const className = clampAiPromptText(timetableEntry?.className?.trim() || "", AI_PROMPT_GRADE_MAX);
 
   // Session-bound curriculum is authoritative for lesson identity and content.
-  const officialLessonName = curriculumLesson?.title?.trim() || "الدرس";
-  const officialObjectives =
+  const officialLessonName = clampAiPromptText(
+    curriculumLesson?.title?.trim() || "الدرس",
+    AI_PROMPT_CURRICULUM_TITLE_MAX,
+  );
+  const officialObjectivesRaw =
     curriculumLesson?.objectives?.trim() || notesExtra.outcomes?.trim() || "";
-  const officialUnit = notesExtra.unitName?.trim() || "";
+  const officialObjectives = clampAiPromptText(
+    officialObjectivesRaw,
+    AI_PROMPT_CURRICULUM_OBJECTIVES_MAX,
+  );
+  const officialUnit = clampAiPromptText(notesExtra.unitName?.trim() || "", AI_PROMPT_UNIT_MAX);
 
-  // Teacher values are optional enrichments only.
+  // Teacher values are optional enrichments only (already Zod-bounded at entry).
   const teacherObjectives = options.objectives?.trim() || "";
   const teacherUnit = options.unit?.trim() || "";
-  const suggestedDate = options.suggestedDate?.trim() || session.sessionDate;
+  const suggestedDateRaw = options.suggestedDate?.trim() || session.sessionDate;
+  const suggestedDate = clampAiPromptText(suggestedDateRaw, AI_PROMPT_SUGGESTED_DATE_MAX);
 
-  // Official curriculum context is authoritative for lesson content.
-  // Teacher options can enrich the request, but must not replace curriculum data.
+  // Extended curriculum details (title/objectives already in the header — do not re-emit).
   const curriculumContext = [
-    `عنوان الدرس الرسمي: ${officialLessonName}`,
-    curriculumLesson?.objectives ? `الأهداف الرسمية: ${curriculumLesson.objectives}` : "",
-    notesExtra.unitNumber ? `رقم الوحدة: ${notesExtra.unitNumber}` : "",
-    notesExtra.unitName ? `اسم الوحدة: ${notesExtra.unitName}` : "",
-    notesExtra.lessonNumber ? `رقم الدرس: ${notesExtra.lessonNumber}` : "",
-    notesExtra.outcomes ? `نواتج التعلم الرسمية: ${notesExtra.outcomes}` : "",
-    notesExtra.activities ? `الأنشطة الواردة في المنهج: ${notesExtra.activities}` : "",
-    notesExtra.assessment ? `التقويم الوارد في المنهج: ${notesExtra.assessment}` : "",
-    notesExtra.periods ? `عدد الحصص/الفترات: ${notesExtra.periods}` : "",
-    notesExtra.notes ? `ملاحظات المنهج: ${notesExtra.notes}` : "",
+    notesExtra.unitNumber
+      ? `رقم الوحدة: ${clampAiPromptText(notesExtra.unitNumber, AI_PROMPT_UNIT_MAX)}`
+      : "",
+    notesExtra.unitName
+      ? `اسم الوحدة: ${clampAiPromptText(notesExtra.unitName, AI_PROMPT_UNIT_MAX)}`
+      : "",
+    notesExtra.lessonNumber
+      ? `رقم الدرس: ${clampAiPromptText(notesExtra.lessonNumber, AI_PROMPT_UNIT_MAX)}`
+      : "",
+    // Skip outcomes when they already supplied officialObjectives (avoid double paste).
+    notesExtra.outcomes && notesExtra.outcomes.trim() !== officialObjectivesRaw
+      ? `نواتج التعلم الرسمية: ${clampAiPromptText(notesExtra.outcomes, AI_PROMPT_CURRICULUM_OBJECTIVES_MAX)}`
+      : "",
+    notesExtra.activities
+      ? `الأنشطة الواردة في المنهج: ${clampAiPromptText(notesExtra.activities, AI_PROMPT_CURRICULUM_NOTES_MAX)}`
+      : "",
+    notesExtra.assessment
+      ? `التقويم الوارد في المنهج: ${clampAiPromptText(notesExtra.assessment, AI_PROMPT_CURRICULUM_NOTES_MAX)}`
+      : "",
+    notesExtra.periods
+      ? `عدد الحصص/الفترات: ${clampAiPromptText(notesExtra.periods, AI_PROMPT_UNIT_MAX)}`
+      : "",
+    notesExtra.notes
+      ? `ملاحظات المنهج: ${clampAiPromptText(notesExtra.notes, AI_PROMPT_CURRICULUM_NOTES_MAX)}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");

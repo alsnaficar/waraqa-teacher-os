@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { saveAiGeneration, type AiGenerationKind } from "@/features/ai/services/persistence.server";
+import {
+  AI_PROMPT_CURRICULUM_NOTES_MAX,
+  AI_PROMPT_CURRICULUM_OBJECTIVES_MAX,
+  AI_PROMPT_CURRICULUM_TITLE_MAX,
+  clampAiPromptText,
+} from "@/features/ai/providers/ai-request-limits";
 import { featureKeyForGenerationKind } from "@/features/billing/entitlement.logic";
 import { entitlementDeniedError, requireEntitlement } from "@/features/billing/require-entitlement";
 import {
@@ -23,6 +29,7 @@ import type {
 /**
  * Build a prompt prefix from the session's authoritative curriculum lesson.
  * Prefer this over free-text grade/subject/title search for session-bound prep.
+ * Curriculum fields are clamped for AI prompt size only (Hotfix #2.7); DB values unchanged.
  */
 export function buildSessionCurriculumPrefix(curriculumLesson: SessionCurriculumLesson | null): {
   promptPrefix: string;
@@ -31,12 +38,19 @@ export function buildSessionCurriculumPrefix(curriculumLesson: SessionCurriculum
   if (!curriculumLesson) return { promptPrefix: "", used: false };
 
   const lines: string[] = ["--- سياق المنهج (من حصة الدرس) ---"];
-  lines.push(`عنوان الدرس: ${curriculumLesson.title}`);
+  lines.push(
+    `عنوان الدرس: ${clampAiPromptText(curriculumLesson.title, AI_PROMPT_CURRICULUM_TITLE_MAX)}`,
+  );
   if (curriculumLesson.objectives) {
-    lines.push("الأهداف:", curriculumLesson.objectives);
+    lines.push(
+      "الأهداف:",
+      clampAiPromptText(curriculumLesson.objectives, AI_PROMPT_CURRICULUM_OBJECTIVES_MAX),
+    );
   }
   if (curriculumLesson.notes) {
-    lines.push(`ملاحظات: ${curriculumLesson.notes}`);
+    lines.push(
+      `ملاحظات: ${clampAiPromptText(curriculumLesson.notes, AI_PROMPT_CURRICULUM_NOTES_MAX)}`,
+    );
   }
   lines.push("--- نهاية سياق المنهج ---", "");
   return { promptPrefix: lines.join("\n"), used: true };

@@ -1,8 +1,10 @@
 import { Type } from "@google/genai";
 
 import {
+  AI_PROMPT_CURRICULUM_TITLE_MAX,
   AI_REQUEST_TIMEOUT_MESSAGE,
   GEMINI_REQUEST_TIMEOUT_MS,
+  clampAiPromptText,
   isAiGeminiTimeoutError,
 } from "@/features/ai/providers/ai-request-limits.ts";
 import { getGemini } from "@/features/ai/providers/gemini";
@@ -34,6 +36,7 @@ type QuizAiClient = {
 /**
  * Direct Gemini structured-JSON strategy for quiz.
  * Preserves existing prompts, model, and responseSchema.
+ * Curriculum title is clamped for AI prompts only (Hotfix #2.7 P1 residual).
  */
 export async function executeQuizGeneration(
   ctx: SessionBoundGenerationContext,
@@ -44,7 +47,11 @@ export async function executeQuizGeneration(
 
   const subject = options.subject?.trim() || "المادة";
   const grade = options.grade?.trim() || "الصف";
-  const title = options.title?.trim() || curriculumLesson?.title || "الدرس";
+  // Clamp at AI boundary: client titles are already Zod-bounded; curriculum titles may not be.
+  const title = clampAiPromptText(
+    options.title?.trim() || curriculumLesson?.title || "الدرس",
+    AI_PROMPT_CURRICULUM_TITLE_MAX,
+  );
   const questionCount = options.questionCount ?? 5;
   const difficulty = options.difficulty ?? "medium";
   const semester = options.semester ?? "";

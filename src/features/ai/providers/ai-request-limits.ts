@@ -18,6 +18,29 @@ export const AI_PROMPT_UNIT_MAX = 200;
 export const AI_PROMPT_SEMESTER_MAX = 120;
 /** Matches legacy lesson-plan / worksheet-style objectives ceiling. */
 export const AI_PROMPT_OBJECTIVES_MAX = 4000;
+/** Client suggestedDate (YYYY-MM-DD); Hotfix #2.7 prompt-amplification bound. */
+export const AI_PROMPT_SUGGESTED_DATE_MAX = 32;
+
+/**
+ * Read-side curriculum prompt ceilings (Hotfix #2.7).
+ * Applied only when constructing AI prompts — never mutates DB rows.
+ */
+export const AI_PROMPT_CURRICULUM_TITLE_MAX = AI_PROMPT_TITLE_MAX;
+export const AI_PROMPT_CURRICULUM_OBJECTIVES_MAX = AI_PROMPT_OBJECTIVES_MAX;
+export const AI_PROMPT_CURRICULUM_NOTES_MAX = 4000;
+
+/** Appended when a DB curriculum field is truncated for an AI prompt. */
+export const AI_PROMPT_TRUNCATION_MARKER = "[تم اختصار النص]";
+
+/**
+ * Clamp text for AI prompt construction only.
+ * Preserves the start of the field and appends a deterministic marker when truncated.
+ */
+export function clampAiPromptText(value: string, maxChars: number): string {
+  if (maxChars <= 0) return AI_PROMPT_TRUNCATION_MARKER;
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}${AI_PROMPT_TRUNCATION_MARKER}`;
+}
 
 /**
  * Detect @google/genai httpOptions.timeout aborts (AbortError / DOMException.ABORT_ERR).

@@ -8,6 +8,7 @@ import {
   AI_PROMPT_LESSON_NAME_MAX,
   AI_PROMPT_OBJECTIVES_MAX,
   AI_PROMPT_SUBJECT_MAX,
+  AI_PROMPT_SUGGESTED_DATE_MAX,
   AI_PROMPT_UNIT_MAX,
 } from "@/features/ai/providers/ai-request-limits.ts";
 import { runSessionBoundGeneration } from "@/features/ai/services/session-bound-generation.server";
@@ -24,7 +25,20 @@ export const LessonPrepInput = z.object({
   unit: z.string().max(AI_PROMPT_UNIT_MAX).optional().default(""),
   /** Ignored for binding — session.curriculumLessonId is authoritative. */
   lessonId: z.string().nullable().optional(),
-  suggestedDate: z.string().optional(),
+  /**
+   * Optional lesson date (product contract: YYYY-MM-DD).
+   * Empty/omitted keeps existing fallback to session.sessionDate in the strategy.
+   * Oversized or non-date strings are rejected (no silent truncation).
+   */
+  suggestedDate: z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .max(AI_PROMPT_SUGGESTED_DATE_MAX)
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "تاريخ التنفيذ يجب أن يكون بصيغة YYYY-MM-DD"),
+    ])
+    .optional(),
 });
 
 /** Narrow unified pipeline content to the existing structured lesson-plan shape. */
