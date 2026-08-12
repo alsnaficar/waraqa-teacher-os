@@ -3,18 +3,24 @@ import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import type { StructuredQuizAndAssignmentData } from "@/platform/ai/docx";
+import {
+  AI_PROMPT_GRADE_MAX,
+  AI_PROMPT_SEMESTER_MAX,
+  AI_PROMPT_SUBJECT_MAX,
+  AI_PROMPT_TITLE_MAX,
+} from "@/features/ai/providers/ai-request-limits.ts";
 import { runSessionBoundGeneration } from "@/features/ai/services/session-bound-generation.server";
 import type { GenerationResult } from "@/features/ai/services/session-bound-generation.types";
 import { executeQuizGeneration } from "@/features/ai/strategies/quiz.strategy";
 
-const QuizGeneratorInput = z.object({
+export const QuizGeneratorInput = z.object({
   lessonSessionId: z.string().uuid("lessonSessionId مطلوب"),
-  subject: z.string().min(1, "اسم المادة مطلوب").optional(),
-  grade: z.string().min(1, "الصف الدراسي مطلوب").optional(),
-  title: z.string().min(1, "عنوان الدرس مطلوب").optional(),
+  subject: z.string().min(1, "اسم المادة مطلوب").max(AI_PROMPT_SUBJECT_MAX).optional(),
+  grade: z.string().min(1, "الصف الدراسي مطلوب").max(AI_PROMPT_GRADE_MAX).optional(),
+  title: z.string().min(1, "عنوان الدرس مطلوب").max(AI_PROMPT_TITLE_MAX).optional(),
   questionCount: z.number().int().min(1).max(25).default(5),
   difficulty: z.enum(["easy", "medium", "hard"]).default("medium"),
-  semester: z.string().optional().default(""),
+  semester: z.string().max(AI_PROMPT_SEMESTER_MAX).optional().default(""),
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
 });
 

@@ -1,5 +1,10 @@
 import { Type } from "@google/genai";
 
+import {
+  AI_REQUEST_TIMEOUT_MESSAGE,
+  GEMINI_REQUEST_TIMEOUT_MS,
+  isAiGeminiTimeoutError,
+} from "@/features/ai/providers/ai-request-limits.ts";
 import { getGemini } from "@/features/ai/providers/gemini";
 import type {
   GenerationExecuteResult,
@@ -16,6 +21,16 @@ export type QuizOptions = {
   stage?: "primary" | "intermediate" | "secondary";
 };
 
+type QuizAiClient = {
+  models: {
+    generateContent(input: {
+      model: string;
+      contents: string;
+      config?: Parameters<ReturnType<typeof getGemini>["models"]["generateContent"]>[0]["config"];
+    }): Promise<{ text?: string }>;
+  };
+};
+
 /**
  * Direct Gemini structured-JSON strategy for quiz.
  * Preserves existing prompts, model, and responseSchema.
@@ -23,6 +38,7 @@ export type QuizOptions = {
 export async function executeQuizGeneration(
   ctx: SessionBoundGenerationContext,
   options: QuizOptions,
+  aiClient: QuizAiClient = getGemini(),
 ): Promise<GenerationExecuteResult> {
   const { session, curriculumLesson } = ctx;
 
@@ -34,7 +50,6 @@ export async function executeQuizGeneration(
   const semester = options.semester ?? "";
   const stage = options.stage;
 
-  const ai = getGemini();
   const modelName = "gemini-2.5-flash";
 
   const promptText = `
@@ -55,10 +70,13 @@ export async function executeQuizGeneration(
     `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await aiClient.models.generateContent({
       model: modelName,
       contents: promptText,
       config: {
+        httpOptions: {
+          timeout: GEMINI_REQUEST_TIMEOUT_MS,
+        },
         systemInstruction: `
             أنت مساعد ذكي ومستشار قياس وتقويم تربوي متمرس في الأنظمة التعليمية السعودية.
             تقوم بصياغة أسئلة واختبارات مدرسية وواجبات تطبيقية تعزز الفهم والمهارات الحياتية والتفكير الناقد والتحصيل الدراسي.
@@ -188,6 +206,9 @@ export async function executeQuizGeneration(
     };
   } catch (error) {
     console.error("خطأ أثناء توليد الاختبار عبر Gemini:", error);
+    if (isAiGeminiTimeoutError(error)) {
+      throw new Error(AI_REQUEST_TIMEOUT_MESSAGE);
+    }
     throw new Error(
       error instanceof Error
         ? error.message

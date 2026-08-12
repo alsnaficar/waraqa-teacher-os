@@ -1,5 +1,10 @@
 import { Type } from "@google/genai";
 
+import {
+  AI_REQUEST_TIMEOUT_MESSAGE,
+  GEMINI_REQUEST_TIMEOUT_MS,
+  isAiGeminiTimeoutError,
+} from "@/features/ai/providers/ai-request-limits.ts";
 import { getGemini } from "@/features/ai/providers/gemini";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import type {
@@ -115,6 +120,9 @@ export async function executeLessonPlanGeneration(
       model: modelName,
       contents: promptText,
       config: {
+        httpOptions: {
+          timeout: GEMINI_REQUEST_TIMEOUT_MS,
+        },
         systemInstruction: `
             أنت مساعد ذكي مخصص للمعلمين والمعلمات في السعودية. تقوم بتوليد تحاضير دراسية احترافية تناسب بيئة التعليم وتدعم الفروق الفردية والمهارات الرقمية الحديثة.
             يجب أن تكون جميع الاستجابات باللغة العربية الفصحى السليمة والواضحة والخالية من أي صياغات عامية أو غير مكتملة.
@@ -241,6 +249,9 @@ export async function executeLessonPlanGeneration(
     };
   } catch (error) {
     console.error("خطأ أثناء توليد التحضير عبر Gemini:", error);
+    if (isAiGeminiTimeoutError(error)) {
+      throw new Error(AI_REQUEST_TIMEOUT_MESSAGE);
+    }
     throw new Error(
       error instanceof Error
         ? error.message

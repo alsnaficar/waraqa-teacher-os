@@ -3,18 +3,25 @@ import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import type { StructuredLessonPlanData } from "@/platform/ai/docx";
+import {
+  AI_PROMPT_GRADE_MAX,
+  AI_PROMPT_LESSON_NAME_MAX,
+  AI_PROMPT_OBJECTIVES_MAX,
+  AI_PROMPT_SUBJECT_MAX,
+  AI_PROMPT_UNIT_MAX,
+} from "@/features/ai/providers/ai-request-limits.ts";
 import { runSessionBoundGeneration } from "@/features/ai/services/session-bound-generation.server";
 import type { GenerationResult } from "@/features/ai/services/session-bound-generation.types";
 import { executeLessonPlanGeneration } from "@/features/ai/strategies/lesson-plan.strategy";
 
 /** Display/context fields may accompany the session; binding identity is lessonSessionId only. */
-const LessonPrepInput = z.object({
+export const LessonPrepInput = z.object({
   lessonSessionId: z.string().uuid("lessonSessionId مطلوب"),
-  subject: z.string().min(1, "اسم المادة مطلوب").optional(),
-  grade: z.string().min(1, "الصف الدراسي مطلوب").optional(),
-  lessonName: z.string().optional(),
-  objectives: z.string().optional().default(""),
-  unit: z.string().optional().default(""),
+  subject: z.string().min(1, "اسم المادة مطلوب").max(AI_PROMPT_SUBJECT_MAX).optional(),
+  grade: z.string().min(1, "الصف الدراسي مطلوب").max(AI_PROMPT_GRADE_MAX).optional(),
+  lessonName: z.string().max(AI_PROMPT_LESSON_NAME_MAX).optional(),
+  objectives: z.string().max(AI_PROMPT_OBJECTIVES_MAX).optional().default(""),
+  unit: z.string().max(AI_PROMPT_UNIT_MAX).optional().default(""),
   /** Ignored for binding — session.curriculumLessonId is authoritative. */
   lessonId: z.string().nullable().optional(),
   suggestedDate: z.string().optional(),
