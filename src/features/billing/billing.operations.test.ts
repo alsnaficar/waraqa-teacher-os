@@ -98,6 +98,7 @@ function seedDb(overrides: Partial<Record<string, Row[]>> = {}): Record<string, 
     payment_methods: [{ id: METHOD_ID, provider: "manual", is_active: true }],
     coupons: [],
     coupon_plans: [],
+    coupon_redemptions: [],
     subscription_logs: [],
     billing_audit_log: [],
     user_roles: [{ user_id: ADMIN, role: "admin" }],
@@ -118,6 +119,7 @@ function matches(
     if (filter.op === "eq") return actual === filter.value;
     if (filter.op === "neq") return actual !== filter.value;
     if (actual == null) return false;
+    if (filter.op === "lt") return Number(actual) < Number(filter.value);
     const left = String(actual);
     const right = String(filter.value);
     if (filter.op === "lte") return left <= right;
@@ -136,6 +138,7 @@ function createMockClient(db: Record<string, Row[]>) {
       const filters: Array<{ column: string; op: string; value: unknown }> = [];
       let pendingInsert: Row[] | null = null;
       let pendingUpdate: Row | null = null;
+      let pendingDelete = false;
       let orderCol: string | null = null;
       let orderAsc = true;
       let limitN = Number.POSITIVE_INFINITY;
@@ -166,6 +169,15 @@ function createMockClient(db: Record<string, Row[]>) {
             ) {
               return { data: null, error: { code: "23505", message: "duplicate key" } };
             }
+            if (
+              table === "coupon_redemptions" &&
+              (db.coupon_redemptions ?? []).some(
+                (existing) =>
+                  existing.coupon_id === row.coupon_id && existing.payment_id === row.payment_id,
+              )
+            ) {
+              return { data: null, error: { code: "23505", message: "duplicate key" } };
+            }
             const saved = {
               id: row.id ?? `id-${table}-${++seq}`,
               created_at: "2026-08-11T00:00:00Z",
@@ -184,6 +196,17 @@ function createMockClient(db: Record<string, Row[]>) {
             Object.assign(row, pendingUpdate);
           }
           return { data: mode === "many" ? rows : (rows[0] ?? null), error: null };
+        }
+
+        if (pendingDelete) {
+          const remaining: Row[] = [];
+          const removed: Row[] = [];
+          for (const row of db[table] ?? []) {
+            if (matches(row, filters)) removed.push(row);
+            else remaining.push(row);
+          }
+          db[table] = remaining;
+          return { data: mode === "many" ? removed : (removed[0] ?? null), error: null };
         }
 
         const rows = runSelect();
@@ -205,8 +228,16 @@ function createMockClient(db: Record<string, Row[]>) {
           pendingUpdate = row;
           return api;
         },
+        delete() {
+          pendingDelete = true;
+          return api;
+        },
         eq(column: string, value: unknown) {
           filters.push({ column, op: "eq", value });
+          return api;
+        },
+        lt(column: string, value: unknown) {
+          filters.push({ column, op: "lt", value });
           return api;
         },
         neq(column: string, value: unknown) {

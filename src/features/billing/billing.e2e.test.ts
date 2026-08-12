@@ -82,6 +82,7 @@ function seedDb(): Record<string, Row[]> {
     payments: [],
     payment_methods: [{ id: METHOD_ID, provider: "manual", is_active: true }],
     coupons: [],
+    coupon_redemptions: [],
     subscription_logs: [],
     billing_audit_log: [],
     user_roles: [{ user_id: ADMIN, role: "admin" }],

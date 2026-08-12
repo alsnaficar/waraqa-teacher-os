@@ -845,8 +845,46 @@ export async function submitPaymentReferenceOp(
   return { ok: true };
 }
 
-async function consumeCheckoutCoupon(client: AdminClient, subscriptionId: string): Promise<void> {
-  const { data: log } = await client
+const COUPON_EXHAUSTED = new BillingError("INVALID_PAYMENT", "تم استخدام رمز الخصم بالكامل.");
+const COUPON_CONSUME_FAILED = new BillingError("INVALID_PAYMENT", "تعذر استخدام رمز الخصم.");
+
+type ActivationCoupon = {
+  id: string;
+  used_count: number;
+  max_usage: number;
+};
+
+type CouponRedemptionSlot =
+  | { kind: "none" }
+  | { kind: "existing" }
+  | { kind: "acquired"; couponId: string; previousCount: number; nextCount: number };
+
+async function loadCouponById(client: AdminClient, couponId: string): Promise<ActivationCoupon> {
+  const { data, error } = await client
+    .from("coupons")
+    .select("id, used_count, max_usage")
+    .eq("id", couponId)
+    .maybeSingle();
+
+  if (error) {
+    failClosed(error, COUPON_CONSUME_FAILED);
+  }
+  if (!data) {
+    throw COUPON_CONSUME_FAILED;
+  }
+
+  return {
+    id: data.id,
+    used_count: data.used_count ?? 0,
+    max_usage: data.max_usage ?? 0,
+  };
+}
+
+async function loadCouponCodeFromCheckoutLog(
+  client: AdminClient,
+  subscriptionId: string,
+): Promise<string | null> {
+  const { data, error } = await client
     .from("subscription_logs")
     .select("notes")
     .eq("subscription_id", subscriptionId)
@@ -855,29 +893,208 @@ async function consumeCheckoutCoupon(client: AdminClient, subscriptionId: string
     .limit(1)
     .maybeSingle();
 
-  if (!log?.notes) return;
+  if (error) {
+    failClosed(error, COUPON_CONSUME_FAILED);
+  }
+  if (!data?.notes) return null;
 
-  let note: CheckoutNote;
   try {
-    note = JSON.parse(log.notes) as CheckoutNote;
+    const note = JSON.parse(data.notes) as CheckoutNote;
+    const code = note.couponCode?.trim();
+    return code ? code : null;
   } catch {
-    return;
+    throw COUPON_CONSUME_FAILED;
+  }
+}
+
+/**
+ * Prefer payments.coupon_id. Fall back to checkout_started log only when
+ * coupon_id is null (legacy rows). Never trusts a client-supplied coupon id.
+ */
+async function resolveActivationCoupon(
+  client: AdminClient,
+  payment: { coupon_id: string | null },
+  subscriptionId: string,
+): Promise<ActivationCoupon | null> {
+  if (payment.coupon_id) {
+    return loadCouponById(client, payment.coupon_id);
   }
 
-  if (!note.couponCode) return;
+  const code = await loadCouponCodeFromCheckoutLog(client, subscriptionId);
+  if (!code) return null;
 
-  const { data: coupon } = await client
+  const { data, error } = await client
     .from("coupons")
-    .select("id, used_count")
-    .eq("code", note.couponCode)
+    .select("id, used_count, max_usage")
+    .eq("code", code.trim().toUpperCase())
     .maybeSingle();
 
-  if (!coupon) return;
+  if (error) {
+    failClosed(error, COUPON_CONSUME_FAILED);
+  }
+  if (!data) {
+    throw COUPON_CONSUME_FAILED;
+  }
 
-  await client
+  return {
+    id: data.id,
+    used_count: data.used_count ?? 0,
+    max_usage: data.max_usage ?? 0,
+  };
+}
+
+function couponHasCapacity(coupon: ActivationCoupon): boolean {
+  return coupon.max_usage === 0 || coupon.used_count < coupon.max_usage;
+}
+
+async function incrementCouponUsageCas(
+  client: AdminClient,
+  coupon: ActivationCoupon,
+): Promise<boolean> {
+  const expected = coupon.used_count;
+  const nextCount = expected + 1;
+  const base = client
     .from("coupons")
-    .update({ used_count: (coupon.used_count ?? 0) + 1 })
-    .eq("id", coupon.id);
+    .update({ used_count: nextCount })
+    .eq("id", coupon.id)
+    .eq("used_count", expected);
+
+  const { data, error } =
+    coupon.max_usage > 0
+      ? await base.lt("used_count", coupon.max_usage).select("id, used_count").maybeSingle()
+      : await base.select("id, used_count").maybeSingle();
+
+  if (error) {
+    failClosed(error, COUPON_CONSUME_FAILED);
+  }
+  return Boolean(data?.id);
+}
+
+async function insertCouponRedemption(
+  client: AdminClient,
+  input: { couponId: string; userId: string; paymentId: string },
+): Promise<"inserted" | "existing"> {
+  const { data, error } = await client
+    .from("coupon_redemptions")
+    .insert({
+      coupon_id: input.couponId,
+      user_id: input.userId,
+      payment_id: input.paymentId,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    if (isUniqueViolation(error)) {
+      return "existing";
+    }
+    failClosed(error, COUPON_CONSUME_FAILED);
+  }
+
+  if (!data?.id) {
+    throw COUPON_CONSUME_FAILED;
+  }
+
+  return "inserted";
+}
+
+async function deleteCouponRedemption(
+  client: AdminClient,
+  input: { couponId: string; paymentId: string },
+): Promise<void> {
+  const { error } = await client
+    .from("coupon_redemptions")
+    .delete()
+    .eq("coupon_id", input.couponId)
+    .eq("payment_id", input.paymentId);
+
+  if (error) {
+    console.error("[billing] coupon redemption rollback delete failed", error);
+  }
+}
+
+async function decrementCouponUsageCas(
+  client: AdminClient,
+  slot: Extract<CouponRedemptionSlot, { kind: "acquired" }>,
+): Promise<void> {
+  const { data, error } = await client
+    .from("coupons")
+    .update({ used_count: slot.previousCount })
+    .eq("id", slot.couponId)
+    .eq("used_count", slot.nextCount)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[billing] coupon usage rollback failed", error);
+    return;
+  }
+  if (!data?.id) {
+    console.error("[billing] coupon usage rollback CAS missed");
+  }
+}
+
+/**
+ * Obtain a finite coupon slot before payment verification.
+ * Same payment is idempotent via coupon_redemptions unique (coupon_id, payment_id).
+ * max_usage = 0 never blocks. Does not implement max_redemptions_per_user.
+ */
+async function obtainCouponRedemptionSlot(
+  client: AdminClient,
+  input: {
+    payment: { id: string; user_id: string; coupon_id: string | null };
+    subscriptionId: string;
+  },
+): Promise<CouponRedemptionSlot> {
+  const coupon = await resolveActivationCoupon(client, input.payment, input.subscriptionId);
+  if (!coupon) {
+    return { kind: "none" };
+  }
+
+  const insertResult = await insertCouponRedemption(client, {
+    couponId: coupon.id,
+    userId: input.payment.user_id,
+    paymentId: input.payment.id,
+  });
+
+  if (insertResult === "existing") {
+    return { kind: "existing" };
+  }
+
+  try {
+    if (!couponHasCapacity(coupon)) {
+      throw COUPON_EXHAUSTED;
+    }
+
+    const incremented = await incrementCouponUsageCas(client, coupon);
+    if (!incremented) {
+      throw COUPON_EXHAUSTED;
+    }
+
+    return {
+      kind: "acquired",
+      couponId: coupon.id,
+      previousCount: coupon.used_count,
+      nextCount: coupon.used_count + 1,
+    };
+  } catch (error) {
+    await deleteCouponRedemption(client, {
+      couponId: coupon.id,
+      paymentId: input.payment.id,
+    });
+    throw error;
+  }
+}
+
+async function rollbackCouponRedemptionSlot(
+  client: AdminClient,
+  slot: CouponRedemptionSlot,
+  paymentId: string,
+): Promise<void> {
+  if (slot.kind !== "acquired") return;
+
+  await deleteCouponRedemption(client, { couponId: slot.couponId, paymentId });
+  await decrementCouponUsageCas(client, slot);
 }
 
 export async function activateSubscriptionOp(
@@ -924,23 +1141,36 @@ export async function activateSubscriptionOp(
     user_id: string;
     subscription_id: string | null;
     status: string;
+    coupon_id: string | null;
   } | null = null;
 
   if (subscription.created_from_payment_id) {
-    const { data } = await client
+    const { data, error: paymentLoadError } = await client
       .from("payments")
-      .select("id, user_id, subscription_id, status")
+      .select("id, user_id, subscription_id, status, coupon_id")
       .eq("id", subscription.created_from_payment_id)
       .maybeSingle();
+    if (paymentLoadError) {
+      failClosed(
+        paymentLoadError,
+        new BillingError("INVALID_PAYMENT", "لا يمكن تفعيل اشتراك بلا عملية دفع مرتبطة."),
+      );
+    }
     payment = data;
   }
 
   if (!payment) {
-    const { data } = await client
+    const { data, error: paymentLoadError } = await client
       .from("payments")
-      .select("id, user_id, subscription_id, status")
+      .select("id, user_id, subscription_id, status, coupon_id")
       .eq("subscription_id", subscription.id)
       .maybeSingle();
+    if (paymentLoadError) {
+      failClosed(
+        paymentLoadError,
+        new BillingError("INVALID_PAYMENT", "لا يمكن تفعيل اشتراك بلا عملية دفع مرتبطة."),
+      );
+    }
     payment = data;
   }
 
@@ -951,6 +1181,11 @@ export async function activateSubscriptionOp(
   if (payment.status !== "submitted") {
     throw new BillingError("INVALID_PAYMENT", "لا يمكن تفعيل هذه الدفعة.");
   }
+
+  const couponSlot = await obtainCouponRedemptionSlot(client, {
+    payment,
+    subscriptionId: subscription.id,
+  });
 
   const now = input.today ? `${today}T00:00:00.000Z` : new Date().toISOString();
   const subscriptionPatch: {
@@ -987,6 +1222,7 @@ export async function activateSubscriptionOp(
     .maybeSingle();
 
   if (paymentError || !verifiedPayment) {
+    await rollbackCouponRedemptionSlot(client, couponSlot, payment.id);
     failClosed(
       paymentError ?? new Error("activation payment CAS missed"),
       new BillingError("INVALID_PAYMENT", "لا يمكن تفعيل هذه الدفعة."),
@@ -1000,10 +1236,25 @@ export async function activateSubscriptionOp(
     .eq("user_id", subscription.user_id);
 
   if (activateError) {
+    const { error: revertError } = await client
+      .from("payments")
+      .update({
+        status: "submitted",
+        verified_at: null,
+        verified_by: null,
+        paid_at: null,
+      })
+      .eq("id", payment.id)
+      .eq("user_id", subscription.user_id)
+      .eq("status", "verified");
+
+    if (revertError) {
+      console.error("[billing] activation payment revert failed", revertError);
+    }
+
+    await rollbackCouponRedemptionSlot(client, couponSlot, payment.id);
     failClosed(activateError, new BillingError("INVALID_PERIOD", "تعذر تحديث حالة الاشتراك."));
   }
-
-  await consumeCheckoutCoupon(client, subscription.id);
 
   await client.from("subscription_logs").insert({
     subscription_id: subscription.id,
