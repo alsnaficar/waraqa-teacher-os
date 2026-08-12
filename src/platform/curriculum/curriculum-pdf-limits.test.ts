@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { describe, it } from "node:test";
+import { beforeEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -10,6 +10,18 @@ import {
   assertCurriculumPdfMagicBytes,
   isCurriculumGeminiTimeoutError,
 } from "./curriculum-management.functions.ts";
+import {
+  acquireCurriculumPdfExtraction,
+  CURRICULUM_PDF_ADMIN_BUSY_MESSAGE,
+  CURRICULUM_PDF_COOLDOWN_MESSAGE,
+  CURRICULUM_PDF_GLOBAL_BUSY_MESSAGE,
+  getCurriculumPdfGuardSnapshotForTests,
+  MAX_CONCURRENT_PDF_EXTRACTIONS_PER_ADMIN,
+  MAX_GLOBAL_CONCURRENT_PDF_EXTRACTIONS,
+  PDF_EXTRACTION_COOLDOWN_MS,
+  resetCurriculumPdfExtractionGuardForTests,
+  setCurriculumPdfGuardNowForTests,
+} from "./curriculum-pdf-guard.ts";
 import {
   CURRICULUM_PDF_INVALID_MESSAGE,
   CURRICULUM_PDF_MIN_BYTES,
@@ -25,8 +37,12 @@ const LIMITS_FILE = join(ROOT, "src/platform/curriculum/curriculum-pdf-limits.ts
 const FUNCTIONS_FILE = join(ROOT, "src/platform/curriculum/curriculum-management.functions.ts");
 const PAGE_FILE = join(ROOT, "src/features/curriculum/components/curriculum-management-page.tsx");
 const RECEIPT_FILE = join(ROOT, "src/features/billing/receipt.ts");
+const GUARD_FILE = join(ROOT, "src/platform/curriculum/curriculum-pdf-guard.ts");
 
 const ADMIN = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const ADMIN_B = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const ADMIN_C = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const ADMIN_D = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const TEACHER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function mockRoleClient(role: "admin" | null): { client: never } {
@@ -79,6 +95,28 @@ function mockGeminiCounter(): {
   };
 }
 
+function createDeferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+async function waitFor(predicate: () => boolean, label: string): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    if (predicate()) return;
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  throw new Error(`timed out waiting for: ${label}`);
+}
+
 /** Minimal valid-looking base64 PDF header bytes (not a full PDF). */
 function base64OfExactBytes(byteLength: number): string {
   const bytes = Buffer.alloc(byteLength, 0x41);
@@ -90,6 +128,12 @@ function base64OfExactBytes(byteLength: number): string {
 function base64OfRaw(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
+
+const okExtraction = {
+  grade: "الصف الخامس",
+  subject: "رياضيات",
+  lessons: [{ lessonTitle: "خصائص الضرب" }],
+};
 
 describe("curriculum PDF size constants", () => {
   it("derives Base64 ceiling from MAX_CURRICULUM_PDF_BYTES via 4 * ceil(N/3)", () => {
@@ -175,6 +219,10 @@ describe("assertCurriculumPdfBase64WithinLimit", () => {
 });
 
 describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
+  beforeEach(() => {
+    resetCurriculumPdfExtractionGuardForTests();
+  });
+
   it("D. oversized input does not call Gemini", async () => {
     const { client } = mockRoleClient("admin");
     const { ai, calls } = mockGeminiCounter();
@@ -230,16 +278,12 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
       (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
     );
     assert.equal(calls(), 0);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
   });
 
   it("F. admin + valid size preserves extraction via mocked Gemini", async () => {
     const { client } = mockRoleClient("admin");
     let geminiCalls = 0;
-    const extracted = {
-      grade: "الصف الخامس",
-      subject: "رياضيات",
-      lessons: [{ lessonTitle: "خصائص الضرب" }],
-    };
     const ai = {
       models: {
         async generateContent(input: { contents: unknown; config?: unknown }) {
@@ -255,7 +299,7 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
           };
           assert.equal(config.httpOptions?.timeout, GEMINI_EXTRACTION_TIMEOUT_MS);
           assert.equal(config.httpOptions?.retryOptions, undefined);
-          return { text: JSON.stringify(extracted) };
+          return { text: JSON.stringify(okExtraction) };
         },
       },
     };
@@ -267,7 +311,8 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
       { ai },
     );
     assert.equal(geminiCalls, 1);
-    assert.deepEqual(result, extracted);
+    assert.deepEqual(result, okExtraction);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
   });
 
   it("B. ordinary Gemini error preserves existing failure wrapping", async () => {
@@ -292,6 +337,7 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
         err.message === "Failed to extract curriculum details: provider boom: quota xyz",
     );
     assert.equal(geminiCalls, 1);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
   });
 
   it("C. Gemini AbortError maps to stable timeout message (no raw details)", async () => {
@@ -321,6 +367,7 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
       },
     );
     assert.equal(geminiCalls, 1);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
   });
 
   it("D/E. hanging mock still receives timeout config; abort path call count = 1", async () => {
@@ -351,6 +398,230 @@ describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
     );
     assert.equal(seenTimeout, GEMINI_EXTRACTION_TIMEOUT_MS);
     assert.equal(geminiCalls, 1);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+  });
+});
+
+describe("curriculum PDF extraction concurrency + cooldown guard", () => {
+  beforeEach(() => {
+    resetCurriculumPdfExtractionGuardForTests();
+  });
+
+  it("A. first admin request acquires successfully", () => {
+    assert.equal(MAX_CONCURRENT_PDF_EXTRACTIONS_PER_ADMIN, 1);
+    assert.equal(MAX_GLOBAL_CONCURRENT_PDF_EXTRACTIONS, 3);
+    assert.equal(PDF_EXTRACTION_COOLDOWN_MS, 30_000);
+    const acquired = acquireCurriculumPdfExtraction(ADMIN);
+    assert.equal(acquired.ok, true);
+    if (!acquired.ok) return;
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 1);
+    acquired.release();
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+  });
+
+  it("B/L. same-admin concurrent second request is admin_busy; Gemini=0; no extra global slot", async () => {
+    const { client } = mockRoleClient("admin");
+    const hold = createDeferred<void>();
+    let firstCalls = 0;
+    let secondCalls = 0;
+
+    const firstAi = {
+      models: {
+        async generateContent() {
+          firstCalls += 1;
+          await hold.promise;
+          return { text: JSON.stringify(okExtraction) };
+        },
+      },
+    };
+    const secondAi = {
+      models: {
+        async generateContent() {
+          secondCalls += 1;
+          return { text: JSON.stringify(okExtraction) };
+        },
+      },
+    };
+
+    const first = extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), {
+      ai: firstAi,
+    });
+    await waitFor(() => firstCalls === 1, "first Gemini call");
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 1);
+
+    await assert.rejects(
+      () =>
+        extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), {
+          ai: secondAi,
+        }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_ADMIN_BUSY_MESSAGE,
+    );
+    assert.equal(secondCalls, 0);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 1);
+
+    hold.resolve();
+    await first;
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+  });
+
+  it("C/D/E/M. three admins fill global cap; fourth is global_busy; isolation works", async () => {
+    const { client } = mockRoleClient("admin");
+    const hold = createDeferred<void>();
+    const callsByAdmin = new Map<string, number>();
+
+    function holdingAi(adminId: string) {
+      return {
+        models: {
+          async generateContent() {
+            callsByAdmin.set(adminId, (callsByAdmin.get(adminId) ?? 0) + 1);
+            await hold.promise;
+            return { text: JSON.stringify(okExtraction) };
+          },
+        },
+      };
+    }
+
+    const rejectedAi = mockGeminiCounter();
+
+    const p1 = extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(32), {
+      ai: holdingAi(ADMIN),
+    });
+    const p2 = extractCurriculumFromPdfAuthorized(client, ADMIN_B, base64OfExactBytes(32), {
+      ai: holdingAi(ADMIN_B),
+    });
+    const p3 = extractCurriculumFromPdfAuthorized(client, ADMIN_C, base64OfExactBytes(32), {
+      ai: holdingAi(ADMIN_C),
+    });
+
+    await waitFor(
+      () => getCurriculumPdfGuardSnapshotForTests().globalInFlight === 3,
+      "global in-flight = 3",
+    );
+
+    // Admin A busy does not block admin B when capacity remains — already proven by p2.
+    assert.equal(callsByAdmin.get(ADMIN_B), 1);
+
+    await assert.rejects(
+      () =>
+        extractCurriculumFromPdfAuthorized(client, ADMIN_D, base64OfExactBytes(32), {
+          ai: rejectedAi.ai,
+        }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_GLOBAL_BUSY_MESSAGE,
+    );
+    assert.equal(rejectedAi.calls(), 0);
+    // Rejected global_busy must not leave ADMIN_D in-flight.
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().adminInFlight.includes(ADMIN_D), false);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 3);
+
+    hold.resolve();
+    await Promise.all([p1, p2, p3]);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+  });
+
+  it("F. release after success allows later acquire after cooldown", async () => {
+    const { client } = mockRoleClient("admin");
+    let now = 1_000_000;
+    setCurriculumPdfGuardNowForTests(() => now);
+    const { ai, calls } = mockGeminiCounter();
+
+    await extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai });
+    assert.equal(calls(), 1);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+
+    now += PDF_EXTRACTION_COOLDOWN_MS;
+    await extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai });
+    assert.equal(calls(), 2);
+  });
+
+  it("G. release after ordinary Gemini error", async () => {
+    const { client } = mockRoleClient("admin");
+    const ai = {
+      models: {
+        async generateContent() {
+          throw new Error("ordinary failure");
+        },
+      },
+    };
+    await assert.rejects(() =>
+      extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai }),
+    );
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().adminInFlight.includes(ADMIN), false);
+  });
+
+  it("H. release after timeout", async () => {
+    const { client } = mockRoleClient("admin");
+    const ai = {
+      models: {
+        async generateContent() {
+          throw new DOMException("This operation was aborted", "AbortError");
+        },
+      },
+    };
+    await assert.rejects(
+      () => extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_TIMEOUT_MESSAGE,
+    );
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+  });
+
+  it("I. release after unexpected exception", async () => {
+    const { client } = mockRoleClient("admin");
+    const ai = {
+      models: {
+        async generateContent() {
+          throw "string-boom";
+        },
+      },
+    };
+    await assert.rejects(() =>
+      extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai }),
+    );
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
+  });
+
+  it("J. cooldown rejects immediate retry after release; rejected does not change lastStartAt", async () => {
+    const { client } = mockRoleClient("admin");
+    const now = 5_000_000;
+    setCurriculumPdfGuardNowForTests(() => now);
+    const { ai, calls } = mockGeminiCounter();
+
+    await extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai });
+    const lastAfterAccept = getCurriculumPdfGuardSnapshotForTests().lastStartAt[ADMIN];
+    assert.equal(lastAfterAccept, 5_000_000);
+
+    await assert.rejects(
+      () => extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_COOLDOWN_MESSAGE,
+    );
+    assert.equal(calls(), 1);
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().lastStartAt[ADMIN], lastAfterAccept);
+  });
+
+  it("K. cooldown expiry allows acquire again", async () => {
+    const { client } = mockRoleClient("admin");
+    let now = 9_000_000;
+    setCurriculumPdfGuardNowForTests(() => now);
+    const { ai, calls } = mockGeminiCounter();
+
+    await extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai });
+    now += PDF_EXTRACTION_COOLDOWN_MS - 1;
+    await assert.rejects(
+      () => extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_COOLDOWN_MESSAGE,
+    );
+    now += 1;
+    await extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfExactBytes(64), { ai });
+    assert.equal(calls(), 2);
+  });
+
+  it("R. release is idempotent (exactly-once decrement)", () => {
+    const acquired = acquireCurriculumPdfExtraction(ADMIN);
+    assert.ok(acquired.ok);
+    if (!acquired.ok) return;
+    acquired.release();
+    acquired.release();
+    assert.equal(getCurriculumPdfGuardSnapshotForTests().globalInFlight, 0);
   });
 });
 
@@ -374,6 +645,7 @@ describe("curriculum PDF size source contracts", () => {
     assert.match(src, /MAX_CURRICULUM_PDF_BASE64_CHARS/);
     assert.match(src, /GEMINI_EXTRACTION_TIMEOUT_MS/);
     assert.match(src, /httpOptions:\s*\{\s*timeout:\s*GEMINI_EXTRACTION_TIMEOUT_MS/);
+    assert.match(src, /acquireCurriculumPdfExtraction/);
     assert.doesNotMatch(src, /retryOptions/);
     assert.match(src, /await assertAdmin/);
 
@@ -383,12 +655,17 @@ describe("curriculum PDF size source contracts", () => {
     );
     const adminIdx = authorized.indexOf("await assertAdmin");
     const sizeIdx = authorized.indexOf("assertCurriculumPdfBase64WithinLimit");
+    const guardIdx = authorized.indexOf("acquireCurriculumPdfExtraction");
     const geminiIdx = authorized.indexOf("getGemini");
     const generateIdx = authorized.indexOf("generateContent");
     const timeoutIdx = authorized.indexOf("GEMINI_EXTRACTION_TIMEOUT_MS");
+    const finallyIdx = authorized.indexOf("finally");
     assert.ok(adminIdx >= 0 && sizeIdx > adminIdx);
+    assert.ok(guardIdx > sizeIdx);
+    assert.ok(guardIdx < generateIdx);
     assert.ok(sizeIdx < generateIdx);
     assert.ok(timeoutIdx > generateIdx || timeoutIdx > sizeIdx);
+    assert.ok(finallyIdx > generateIdx);
     assert.ok(geminiIdx < 0 || sizeIdx < geminiIdx || generateIdx > sizeIdx);
 
     const assertFn = src.slice(
@@ -398,6 +675,11 @@ describe("curriculum PDF size source contracts", () => {
     const decodeSizeIdx = assertFn.indexOf("bytes.byteLength > MAX_CURRICULUM_PDF_BYTES");
     const magicIdx = assertFn.indexOf("assertCurriculumPdfMagicBytes");
     assert.ok(decodeSizeIdx >= 0 && magicIdx > decodeSizeIdx);
+
+    const guardSrc = readFileSync(GUARD_FILE, "utf8");
+    assert.match(guardSrc, /MAX_CONCURRENT_PDF_EXTRACTIONS_PER_ADMIN = 1/);
+    assert.match(guardSrc, /MAX_GLOBAL_CONCURRENT_PDF_EXTRACTIONS = 3/);
+    assert.match(guardSrc, /PDF_EXTRACTION_COOLDOWN_MS = 30_000/);
   });
 
   it("magic bytes match billing receipt PDF sniff convention", () => {

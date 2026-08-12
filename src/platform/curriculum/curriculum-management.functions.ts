@@ -12,6 +12,13 @@ import {
   adminSaveCurriculumDraft,
 } from "./curriculum-admin.ops.ts";
 import {
+  acquireCurriculumPdfExtraction,
+  CURRICULUM_PDF_ADMIN_BUSY_MESSAGE,
+  CURRICULUM_PDF_COOLDOWN_MESSAGE,
+  CURRICULUM_PDF_GLOBAL_BUSY_MESSAGE,
+  curriculumPdfGuardReasonMessage,
+} from "./curriculum-pdf-guard.ts";
+import {
   assertCurriculumPdfMagicBytes,
   CURRICULUM_PDF_INVALID_MESSAGE,
   CURRICULUM_PDF_TIMEOUT_MESSAGE,
@@ -23,6 +30,18 @@ import {
 } from "./curriculum-pdf-limits.ts";
 
 export { deserializeLessonNotes, serializeLessonNotes } from "./curriculum-lesson-notes.ts";
+export {
+  acquireCurriculumPdfExtraction,
+  curriculumPdfGuardReasonMessage,
+  CURRICULUM_PDF_ADMIN_BUSY_MESSAGE,
+  CURRICULUM_PDF_COOLDOWN_MESSAGE,
+  CURRICULUM_PDF_GLOBAL_BUSY_MESSAGE,
+  MAX_CONCURRENT_PDF_EXTRACTIONS_PER_ADMIN,
+  MAX_GLOBAL_CONCURRENT_PDF_EXTRACTIONS,
+  PDF_EXTRACTION_COOLDOWN_MS,
+  resetCurriculumPdfExtractionGuardForTests,
+  setCurriculumPdfGuardNowForTests,
+} from "./curriculum-pdf-guard.ts";
 export {
   assertCurriculumPdfMagicBytes,
   CURRICULUM_PDF_INVALID_MESSAGE,
@@ -161,6 +180,7 @@ You MUST return valid JSON matching this schema structure. Do not wrap in markdo
 /**
  * Admin-authorized PDF → Gemini extraction.
  * Size + magic-byte validation runs after assertAdmin and before any Gemini call.
+ * Process-local concurrency/cooldown guard runs after validation and before Gemini.
  * Gemini generateContent is bounded by GEMINI_EXTRACTION_TIMEOUT_MS.
  */
 export async function extractCurriculumFromPdfAuthorized(
@@ -171,6 +191,11 @@ export async function extractCurriculumFromPdfAuthorized(
 ): Promise<CurriculumPdfExtractionResult> {
   await assertAdmin(client, actorId);
   assertCurriculumPdfBase64WithinLimit(pdfBase64);
+
+  const guard = acquireCurriculumPdfExtraction(actorId);
+  if (!guard.ok) {
+    throw new Error(curriculumPdfGuardReasonMessage(guard.reason));
+  }
 
   try {
     const ai = deps.ai ?? getGemini();
@@ -231,6 +256,9 @@ export async function extractCurriculumFromPdfAuthorized(
       (err.message === CURRICULUM_PDF_TOO_LARGE_MESSAGE ||
         err.message === CURRICULUM_PDF_INVALID_MESSAGE ||
         err.message === CURRICULUM_PDF_TIMEOUT_MESSAGE ||
+        err.message === CURRICULUM_PDF_ADMIN_BUSY_MESSAGE ||
+        err.message === CURRICULUM_PDF_GLOBAL_BUSY_MESSAGE ||
+        err.message === CURRICULUM_PDF_COOLDOWN_MESSAGE ||
         err.message.includes("حجم ملف PDF") ||
         err.message.includes("ملف PDF غير صالح"))
     ) {
@@ -242,6 +270,8 @@ export async function extractCurriculumFromPdfAuthorized(
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[curriculum-management] PDF extraction failed:", err);
     throw new Error(`Failed to extract curriculum details: ${errMsg}`);
+  } finally {
+    guard.release();
   }
 }
 
