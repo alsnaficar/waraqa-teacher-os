@@ -241,27 +241,28 @@ function SettingsPage() {
     <PageShell>
       <SectionHeader title="الإعدادات" description="حدّث بيانات ملفك الشخصي والإسناد الدراسي." />
       <div className="space-y-6">
-        {/* Madrasati Integration Card */}
-        <Card className="shadow-sm border-slate-100 bg-green-50/50">
+        {/* Madrasati Integration Card — status only; no credential collection */}
+        <Card className="shadow-sm border-amber-100 bg-amber-50/40">
           <CardContent className="p-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-bold text-green-900 flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  الربط الذكي مع منصة مدرستي
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4 shrink-0" />
+                  مزامنة منصة مدرستي
                 </h3>
-                <p className="text-xs text-green-700 mt-1">
-                  يمكنك مزامنة حسابك مع منصة مدرستي لاستيراد جدول الحصص الأسبوعي والمنهج الدراسي
-                  الرسمي تلقائياً.
+                <p className="text-xs text-amber-900/80 mt-1 leading-relaxed">
+                  مزامنة مدرستي ستتم عبر المتصفح عند توفر المنصة. يمكنك تشغيل{" "}
+                  <span className="font-bold">معاينة تجريبية</span> ببيانات اختبار فقط — وليست
+                  مزامنة فعلية مع منصة مدرستي.
                 </p>
               </div>
               <Button
                 type="button"
+                variant="outline"
                 onClick={() => setMadrasatiModalOpen(true)}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold text-xs gap-2 shrink-0"
+                className="h-11 font-bold text-xs gap-2 shrink-0 border-amber-200 bg-white"
               >
-                <RefreshCw className="h-4 w-4" />
-                ربط ومزامنة جدول مدرستي
+                عرض الحالة
               </Button>
             </div>
           </CardContent>
@@ -529,7 +530,8 @@ function SettingsPage() {
                         لا يوجد جدول حصص مسجل حالياً.
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        يمكنك مزامنة جدولك من منصة مدرستي لإضافته تلقائياً.
+                        أضف الجدول يدوياً من الإسناد الدراسي، أو انتظر مزامنة مدرستي عبر المتصفح عند
+                        توفر المنصة.
                       </p>
                     </div>
                   ) : (
@@ -605,13 +607,7 @@ function SettingsPage() {
         </Card>
       </div>
 
-      <MadrasatiAuthModal
-        open={madrasatiModalOpen}
-        onOpenChange={setMadrasatiModalOpen}
-        onSyncSuccess={async () => {
-          window.location.reload();
-        }}
-      />
+      <MadrasatiAuthModal open={madrasatiModalOpen} onOpenChange={setMadrasatiModalOpen} />
     </PageShell>
   );
 }

@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/shared/ui/card";
 interface DashboardHeaderProps {
   teacherName: string;
   hijriDate: string;
+  /** True only when a real Madrasati browser sync connection exists. */
   connected: boolean;
   subscriptionDisplay: SubscriptionDisplayInput;
 }
@@ -28,20 +29,20 @@ export function DashboardHeader({
             <User className="h-5 w-5" />
           </div>
 
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <p className="text-xs text-primary">أهلاً بك</p>
 
             <h1 className="text-2xl font-bold">{teacherName}</h1>
 
             <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <CalendarDays className="h-4 w-4" />
+              <CalendarDays className="h-4 w-4 shrink-0" />
               {hijriDate}
             </p>
 
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge variant={connected ? "default" : "outline"}>
                 <School className="mr-1 h-4 w-4" />
-                {connected ? "مدرستي مرتبطة" : "مدرستي غير مرتبطة"}
+                {connected ? "مدرستي مرتبطة" : "مزامنة مدرستي غير متاحة حالياً"}
               </Badge>
 
               <Link
@@ -53,12 +54,8 @@ export function DashboardHeader({
               </Link>
 
               {!connected && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.open("/connect-school", "_blank")}
-                >
-                  ربط المدرسة
+                <Button asChild size="sm" variant="outline" className="min-h-[44px]">
+                  <Link to="/connect-school">تفاصيل مزامنة مدرستي</Link>
                 </Button>
               )}
             </div>

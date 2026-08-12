@@ -1,29 +1,45 @@
-import { supabase } from "@/platform/database/supabase/client";
-
 /**
- * Connection state for the Madrasati integration.
+ * Madrasati connection status helpers.
  *
- * Madrasati does not expose a public OAuth client yet, so "connected" currently
- * means the teacher has an authenticated Waraqa session that the connector can
- * import into. Kept as a leaf module so callers, not this service, decide what
- * to synchronise once a connection is established.
+ * Live Madrasati browser sync is not available yet. This module must never treat
+ * a Waraqa Supabase session as a Madrasati connection, and must never sign the
+ * teacher out of Waraqa when "disconnecting" Madrasati.
  */
-export class MadrasatiOAuthService {
-  static async isAuthenticated(): Promise<boolean> {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
 
-    return Boolean(session);
+import { MADRASATI_BROWSER_SYNC_NOT_READY_MESSAGE } from "../../../platform/integration/connectors/madrasati/madrasati-status.ts";
+
+export const MADRASATI_CONNECTION_UNAVAILABLE_MESSAGE = MADRASATI_BROWSER_SYNC_NOT_READY_MESSAGE;
+
+export class MadrasatiOAuthService {
+  /**
+   * True only when a real Madrasati browser session exists.
+   * Always false until MadrasatiBrowserAdapter is implemented and online.
+   */
+  static async isConnected(): Promise<boolean> {
+    return false;
+  }
+
+  /**
+   * @deprecated Use {@link isConnected}. Kept so older callers do not treat
+   * Waraqa login as Madrasati authentication.
+   */
+  static async isAuthenticated(): Promise<boolean> {
+    return this.isConnected();
   }
 
   static async connect(): Promise<void> {
-    if (!(await this.isAuthenticated())) {
-      throw new Error("يجب تسجيل الدخول قبل ربط حساب مدرستي.");
-    }
+    throw new Error(MADRASATI_CONNECTION_UNAVAILABLE_MESSAGE);
   }
 
+  /**
+   * Clears a future Madrasati browser session only.
+   * Intentionally does not sign the teacher out of Waraqa.
+   */
   static async disconnect(): Promise<void> {
-    await supabase.auth.signOut();
+    // No Madrasati session to clear yet.
+  }
+
+  static getStatusMessage(): string {
+    return MADRASATI_CONNECTION_UNAVAILABLE_MESSAGE;
   }
 }

@@ -12,17 +12,15 @@ import type { MadrasatiTeacherProfile, MadrasatiTimetableLesson } from "../types
 type TimetableDraft = Omit<TeacherTimetableEntry, "id" | "teacherId" | "createdAt" | "updatedAt">;
 
 /**
- * Bridges the Madrasati import into Waraqa's own tables.
+ * Bridges a future Madrasati import into Waraqa's own tables.
  *
- * The connector at `platform/integration/connectors/madrasati` writes the
- * imported schedule onto `profiles.classes`. This service promotes that payload
- * into `teacher_timetable` and then materialises the lesson sessions, which is
- * the Madrasati -> Teacher Timetable -> Lesson Session flow described in
- * docs/architecture/LESSON_SESSIONS_ENGINE.md.
+ * Live Madrasati connectivity is gated by {@link MadrasatiOAuthService.isConnected}
+ * (always false until browser sync is ready). Local timetable/session helpers
+ * remain available for promoting already-imported Waraqa data only.
  */
 export class MadrasatiService {
   static async isConnected(): Promise<boolean> {
-    return MadrasatiOAuthService.isAuthenticated();
+    return MadrasatiOAuthService.isConnected();
   }
 
   static async getTeacherTimetable(
