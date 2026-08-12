@@ -12,6 +12,7 @@ import {
   adminSaveCurriculumDraft,
 } from "./curriculum-admin.ops.ts";
 import {
+  assertCurriculumPdfMagicBytes,
   CURRICULUM_PDF_INVALID_MESSAGE,
   CURRICULUM_PDF_TOO_LARGE_MESSAGE,
   MAX_CURRICULUM_PDF_BASE64_CHARS,
@@ -20,6 +21,8 @@ import {
 
 export { deserializeLessonNotes, serializeLessonNotes } from "./curriculum-lesson-notes.ts";
 export {
+  assertCurriculumPdfMagicBytes,
+  CURRICULUM_PDF_INVALID_MESSAGE,
   CURRICULUM_PDF_TOO_LARGE_MESSAGE,
   MAX_CURRICULUM_PDF_BASE64_CHARS,
   MAX_CURRICULUM_PDF_BYTES,
@@ -62,7 +65,8 @@ export type CurriculumPdfExtractionResult = {
 };
 
 /**
- * Reject oversized or empty Base64 PDF payloads before any Gemini call.
+ * Reject oversized, empty, or non-PDF Base64 payloads before any Gemini call.
+ * Order: Base64 length → decode → decoded size → PDF magic bytes.
  * Throws an Error with a stable Arabic message (no internals).
  */
 export function assertCurriculumPdfBase64WithinLimit(pdfBase64: string): void {
@@ -85,6 +89,8 @@ export function assertCurriculumPdfBase64WithinLimit(pdfBase64: string): void {
   if (bytes.byteLength > MAX_CURRICULUM_PDF_BYTES) {
     throw new Error(CURRICULUM_PDF_TOO_LARGE_MESSAGE);
   }
+
+  assertCurriculumPdfMagicBytes(bytes);
 }
 
 // Schema for curriculum save inputs
@@ -148,7 +154,7 @@ You MUST return valid JSON matching this schema structure. Do not wrap in markdo
 
 /**
  * Admin-authorized PDF → Gemini extraction.
- * Size validation runs after assertAdmin and before any Gemini call.
+ * Size + magic-byte validation runs after assertAdmin and before any Gemini call.
  */
 export async function extractCurriculumFromPdfAuthorized(
   client: AdminClient,

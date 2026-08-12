@@ -7,8 +7,11 @@ import { fileURLToPath } from "node:url";
 import {
   extractCurriculumFromPdfAuthorized,
   assertCurriculumPdfBase64WithinLimit,
+  assertCurriculumPdfMagicBytes,
 } from "./curriculum-management.functions.ts";
 import {
+  CURRICULUM_PDF_INVALID_MESSAGE,
+  CURRICULUM_PDF_MIN_BYTES,
   CURRICULUM_PDF_TOO_LARGE_MESSAGE,
   MAX_CURRICULUM_PDF_BASE64_CHARS,
   MAX_CURRICULUM_PDF_BYTES,
@@ -18,6 +21,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const LIMITS_FILE = join(ROOT, "src/platform/curriculum/curriculum-pdf-limits.ts");
 const FUNCTIONS_FILE = join(ROOT, "src/platform/curriculum/curriculum-management.functions.ts");
 const PAGE_FILE = join(ROOT, "src/features/curriculum/components/curriculum-management-page.tsx");
+const RECEIPT_FILE = join(ROOT, "src/features/billing/receipt.ts");
 
 const ADMIN = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const TEACHER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -54,18 +58,78 @@ function mockRoleClient(role: "admin" | null): { client: never } {
   };
 }
 
+function mockGeminiCounter(): {
+  ai: { models: { generateContent: () => Promise<{ text: string }> } };
+  calls: () => number;
+} {
+  let geminiCalls = 0;
+  return {
+    calls: () => geminiCalls,
+    ai: {
+      models: {
+        async generateContent() {
+          geminiCalls += 1;
+          return { text: "{}" };
+        },
+      },
+    },
+  };
+}
+
 /** Minimal valid-looking base64 PDF header bytes (not a full PDF). */
 function base64OfExactBytes(byteLength: number): string {
   const bytes = Buffer.alloc(byteLength, 0x41);
-  // PDF-ish magic at start so payload is non-empty meaningful binary.
+  // PDF magic at start — matches billing sniff convention (%PDF).
   Buffer.from("%PDF-1.4").copy(bytes, 0);
   return bytes.toString("base64");
+}
+
+function base64OfRaw(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64");
 }
 
 describe("curriculum PDF size constants", () => {
   it("derives Base64 ceiling from MAX_CURRICULUM_PDF_BYTES via 4 * ceil(N/3)", () => {
     assert.equal(MAX_CURRICULUM_PDF_BYTES, 10 * 1024 * 1024);
     assert.equal(MAX_CURRICULUM_PDF_BASE64_CHARS, 4 * Math.ceil(MAX_CURRICULUM_PDF_BYTES / 3));
+  });
+});
+
+describe("assertCurriculumPdfMagicBytes", () => {
+  it("1. accepts a valid PDF header", () => {
+    assert.doesNotThrow(() => assertCurriculumPdfMagicBytes(Buffer.from("%PDF-1.4 sample")));
+  });
+
+  it("2. rejects PNG bytes", () => {
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    assert.throws(
+      () => assertCurriculumPdfMagicBytes(png),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+  });
+
+  it("3. rejects plain text bytes", () => {
+    assert.throws(
+      () => assertCurriculumPdfMagicBytes(Buffer.from("hello world")),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+  });
+
+  it("4. rejects ZIP bytes", () => {
+    const zip = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00]);
+    assert.throws(
+      () => assertCurriculumPdfMagicBytes(zip),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+  });
+
+  it("5. rejects a too-short buffer", () => {
+    assert.throws(
+      () => assertCurriculumPdfMagicBytes(Buffer.from("%PDF")),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+    assert.equal(CURRICULUM_PDF_MIN_BYTES, 5);
+    assert.equal(Buffer.from("%PDF").byteLength, 4);
   });
 });
 
@@ -97,20 +161,20 @@ describe("assertCurriculumPdfBase64WithinLimit", () => {
       (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_TOO_LARGE_MESSAGE,
     );
   });
+
+  it("rejects non-PDF Base64 after size checks with stable invalid message", () => {
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+    assert.throws(
+      () => assertCurriculumPdfBase64WithinLimit(base64OfRaw(png)),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+  });
 });
 
-describe("extractCurriculumFromPdfAuthorized size + auth", () => {
+describe("extractCurriculumFromPdfAuthorized size + auth + magic", () => {
   it("D. oversized input does not call Gemini", async () => {
     const { client } = mockRoleClient("admin");
-    let geminiCalls = 0;
-    const ai = {
-      models: {
-        async generateContent() {
-          geminiCalls += 1;
-          return { text: "{}" };
-        },
-      },
-    };
+    const { ai, calls } = mockGeminiCounter();
 
     await assert.rejects(
       () =>
@@ -122,20 +186,12 @@ describe("extractCurriculumFromPdfAuthorized size + auth", () => {
         ),
       (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_TOO_LARGE_MESSAGE,
     );
-    assert.equal(geminiCalls, 0);
+    assert.equal(calls(), 0);
   });
 
   it("E. non-admin is rejected before Gemini", async () => {
     const { client } = mockRoleClient(null);
-    let geminiCalls = 0;
-    const ai = {
-      models: {
-        async generateContent() {
-          geminiCalls += 1;
-          return { text: "{}" };
-        },
-      },
-    };
+    const { ai, calls } = mockGeminiCounter();
 
     await assert.rejects(
       () =>
@@ -144,7 +200,33 @@ describe("extractCurriculumFromPdfAuthorized size + auth", () => {
         }),
       (err: unknown) => err instanceof Error && err.message.includes("Administrators"),
     );
-    assert.equal(geminiCalls, 0);
+    assert.equal(calls(), 0);
+  });
+
+  it("6. non-PDF rejection occurs before Gemini (calls = 0)", async () => {
+    const { client } = mockRoleClient("admin");
+    const { ai, calls } = mockGeminiCounter();
+    const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+
+    await assert.rejects(
+      () => extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfRaw(png), { ai }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+    assert.equal(calls(), 0);
+
+    const textPayload = base64OfRaw(Buffer.from("not a pdf at all!!"));
+    await assert.rejects(
+      () => extractCurriculumFromPdfAuthorized(client, ADMIN, textPayload, { ai }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+    assert.equal(calls(), 0);
+
+    const zip = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00]);
+    await assert.rejects(
+      () => extractCurriculumFromPdfAuthorized(client, ADMIN, base64OfRaw(zip), { ai }),
+      (err: unknown) => err instanceof Error && err.message === CURRICULUM_PDF_INVALID_MESSAGE,
+    );
+    assert.equal(calls(), 0);
   });
 
   it("F. admin + valid size preserves extraction via mocked Gemini", async () => {
@@ -182,9 +264,10 @@ describe("extractCurriculumFromPdfAuthorized size + auth", () => {
 });
 
 describe("curriculum PDF size source contracts", () => {
-  it("server validates size before getGemini and keeps assertAdmin", () => {
+  it("server validates size + magic before getGemini and keeps assertAdmin", () => {
     const src = readFileSync(FUNCTIONS_FILE, "utf8");
     assert.match(src, /assertCurriculumPdfBase64WithinLimit/);
+    assert.match(src, /assertCurriculumPdfMagicBytes/);
     assert.match(src, /MAX_CURRICULUM_PDF_BASE64_CHARS/);
     assert.match(src, /await assertAdmin/);
 
@@ -199,6 +282,24 @@ describe("curriculum PDF size source contracts", () => {
     assert.ok(adminIdx >= 0 && sizeIdx > adminIdx);
     assert.ok(sizeIdx < generateIdx);
     assert.ok(geminiIdx < 0 || sizeIdx < geminiIdx || generateIdx > sizeIdx);
+
+    const assertFn = src.slice(
+      src.indexOf("export function assertCurriculumPdfBase64WithinLimit"),
+      src.indexOf("// Schema for curriculum save inputs"),
+    );
+    const decodeSizeIdx = assertFn.indexOf("bytes.byteLength > MAX_CURRICULUM_PDF_BYTES");
+    const magicIdx = assertFn.indexOf("assertCurriculumPdfMagicBytes");
+    assert.ok(decodeSizeIdx >= 0 && magicIdx > decodeSizeIdx);
+  });
+
+  it("magic bytes match billing receipt PDF sniff convention", () => {
+    const limits = readFileSync(LIMITS_FILE, "utf8");
+    const receipt = readFileSync(RECEIPT_FILE, "utf8");
+    assert.match(limits, /0x25,\s*0x50,\s*0x44,\s*0x46/);
+    assert.match(
+      receipt,
+      /0x25 && bytes\[1\] === 0x50 && bytes\[2\] === 0x44 && bytes\[3\] === 0x46/,
+    );
   });
 
   it("G/H. client rejects oversized files before FileReader and extract call", () => {
