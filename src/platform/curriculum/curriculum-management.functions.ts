@@ -11,8 +11,81 @@ import {
   adminPublishCurriculum,
   adminSaveCurriculumDraft,
 } from "./curriculum-admin.ops.ts";
+import {
+  CURRICULUM_PDF_INVALID_MESSAGE,
+  CURRICULUM_PDF_TOO_LARGE_MESSAGE,
+  MAX_CURRICULUM_PDF_BASE64_CHARS,
+  MAX_CURRICULUM_PDF_BYTES,
+} from "./curriculum-pdf-limits.ts";
 
 export { deserializeLessonNotes, serializeLessonNotes } from "./curriculum-lesson-notes.ts";
+export {
+  CURRICULUM_PDF_TOO_LARGE_MESSAGE,
+  MAX_CURRICULUM_PDF_BASE64_CHARS,
+  MAX_CURRICULUM_PDF_BYTES,
+} from "./curriculum-pdf-limits.ts";
+
+type AdminClient = Awaited<
+  typeof import("@/platform/database/supabase/client.server")
+>["supabaseAdmin"];
+
+type GeminiLike = {
+  models: {
+    generateContent: (input: {
+      model: string;
+      contents: unknown;
+      config?: unknown;
+    }) => Promise<{ text?: string | null }>;
+  };
+};
+
+export type CurriculumPdfExtractedLesson = {
+  unitNumber?: string;
+  unitName?: string;
+  lessonNumber?: string;
+  lessonTitle: string;
+  objectives?: string;
+  outcomes?: string;
+  activities?: string;
+  assessment?: string;
+  periods?: string;
+  notes?: string;
+};
+
+export type CurriculumPdfExtractionResult = {
+  academicYear?: string;
+  semester?: string;
+  stage?: string;
+  grade: string;
+  subject: string;
+  lessons: CurriculumPdfExtractedLesson[];
+};
+
+/**
+ * Reject oversized or empty Base64 PDF payloads before any Gemini call.
+ * Throws an Error with a stable Arabic message (no internals).
+ */
+export function assertCurriculumPdfBase64WithinLimit(pdfBase64: string): void {
+  const payload = pdfBase64.trim();
+  if (!payload) {
+    throw new Error(CURRICULUM_PDF_INVALID_MESSAGE);
+  }
+
+  if (payload.length > MAX_CURRICULUM_PDF_BASE64_CHARS) {
+    throw new Error(CURRICULUM_PDF_TOO_LARGE_MESSAGE);
+  }
+
+  // Node Buffer.from(base64) does not throw on invalid alphabet; empty output
+  // from a non-empty input is treated as invalid.
+  const bytes = Buffer.from(payload, "base64");
+  if (bytes.byteLength === 0) {
+    throw new Error(CURRICULUM_PDF_INVALID_MESSAGE);
+  }
+
+  if (bytes.byteLength > MAX_CURRICULUM_PDF_BYTES) {
+    throw new Error(CURRICULUM_PDF_TOO_LARGE_MESSAGE);
+  }
+}
 
 // Schema for curriculum save inputs
 const LessonInput = z.object({
@@ -41,26 +114,14 @@ const SaveCurriculumInput = z.object({
   lessons: z.array(LessonInput),
 });
 
-// 1. Extract curriculum from PDF using Gemini
-export const extractCurriculumFromPdf = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => z.object({ pdfBase64: z.string() }).parse(data))
-  .handler(async ({ data, context }) => {
-    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-    await assertAdmin(supabaseAdmin, context.userId);
+const extractCurriculumPdfInputSchema = z.object({
+  pdfBase64: z
+    .string()
+    .min(1)
+    .max(MAX_CURRICULUM_PDF_BASE64_CHARS, "حجم ملف PDF يتجاوز الحد المسموح وهو 10 ميجابايت."),
+});
 
-    try {
-      const ai = getGemini();
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          {
-            inlineData: {
-              data: data.pdfBase64,
-              mimeType: "application/pdf",
-            },
-          },
-          `You are an expert curriculum analyst for the Saudi Ministry of Education (وزارة التعليم).
+const CURRICULUM_PDF_EXTRACTION_PROMPT = `You are an expert curriculum analyst for the Saudi Ministry of Education (وزارة التعليم).
 Extract all lessons and syllabus metadata from the uploaded official curriculum PDF.
 
 Ensure you extract the text in Arabic.
@@ -83,50 +144,93 @@ Please map or determine:
   - notes: Extra notes or context
 
 
-You MUST return valid JSON matching this schema structure. Do not wrap in markdown code blocks other than json.`,
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              academicYear: { type: "STRING" },
-              semester: { type: "STRING" },
-              stage: { type: "STRING" },
-              grade: { type: "STRING" },
-              subject: { type: "STRING" },
-              lessons: {
-                type: "ARRAY",
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    unitNumber: { type: "STRING" },
-                    unitName: { type: "STRING" },
-                    lessonNumber: { type: "STRING" },
-                    lessonTitle: { type: "STRING" },
-                    objectives: { type: "STRING" },
-                    outcomes: { type: "STRING" },
-                    activities: { type: "STRING" },
-                    assessment: { type: "STRING" },
-                    periods: { type: "STRING" },
-                    notes: { type: "STRING" },
-                  },
-                  required: ["lessonTitle"],
-                },
-              },
-            },
-            required: ["grade", "subject", "lessons"],
+You MUST return valid JSON matching this schema structure. Do not wrap in markdown code blocks other than json.`;
+
+/**
+ * Admin-authorized PDF → Gemini extraction.
+ * Size validation runs after assertAdmin and before any Gemini call.
+ */
+export async function extractCurriculumFromPdfAuthorized(
+  client: AdminClient,
+  actorId: string,
+  pdfBase64: string,
+  deps: { ai?: GeminiLike } = {},
+): Promise<CurriculumPdfExtractionResult> {
+  await assertAdmin(client, actorId);
+  assertCurriculumPdfBase64WithinLimit(pdfBase64);
+
+  try {
+    const ai = deps.ai ?? getGemini();
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          inlineData: {
+            data: pdfBase64.trim(),
+            mimeType: "application/pdf",
           },
         },
-      });
+        CURRICULUM_PDF_EXTRACTION_PROMPT,
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            academicYear: { type: "STRING" },
+            semester: { type: "STRING" },
+            stage: { type: "STRING" },
+            grade: { type: "STRING" },
+            subject: { type: "STRING" },
+            lessons: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  unitNumber: { type: "STRING" },
+                  unitName: { type: "STRING" },
+                  lessonNumber: { type: "STRING" },
+                  lessonTitle: { type: "STRING" },
+                  objectives: { type: "STRING" },
+                  outcomes: { type: "STRING" },
+                  activities: { type: "STRING" },
+                  assessment: { type: "STRING" },
+                  periods: { type: "STRING" },
+                  notes: { type: "STRING" },
+                },
+                required: ["lessonTitle"],
+              },
+            },
+          },
+          required: ["grade", "subject", "lessons"],
+        },
+      },
+    });
 
-      const text = response.text?.trim() ?? "{}";
-      return JSON.parse(text);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error("[curriculum-management] PDF extraction failed:", err);
-      throw new Error(`Failed to extract curriculum details: ${errMsg}`);
+    const text = response.text?.trim() ?? "{}";
+    return JSON.parse(text) as CurriculumPdfExtractionResult;
+  } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      (err.message.includes("حجم ملف PDF") || err.message.includes("ملف PDF غير صالح"))
+    ) {
+      throw err;
     }
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("[curriculum-management] PDF extraction failed:", err);
+    throw new Error(`Failed to extract curriculum details: ${errMsg}`);
+  }
+}
+
+// 1. Extract curriculum from PDF using Gemini
+// Application-level size guards protect Gemini processing; they are not a
+// transport-level HTTP body limit unless the host adds one separately.
+export const extractCurriculumFromPdf = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => extractCurriculumPdfInputSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    return extractCurriculumFromPdfAuthorized(supabaseAdmin, context.userId, data.pdfBase64);
   });
 
 // 2. Fetch all curriculum files (for the admin management UI)

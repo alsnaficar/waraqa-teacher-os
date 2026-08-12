@@ -42,6 +42,10 @@ import {
   getAdminCurriculumFiles,
   getAdminCurriculumLessons,
 } from "@/platform/curriculum/curriculum-management.functions";
+import {
+  CURRICULUM_PDF_TOO_LARGE_MESSAGE,
+  MAX_CURRICULUM_PDF_BYTES,
+} from "@/platform/curriculum/curriculum-pdf-limits";
 
 interface ExtractedLesson {
   id?: string;
@@ -289,6 +293,12 @@ export function CurriculumManagementPage() {
 
     if (file.type !== "application/pdf") {
       toast.error("يرجى اختيار ملف PDF رسمي فقط.");
+      return;
+    }
+
+    // Reject before FileReader so oversized PDFs never enter memory as data URLs.
+    if (file.size > MAX_CURRICULUM_PDF_BYTES) {
+      toast.error(CURRICULUM_PDF_TOO_LARGE_MESSAGE);
       return;
     }
 
@@ -660,7 +670,7 @@ export function CurriculumManagementPage() {
                 />
               </Label>
               <p className="text-xs text-muted-foreground mt-3">
-                الملفات المدعومة: PDF فقط (بحد أقصى 20 ميغابايت)
+                الملفات المدعومة: PDF فقط (بحد أقصى 10 ميجابايت)
               </p>
             </CardContent>
           </Card>
