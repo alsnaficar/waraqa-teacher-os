@@ -1,5 +1,5 @@
 import { SubscriptionBanner } from "@/features/billing/components/subscription-banner";
-import { useSubscription } from "@/features/billing/hooks/useSubscription";
+import { useOpenCheckout, useSubscription } from "@/features/billing/hooks/useSubscription";
 import { getTodayLessons } from "@/features/lesson-engine/services/lesson-engine";
 import { useLessonSessions } from "@/features/lesson-sessions/hooks/useLessonSessions";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
@@ -165,8 +165,20 @@ function HomePage() {
   // today; the planner projection is only a fallback before they are generated.
   const { sessions: todaySessions } = useLessonSessions();
 
-  const { access: subscriptionAccess, daysRemaining: subscriptionDaysRemaining } =
-    useSubscription();
+  const {
+    state: subscriptionState,
+    access: subscriptionAccess,
+    daysRemaining: subscriptionDaysRemaining,
+  } = useSubscription();
+  const openCheckout = useOpenCheckout();
+
+  const subscriptionDisplay = {
+    access: subscriptionAccess,
+    daysRemaining: subscriptionDaysRemaining,
+    subscriptionStartsAt: subscriptionState.subscription?.startsAt ?? null,
+    subscriptionExpiresAt: subscriptionState.expiresAt,
+    openCheckoutPaymentStatus: openCheckout.data?.paymentStatus ?? null,
+  };
 
   const normalizedTodayLessons = useMemo(() => {
     if (todaySessions.length > 0) {
@@ -235,11 +247,10 @@ function HomePage() {
           teacherName={profile?.name ?? "المعلم"}
           hijriDate={hijri}
           connected={false}
-          subscription={subscriptionAccess}
-          subscriptionDaysRemaining={subscriptionDaysRemaining}
+          subscriptionDisplay={subscriptionDisplay}
         />
 
-        <SubscriptionBanner access={subscriptionAccess} daysRemaining={subscriptionDaysRemaining} />
+        <SubscriptionBanner {...subscriptionDisplay} />
 
         <DashboardSummary
           todayLessons={normalizedTodayLessons.length}

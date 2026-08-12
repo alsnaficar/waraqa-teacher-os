@@ -1,8 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { BadgeCheck, Copy, Loader2, Receipt, Upload } from "lucide-react";
+import { toast } from "sonner";
 
 import { SubscriptionBadge } from "@/features/billing/components/subscription-badge";
+import {
+  deriveSubscriptionDisplayKind,
+  grantsAccess,
+  paymentStatusLabel,
+  type SubscriptionDisplayKind,
+} from "@/features/billing/billing.logic";
 import {
   useBillingHistory,
   useCheckout,
@@ -10,7 +17,6 @@ import {
   usePlans,
   useSubscription,
 } from "@/features/billing/hooks/useSubscription";
-import { paymentStatusLabel } from "@/features/billing/billing.logic";
 import type { OpenCheckout, PublicBankDetails } from "@/features/billing/types";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -30,6 +36,40 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "حدث خطأ غير متوقع.";
 }
 
+function formatDisplayDate(value: string | null | undefined): string {
+  if (!value?.trim()) return "—";
+  try {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? new Date(`${value}T00:00:00`)
+      : new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("ar-SA", { dateStyle: "medium" }).format(date);
+  } catch {
+    return value;
+  }
+}
+
+function nextActionForDisplayKind(displayKind: SubscriptionDisplayKind): string {
+  switch (displayKind) {
+    case "none":
+      return "اختر باقة وأكمل الاشتراك.";
+    case "awaiting_transfer":
+      return "حوّل المبلغ ثم أرسل رقم العملية البنكية.";
+    case "awaiting_admin":
+      return "بانتظار مراجعة الإدارة — لا يلزم إجراء إضافي الآن.";
+    case "scheduled":
+      return "تم تأكيد الدفع. سيبدأ الاشتراك في تاريخ البداية الرسمي.";
+    case "expiring":
+      return "جدّد اشتراكك قبل انتهاء المدة.";
+    case "expired":
+      return "جدّد اشتراكك للاستمرار في المزايا المدفوعة.";
+    case "active":
+      return "اشتراكك فعّال — لا يلزم إجراء.";
+    default:
+      return "—";
+  }
+}
+
 function SubscriptionPage() {
   const { state, loading } = useSubscription();
   const plans = usePlans();
@@ -46,14 +86,46 @@ function SubscriptionPage() {
   const manualInstruction = checkout?.instruction.kind === "manual" ? checkout.instruction : null;
   const canSubmitReference =
     checkout?.paymentStatus === "created" || checkout?.paymentStatus === "rejected";
-  const scheduledConfirmed =
-    !openCheckout.isPending &&
+
+  const subscriptionDisplay = {
+    access: state.access,
+    daysRemaining: state.daysRemaining,
+    subscriptionStartsAt: state.subscription?.startsAt ?? null,
+    subscriptionExpiresAt: state.expiresAt,
+    openCheckoutPaymentStatus: checkout?.paymentStatus ?? null,
+  };
+
+  const displayKind = deriveSubscriptionDisplayKind({
+    access: state.access,
+    subscriptionStartsAt: state.subscription?.startsAt ?? null,
+    subscriptionExpiresAt: state.expiresAt,
+    openCheckoutPaymentStatus: checkout?.paymentStatus ?? null,
+  });
+
+  const showPlansSection =
     !checkout &&
-    state.access === "pending" &&
-    state.subscription !== null;
+    (displayKind === "none" || displayKind === "expired" || displayKind === "expiring");
+
+  const couponEntered = couponCode.trim().length > 0;
+  const couponVerifiedInvalid = couponEntered && checkCoupon.data?.valid === false;
+  const couponVerifiedValid = couponEntered && checkCoupon.data?.valid === true;
+
+  function canCheckoutPlan(planCode: string): boolean {
+    if (begin.isPending) return false;
+    if (couponVerifiedInvalid) return false;
+    if (couponVerifiedValid && selectedPlanCode !== planCode) return false;
+    return true;
+  }
+
+  function handleCouponChange(value: string) {
+    setCouponCode(value);
+    if (!value.trim()) {
+      checkCoupon.reset();
+    }
+  }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4 p-4 sm:p-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4 overflow-x-hidden p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-bold sm:text-3xl">الاشتراك</h1>
         <p className="mt-1 text-sm text-muted-foreground">إدارة الباقة والاشتراك والفواتير.</p>
@@ -66,27 +138,52 @@ function SubscriptionPage() {
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             ) : (
-              <SubscriptionBadge access={state.access} daysRemaining={state.daysRemaining} />
+              <SubscriptionBadge {...subscriptionDisplay} />
             )}
           </div>
 
-          {scheduledConfirmed ? (
-            <p className="text-sm text-emerald-700 dark:text-emerald-300">
-              تم تأكيد اشتراكك. سيبدأ في {state.subscription?.startsAt ?? "موعده الرسمي"}.
-            </p>
-          ) : null}
+          <div aria-live="polite" aria-atomic="true" className="space-y-2">
+            {displayKind === "scheduled" ? (
+              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                تم تأكيد الدفع. سيبدأ اشتراكك في{" "}
+                {formatDisplayDate(state.subscription?.startsAt ?? null)}.
+              </p>
+            ) : null}
 
-          <dl className="grid gap-3 sm:grid-cols-3">
-            <Field label="الباقة" value={state.plan?.name ?? "—"} />
-            <Field label="تاريخ الانتهاء" value={state.expiresAt ?? "—"} />
+            {displayKind === "awaiting_admin" ? (
+              <p className="text-sm text-sky-800 dark:text-sky-200">
+                تم إرسال رقم التحويل. بانتظار مراجعة الإدارة.
+              </p>
+            ) : null}
+
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">الإجراء التالي: </span>
+              {nextActionForDisplayKind(displayKind)}
+            </p>
+          </div>
+
+          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="الباقة" value={state.plan?.name ?? checkout?.planName ?? "—"} />
             <Field
-              label="المدة المتبقية"
-              value={
-                typeof state.daysRemaining === "number" && state.daysRemaining >= 0
-                  ? `${state.daysRemaining} يوم`
-                  : "—"
-              }
+              label="تاريخ البداية"
+              value={formatDisplayDate(state.subscription?.startsAt ?? null)}
             />
+            <Field label="تاريخ الانتهاء" value={formatDisplayDate(state.expiresAt)} />
+            {checkout ? (
+              <Field label="حالة الدفع" value={paymentStatusLabel(checkout.paymentStatus)} />
+            ) : displayKind === "scheduled" ? (
+              <Field label="حالة الدفع" value="تم التحقق" />
+            ) : null}
+            {!checkout && displayKind !== "scheduled" ? (
+              <Field
+                label="المدة المتبقية"
+                value={
+                  typeof state.daysRemaining === "number" && state.daysRemaining >= 0
+                    ? `${state.daysRemaining} يوم`
+                    : "—"
+                }
+              />
+            ) : null}
           </dl>
         </CardContent>
       </Card>
@@ -105,125 +202,162 @@ function SubscriptionPage() {
           onSubmit={() =>
             submitReference.mutate(
               { paymentId: checkout.paymentId, reference },
-              { onSuccess: () => setReference("") },
+              {
+                onSuccess: () => {
+                  setReference("");
+                  toast.success("تم إرسال رقم العملية بنجاح.");
+                },
+              },
             )
           }
           receiptPending={uploadReceipt.isPending}
           receiptError={uploadReceipt.error}
-          onUploadReceipt={(payload) =>
-            uploadReceipt.mutate({
-              paymentId: checkout.paymentId,
-              ...payload,
-            })
+          onUploadReceipt={(payload, replacing) =>
+            uploadReceipt.mutate(
+              {
+                paymentId: checkout.paymentId,
+                ...payload,
+              },
+              {
+                onSuccess: () => {
+                  toast.success(
+                    replacing ? "تم استبدال إيصال التحويل بنجاح." : "تم رفع إيصال التحويل بنجاح.",
+                  );
+                },
+              },
+            )
           }
         />
       ) : null}
 
-      <Card>
-        <CardContent className="space-y-3 p-4">
-          <h2 className="font-semibold">الباقات المتاحة</h2>
+      {showPlansSection ? (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <h2 className="font-semibold">الباقات المتاحة</h2>
 
-          {plans.isPending ? (
-            <p className="text-sm text-muted-foreground">جارٍ تحميل الباقات...</p>
-          ) : plans.data && plans.data.length > 0 ? (
-            <>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  value={couponCode}
-                  onChange={(event) => setCouponCode(event.target.value)}
-                  placeholder="رمز الخصم (اختياري)"
-                  className="h-11 min-w-[160px] flex-1"
-                />
-                <Button
-                  variant="outline"
-                  className="h-11 min-h-[44px] w-full sm:w-auto"
-                  disabled={!couponCode.trim() || !selectedPlan || checkCoupon.isPending}
-                  onClick={() => {
-                    if (!selectedPlan) return;
-                    checkCoupon.mutate({
-                      planCode: selectedPlan.code,
-                      couponCode,
-                    });
-                  }}
-                >
-                  تحقق من الرمز
-                </Button>
-              </div>
-
-              {!selectedPlan ? (
-                <p className="text-sm text-muted-foreground">اختر باقة ثم تحقق من رمز الخصم.</p>
-              ) : null}
-
-              {checkCoupon.data ? (
-                <p
-                  className={
-                    checkCoupon.data.valid ? "text-sm text-emerald-600" : "text-sm text-red-600"
-                  }
-                >
-                  {checkCoupon.data.valid
-                    ? `تم تطبيق خصم ${checkCoupon.data.discount} ريال على ${selectedPlan?.name ?? "الباقة المختارة"}. السعر بعد الخصم ${checkCoupon.data.finalAmount} ريال.`
-                    : checkCoupon.data.reason}
-                </p>
-              ) : null}
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {plans.data.map((plan) => (
-                  <div
-                    key={plan.id}
-                    className={
-                      selectedPlanCode === plan.code
-                        ? "flex flex-col gap-2 rounded-2xl border border-primary bg-primary/5 p-4"
-                        : "flex flex-col gap-2 rounded-2xl border border-border p-4"
-                    }
+            {plans.isPending ? (
+              <p className="text-sm text-muted-foreground">جارٍ تحميل الباقات...</p>
+            ) : plans.data && plans.data.length > 0 ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    value={couponCode}
+                    onChange={(event) => handleCouponChange(event.target.value)}
+                    placeholder="رمز الخصم (اختياري)"
+                    className="h-11 min-w-[160px] flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    className="h-11 min-h-[44px] w-full sm:w-auto"
+                    disabled={!couponCode.trim() || !selectedPlan || checkCoupon.isPending}
+                    onClick={() => {
+                      if (!selectedPlan) return;
+                      checkCoupon.mutate({
+                        planCode: selectedPlan.code,
+                        couponCode,
+                      });
+                    }}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold">{plan.name}</p>
-                      <BadgeCheck className="h-5 w-5 shrink-0 text-primary" />
+                    تحقق من الرمز
+                  </Button>
+                </div>
+
+                {!selectedPlan ? (
+                  <p className="text-sm text-muted-foreground">اختر باقة ثم تحقق من رمز الخصم.</p>
+                ) : null}
+
+                {checkCoupon.data ? (
+                  <p
+                    className={
+                      checkCoupon.data.valid ? "text-sm text-emerald-600" : "text-sm text-red-600"
+                    }
+                    role="alert"
+                  >
+                    {checkCoupon.data.valid
+                      ? `تم تطبيق خصم ${checkCoupon.data.discount} ريال على ${selectedPlan?.name ?? "الباقة المختارة"}. السعر بعد الخصم ${checkCoupon.data.finalAmount} ريال.`
+                      : checkCoupon.data.reason}
+                  </p>
+                ) : null}
+
+                {couponVerifiedInvalid ? (
+                  <p className="text-sm text-red-600" role="alert">
+                    لا يمكن إتمام الاشتراك برمز خصم غير صالح. امسح الرمز أو صحّحه ثم أعد التحقق.
+                  </p>
+                ) : null}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {plans.data.map((plan) => (
+                    <div
+                      key={plan.id}
+                      className={
+                        selectedPlanCode === plan.code
+                          ? "flex flex-col gap-2 rounded-2xl border border-primary bg-primary/5 p-4"
+                          : "flex flex-col gap-2 rounded-2xl border border-border p-4"
+                      }
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold">{plan.name}</p>
+                        <BadgeCheck className="h-5 w-5 shrink-0 text-primary" />
+                      </div>
+
+                      <p className="text-2xl font-bold">
+                        {plan.price} <span className="text-sm font-normal">ريال</span>
+                      </p>
+
+                      <Button
+                        type="button"
+                        variant={selectedPlanCode === plan.code ? "default" : "outline"}
+                        className="h-11 min-h-[44px] w-full"
+                        aria-pressed={selectedPlanCode === plan.code}
+                        onClick={() => {
+                          setSelectedPlanCode(plan.code);
+                          checkCoupon.reset();
+                        }}
+                      >
+                        {selectedPlanCode === plan.code ? "الباقة المختارة" : "اختيار هذه الباقة"}
+                      </Button>
+
+                      <Button
+                        className="mt-auto h-11 min-h-[44px] w-full"
+                        disabled={!canCheckoutPlan(plan.code)}
+                        onClick={() => {
+                          setSelectedPlanCode(plan.code);
+                          begin.mutate({
+                            planCode: plan.code,
+                            couponCode: couponCode.trim() || undefined,
+                          });
+                        }}
+                      >
+                        {begin.isPending ? "جارٍ التجهيز..." : "اشترك الآن"}
+                      </Button>
                     </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                لا توجد باقات متاحة حالياً. يرجى المحاولة لاحقاً.
+              </p>
+            )}
 
-                    <p className="text-2xl font-bold">
-                      {plan.price} <span className="text-sm font-normal">ريال</span>
-                    </p>
-
-                    <Button
-                      type="button"
-                      variant={selectedPlanCode === plan.code ? "default" : "outline"}
-                      className="h-11 min-h-[44px] w-full"
-                      aria-pressed={selectedPlanCode === plan.code}
-                      onClick={() => {
-                        setSelectedPlanCode(plan.code);
-                        checkCoupon.reset();
-                      }}
-                    >
-                      {selectedPlanCode === plan.code ? "الباقة المختارة" : "اختيار هذه الباقة"}
-                    </Button>
-
-                    <Button
-                      className="mt-auto h-11 min-h-[44px] w-full"
-                      disabled={begin.isPending}
-                      onClick={() => {
-                        setSelectedPlanCode(plan.code);
-                        begin.mutate({
-                          planCode: plan.code,
-                          couponCode: couponCode.trim() || undefined,
-                        });
-                      }}
-                    >
-                      {begin.isPending ? "جارٍ التجهيز..." : "اشترك الآن"}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
+            {begin.error ? (
+              <p className="text-sm text-red-600">{errorMessage(begin.error)}</p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : grantsAccess(state.access) || displayKind === "scheduled" || checkout ? (
+        <Card>
+          <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">
-              لا توجد باقات متاحة حالياً. يرجى المحاولة لاحقاً.
+              {displayKind === "scheduled"
+                ? "اشتراكك مجدول وتم تأكيد الدفع. يمكنك مراجعة التفاصيل أعلاه وسجل المدفوعات أدناه."
+                : checkout
+                  ? "أكمل خطوات الدفع في البطاقة أعلاه. لن تظهر باقات جديدة حتى تنتهي هذه العملية."
+                  : "اشتراكك الحالي فعّال. لعرض سجل المدفوعات راجع القسم أدناه."}
             </p>
-          )}
-
-          {begin.error ? <p className="text-sm text-red-600">{errorMessage(begin.error)}</p> : null}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardContent className="space-y-3 p-4">
@@ -237,8 +371,12 @@ function SubscriptionPage() {
           ) : history.data && history.data.length > 0 ? (
             <ul className="divide-y divide-border">
               {history.data.map((payment) => (
-                <li key={payment.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                <li
+                  key={payment.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm"
+                >
                   <span className="font-medium">{payment.amount} ريال</span>
+                  <span className="text-xs text-muted-foreground">(سعر الباقة)</span>
                   <span className="text-muted-foreground">
                     {paymentStatusLabel(payment.status)}
                   </span>
@@ -284,15 +422,19 @@ function CheckoutCard({
   onSubmit: () => void;
   receiptPending: boolean;
   receiptError: unknown;
-  onUploadReceipt: (payload: {
-    contentBase64: string;
-    mimeType?: string;
-    fileName?: string;
-  }) => void;
+  onUploadReceipt: (
+    payload: {
+      contentBase64: string;
+      mimeType?: string;
+      fileName?: string;
+    },
+    replacing: boolean,
+  ) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptValidationError, setReceiptValidationError] = useState<string | null>(null);
   const isRejected = checkout.paymentStatus === "rejected";
+  const isSubmitted = checkout.paymentStatus === "submitted";
   const canUploadReceipt =
     checkout.paymentStatus === "created" || checkout.paymentStatus === "submitted" || isRejected;
   const sameRejectedReference =
@@ -303,9 +445,10 @@ function CheckoutCard({
   async function handleReceiptFile(file: File | undefined) {
     setReceiptValidationError(null);
     if (!file) return;
+    const replacing = checkout.hasReceipt;
     try {
       const payload = await fileToReceiptPayload(file);
-      onUploadReceipt(payload);
+      onUploadReceipt(payload, replacing);
     } catch (err: unknown) {
       setReceiptValidationError(errorMessage(err));
     } finally {
@@ -316,18 +459,33 @@ function CheckoutCard({
   return (
     <Card className="border-sky-500/30 bg-sky-500/5">
       <CardContent className="space-y-3 p-4">
-        <h2 className="font-semibold">{isRejected ? "تم رفض طلب الدفع" : "أكمل عملية الدفع"}</h2>
-        {isRejected ? (
-          <div className="space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
-            <p className="text-sm font-medium text-destructive">تم رفض طلب الدفع</p>
-            <p className="text-sm text-destructive">سبب الرفض: {checkout.rejectionReason || "—"}</p>
-            <p className="text-xs text-muted-foreground">
-              أرسل رقم تحويل جديداً مختلفاً عن الرقم المرفوض.
+        <h2 className="font-semibold">
+          {isRejected
+            ? "تم رفض طلب الدفع"
+            : isSubmitted
+              ? "بانتظار مراجعة الدفع"
+              : "أكمل عملية الدفع"}
+        </h2>
+
+        <div aria-live="polite" aria-atomic="true" className="space-y-2">
+          {isRejected ? (
+            <div className="space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+              <p className="text-sm font-medium text-destructive">تم رفض طلب الدفع</p>
+              <p className="text-sm text-destructive">
+                سبب الرفض: {checkout.rejectionReason || "—"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                أرسل رقم تحويل جديداً مختلفاً عن الرقم المرفوض. يمكنك أيضاً استبدال الإيصال.
+              </p>
+            </div>
+          ) : isSubmitted ? (
+            <p className="text-sm text-sky-800 dark:text-sky-200">
+              تم إرسال طلب الدفع. سيتم مراجعته من الإدارة.
             </p>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{message}</p>
-        )}
+          ) : (
+            <p className="text-sm text-muted-foreground">{message}</p>
+          )}
+        </div>
 
         <dl className="grid gap-3 sm:grid-cols-2">
           <Field label="الباقة" value={checkout.planName || "—"} />
@@ -336,7 +494,7 @@ function CheckoutCard({
 
         <p className="text-sm font-medium">المبلغ المستحق: {checkout.amount.toFixed(2)} ريال</p>
 
-        {bank ? <BankDetails bank={bank} /> : null}
+        {bank && !isSubmitted ? <BankDetails bank={bank} /> : null}
 
         <CopyRow label="الرقم المرجعي" value={referenceQuote} copyLabel="نسخ الرقم المرجعي" />
 
@@ -348,9 +506,10 @@ function CheckoutCard({
               placeholder={isRejected ? "رقم التحويل الجديد" : "رقم العملية البنكية"}
               maxLength={128}
               className="h-11 min-w-[180px] flex-1"
+              dir="ltr"
             />
             <Button
-              className="h-11 w-full sm:w-auto"
+              className="h-11 min-h-[44px] w-full sm:w-auto"
               disabled={
                 bankReference.trim().length < 3 ||
                 bankReference.trim().length > 128 ||
@@ -508,7 +667,11 @@ function CopyRow({
         size="icon"
         className="h-11 w-11 shrink-0"
         aria-label={copyLabel}
-        onClick={() => void navigator.clipboard?.writeText(value)}
+        onClick={() => {
+          void navigator.clipboard?.writeText(value).then(() => {
+            toast.success("تم النسخ.");
+          });
+        }}
       >
         <Copy className="h-4 w-4" />
       </Button>

@@ -14,6 +14,7 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { generateActivityIdeas } from "@/platform/ai/functions/ai.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import { copyToClipboard, downloadArabicDocx } from "@/platform/ai/docx";
 import {
   CurriculumSelector,
@@ -282,7 +283,10 @@ function ActivityIdeasPage() {
             </Button>
 
             {mutation.isError ? (
-              <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
+              <div className="space-y-3">
+                <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
+                <EntitlementDeniedCta error={mutation.error} />
+              </div>
             ) : null}
           </CardContent>
         </Card>
@@ -322,6 +326,7 @@ function ActivityIdeasPage() {
             ) : mutation.isError ? (
               <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
                 <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
+                <EntitlementDeniedCta error={mutation.error} />
                 <Button variant="secondary" size="sm" onClick={validateAndRun}>
                   <RefreshCw className="ml-2 h-4 w-4" />
                   إعادة المحاولة

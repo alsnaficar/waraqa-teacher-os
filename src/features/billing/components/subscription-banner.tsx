@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, Clock, CreditCard } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, CreditCard } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils/utils";
-import type { SubscriptionAccess } from "../types";
+import { deriveSubscriptionDisplayKind, type SubscriptionDisplayKind } from "../billing.logic";
+import type { SubscriptionDisplayInput } from "./subscription-badge";
 
 interface BannerCopy {
   title: string;
@@ -14,8 +15,25 @@ interface BannerCopy {
   className: string;
 }
 
-function copyFor(access: SubscriptionAccess, daysRemaining: number | null): BannerCopy | null {
-  switch (access) {
+function formatDisplayDate(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null;
+  try {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? new Date(`${value}T00:00:00`)
+      : new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("ar-SA", { dateStyle: "medium" }).format(date);
+  } catch {
+    return value;
+  }
+}
+
+function copyFor(
+  displayKind: SubscriptionDisplayKind,
+  daysRemaining: number | null,
+  subscriptionStartsAt: string | null,
+): BannerCopy | null {
+  switch (displayKind) {
     case "expiring":
       return {
         title: "اشتراكك على وشك الانتهاء",
@@ -35,13 +53,33 @@ function copyFor(access: SubscriptionAccess, daysRemaining: number | null): Bann
         icon: AlertTriangle,
         className: "border-red-500/30 bg-red-500/10 text-red-900 dark:text-red-200",
       };
-    case "pending":
+    case "scheduled": {
+      const startLabel = formatDisplayDate(subscriptionStartsAt);
       return {
-        title: "بانتظار تأكيد الدفع",
-        body: "استلمنا طلبك وسيتم تفعيل الاشتراك بعد مراجعة التحويل.",
+        title: "تم تأكيد الدفع — اشتراك مجدول",
+        body: startLabel
+          ? `تم التحقق من دفعتك. سيبدأ اشتراكك رسمياً في ${startLabel}.`
+          : "تم التحقق من دفعتك. سيبدأ اشتراكك في موعده الرسمي.",
+        cta: "عرض التفاصيل",
+        icon: CalendarClock,
+        className: "border-violet-500/30 bg-violet-500/10 text-violet-900 dark:text-violet-200",
+      };
+    }
+    case "awaiting_admin":
+      return {
+        title: "بانتظار مراجعة الدفع",
+        body: "تم إرسال رقم التحويل. سيتم تفعيل الاشتراك بعد مراجعة الإدارة.",
         cta: "عرض التفاصيل",
         icon: Clock,
         className: "border-sky-500/30 bg-sky-500/10 text-sky-900 dark:text-sky-200",
+      };
+    case "awaiting_transfer":
+      return {
+        title: "أكمل عملية التحويل",
+        body: "أكمل التحويل البنكي وأرسل رقم العملية لإتمام الاشتراك.",
+        cta: "إكمال الدفع",
+        icon: CreditCard,
+        className: "border-orange-500/30 bg-orange-500/10 text-orange-900 dark:text-orange-200",
       };
     case "none":
       return {
@@ -56,17 +94,26 @@ function copyFor(access: SubscriptionAccess, daysRemaining: number | null): Bann
   }
 }
 
-export interface SubscriptionBannerProps {
-  access: SubscriptionAccess;
-  daysRemaining?: number | null;
-}
+export type SubscriptionBannerProps = SubscriptionDisplayInput;
 
 /**
  * Soft gate: informs and prompts, never blocks. Renders nothing while the
  * subscription is comfortably active.
  */
-export function SubscriptionBanner({ access, daysRemaining = null }: SubscriptionBannerProps) {
-  const copy = copyFor(access, daysRemaining);
+export function SubscriptionBanner({
+  access,
+  daysRemaining = null,
+  subscriptionStartsAt = null,
+  subscriptionExpiresAt = null,
+  openCheckoutPaymentStatus = null,
+}: SubscriptionBannerProps) {
+  const displayKind = deriveSubscriptionDisplayKind({
+    access,
+    subscriptionStartsAt,
+    subscriptionExpiresAt,
+    openCheckoutPaymentStatus,
+  });
+  const copy = copyFor(displayKind, daysRemaining, subscriptionStartsAt);
 
   if (!copy) return null;
 

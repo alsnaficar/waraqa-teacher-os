@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   CalendarDays,
   ClipboardCheck,
+  CreditCard,
   Settings,
   ShieldCheck,
   FileSpreadsheet,
@@ -29,6 +30,7 @@ const items = [
   { title: ar.nav.dashboard, url: "/dashboard", icon: LayoutDashboard },
   { title: "الجدول", url: "/planner", icon: CalendarDays },
   { title: "التصحيح", url: "/grading", icon: ClipboardCheck },
+  { title: "الاشتراك", url: "/subscription", icon: CreditCard },
   { title: ar.nav.settings, url: "/settings", icon: Settings },
 ] as const;
 

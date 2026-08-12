@@ -1,11 +1,30 @@
-import { AlertTriangle, CheckCircle2, Clock, CreditCard, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  XCircle,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Badge } from "@/shared/ui/badge";
 import { cn } from "@/shared/utils/utils";
+import { deriveSubscriptionDisplayKind, type SubscriptionDisplayKind } from "../billing.logic";
 import type { SubscriptionAccess } from "../types";
 
-const META: Record<SubscriptionAccess, { label: string; icon: LucideIcon; className: string }> = {
+export interface SubscriptionDisplayInput {
+  access: SubscriptionAccess;
+  daysRemaining?: number | null;
+  subscriptionStartsAt?: string | null;
+  subscriptionExpiresAt?: string | null;
+  openCheckoutPaymentStatus?: string | null;
+}
+
+const META: Record<
+  SubscriptionDisplayKind,
+  { label: string; icon: LucideIcon; className: string }
+> = {
   active: {
     label: "الاشتراك فعال",
     icon: CheckCircle2,
@@ -21,10 +40,20 @@ const META: Record<SubscriptionAccess, { label: string; icon: LucideIcon; classN
     icon: XCircle,
     className: "bg-red-500/10 text-red-700 dark:text-red-300",
   },
-  pending: {
-    label: "بانتظار التأكيد",
+  scheduled: {
+    label: "اشتراك مجدول",
+    icon: CalendarClock,
+    className: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  },
+  awaiting_admin: {
+    label: "بانتظار مراجعة الدفع",
     icon: Clock,
     className: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  },
+  awaiting_transfer: {
+    label: "بانتظار التحويل",
+    icon: CreditCard,
+    className: "bg-orange-500/10 text-orange-700 dark:text-orange-300",
   },
   none: {
     label: "لا يوجد اشتراك",
@@ -33,17 +62,26 @@ const META: Record<SubscriptionAccess, { label: string; icon: LucideIcon; classN
   },
 };
 
-export interface SubscriptionBadgeProps {
-  access: SubscriptionAccess;
-  daysRemaining?: number | null;
-}
+export type SubscriptionBadgeProps = SubscriptionDisplayInput;
 
-export function SubscriptionBadge({ access, daysRemaining }: SubscriptionBadgeProps) {
-  const meta = META[access];
+export function SubscriptionBadge({
+  access,
+  daysRemaining = null,
+  subscriptionStartsAt = null,
+  subscriptionExpiresAt = null,
+  openCheckoutPaymentStatus = null,
+}: SubscriptionBadgeProps) {
+  const displayKind = deriveSubscriptionDisplayKind({
+    access,
+    subscriptionStartsAt,
+    subscriptionExpiresAt,
+    openCheckoutPaymentStatus,
+  });
+  const meta = META[displayKind];
   const Icon = meta.icon;
 
   const suffix =
-    access === "expiring" && typeof daysRemaining === "number" && daysRemaining >= 0
+    displayKind === "expiring" && typeof daysRemaining === "number" && daysRemaining >= 0
       ? ` • ${daysRemaining} يوم`
       : "";
 

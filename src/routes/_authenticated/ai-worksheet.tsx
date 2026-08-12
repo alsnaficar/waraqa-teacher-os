@@ -11,6 +11,7 @@ import { SectionHeader } from "@/shared/components/section-header";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { generateWorksheet } from "@/platform/ai/functions/ai.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import { useAIGeneration, useAIClipboard, useAIExport } from "@/features/ai/components/hooks";
 import { AIGenerationForm } from "@/features/ai/components/ai-generation-form";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
@@ -262,6 +263,7 @@ function WorksheetPage() {
                   <RefreshCw className="h-4 w-4" />
                   إعادة المحاولة
                 </Button>
+                <EntitlementDeniedCta error={mutation.error} />
               </div>
             ) : (
               <div className="flex min-h-[450px] flex-col items-center justify-center text-center p-8 space-y-4">

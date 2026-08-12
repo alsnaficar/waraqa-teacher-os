@@ -1,7 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CalendarRange } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+
+import { isEntitlementDeniedError } from "@/features/billing/billing.logic";
 
 import { PageShell } from "@/components/layout/page-shell";
 import { LessonSessionCard } from "@/features/lesson-sessions/components/lesson-session-card";
@@ -26,6 +28,7 @@ function toIso(date: Date): string {
 }
 
 function LessonSessionsPage() {
+  const navigate = useNavigate();
   const [dayOffset, setDayOffset] = useState(0);
 
   const date = useMemo(() => toIso(addDays(new Date(), dayOffset)), [dayOffset]);
@@ -43,6 +46,15 @@ function LessonSessionsPage() {
       onSuccess: () => toast.success("تم توليد تحضير الدرس وقفله."),
       onError: (error) => {
         const message = error instanceof Error ? error.message : "تعذّر تحضير الحصة.";
+        if (isEntitlementDeniedError(error)) {
+          toast.error(message, {
+            action: {
+              label: "الاشتراك",
+              onClick: () => navigate({ to: "/subscription" }),
+            },
+          });
+          return;
+        }
         toast.error(message);
       },
     });

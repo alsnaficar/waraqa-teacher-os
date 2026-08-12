@@ -38,6 +38,7 @@ import { Textarea } from "@/shared/ui/textarea";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
 import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 import { prepareLessonSession } from "@/platform/lesson-sessions/prepare-lesson-session.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import { downloadStructuredLessonPrepDocx, copyToClipboard } from "@/platform/ai/docx";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
@@ -846,6 +847,7 @@ function LessonPlanPage() {
                   <RefreshCw className="h-4 w-4" />
                   إعادة المحاولة
                 </Button>
+                <EntitlementDeniedCta error={mutation.error} />
               </div>
             ) : (
               <div

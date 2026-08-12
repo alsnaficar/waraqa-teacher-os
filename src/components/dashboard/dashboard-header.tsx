@@ -1,7 +1,8 @@
+import { Link } from "@tanstack/react-router";
 import { CalendarDays, School, User } from "lucide-react";
 
 import { SubscriptionBadge } from "@/features/billing/components/subscription-badge";
-import type { SubscriptionAccess } from "@/features/billing/types";
+import type { SubscriptionDisplayInput } from "@/features/billing/components/subscription-badge";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -10,16 +11,14 @@ interface DashboardHeaderProps {
   teacherName: string;
   hijriDate: string;
   connected: boolean;
-  subscription: SubscriptionAccess;
-  subscriptionDaysRemaining?: number | null;
+  subscriptionDisplay: SubscriptionDisplayInput;
 }
 
 export function DashboardHeader({
   teacherName,
   hijriDate,
   connected,
-  subscription,
-  subscriptionDaysRemaining = null,
+  subscriptionDisplay,
 }: DashboardHeaderProps) {
   return (
     <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
@@ -45,7 +44,13 @@ export function DashboardHeader({
                 {connected ? "مدرستي مرتبطة" : "مدرستي غير مرتبطة"}
               </Badge>
 
-              <SubscriptionBadge access={subscription} daysRemaining={subscriptionDaysRemaining} />
+              <Link
+                to="/subscription"
+                aria-label="عرض تفاصيل الاشتراك والفوترة"
+                className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <SubscriptionBadge {...subscriptionDisplay} />
+              </Link>
 
               {!connected && (
                 <Button

@@ -29,6 +29,7 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { generateQuizAndAssignment } from "@/platform/ai/functions/ai-quiz-generator.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import {
   copyToClipboard,
   downloadStructuredQuizAndAssignmentDocx,
@@ -383,8 +384,11 @@ function QuizPage() {
               </Button>
 
               {mutation.isError ? (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600 leading-normal">
-                  {(mutation.error as Error).message}
+                <div className="space-y-3">
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600 leading-normal">
+                    {(mutation.error as Error).message}
+                  </div>
+                  <EntitlementDeniedCta error={mutation.error} />
                 </div>
               ) : null}
             </CardContent>
@@ -763,6 +767,7 @@ function QuizPage() {
                   <RefreshCw className="ml-1.5 h-3.5 w-3.5" />
                   إعادة المحاولة
                 </Button>
+                <EntitlementDeniedCta error={mutation.error} />
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400 space-y-4">

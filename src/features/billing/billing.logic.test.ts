@@ -7,7 +7,9 @@ import {
   checkoutIdempotencyKey,
   classifyBillingPeriod,
   computeAccess,
+  deriveSubscriptionDisplayKind,
   duplicateSubscriptionDecision,
+  isEntitlementDeniedError,
   matchSubscriptionForPeriod,
   normaliseStatus,
   paymentStatusLabel,
@@ -15,6 +17,7 @@ import {
   subscriptionBoundsForPeriod,
   assessCoupon,
   validatePlan,
+  ENTITLEMENT_DENIED_UI_MESSAGE,
   type ExistingSubscriptionRef,
   type OfficialBillingSemester,
   type OfficialBillingYear,
@@ -321,5 +324,67 @@ describe("assessCoupon existing rules", () => {
     assert.equal(fixed.valid, true);
     assert.equal(fixed.discount, 10);
     assert.equal(fixed.finalAmount, 30);
+  });
+});
+
+describe("deriveSubscriptionDisplayKind", () => {
+  it("maps checkout payment statuses for pending access", () => {
+    assert.equal(
+      deriveSubscriptionDisplayKind({
+        access: "pending",
+        openCheckoutPaymentStatus: "created",
+      }),
+      "awaiting_transfer",
+    );
+    assert.equal(
+      deriveSubscriptionDisplayKind({
+        access: "pending",
+        openCheckoutPaymentStatus: "rejected",
+      }),
+      "awaiting_transfer",
+    );
+    assert.equal(
+      deriveSubscriptionDisplayKind({
+        access: "pending",
+        openCheckoutPaymentStatus: "submitted",
+      }),
+      "awaiting_admin",
+    );
+  });
+
+  it("detects scheduled subscriptions from a future start date without open checkout", () => {
+    assert.equal(
+      deriveSubscriptionDisplayKind({
+        access: "pending",
+        subscriptionStartsAt: "2026-12-01",
+        today: "2026-08-16",
+      }),
+      "scheduled",
+    );
+  });
+
+  it("does not label scheduled users as awaiting transfer after admin review", () => {
+    const kind = deriveSubscriptionDisplayKind({
+      access: "pending",
+      subscriptionStartsAt: "2026-12-01",
+      subscriptionExpiresAt: "2027-06-30",
+      openCheckoutPaymentStatus: null,
+      today: "2026-08-16",
+    });
+    assert.equal(kind, "scheduled");
+    assert.notEqual(kind, "awaiting_transfer");
+  });
+
+  it("preserves active/expired/none access labels", () => {
+    assert.equal(deriveSubscriptionDisplayKind({ access: "active" }), "active");
+    assert.equal(deriveSubscriptionDisplayKind({ access: "expired" }), "expired");
+    assert.equal(deriveSubscriptionDisplayKind({ access: "none" }), "none");
+  });
+});
+
+describe("isEntitlementDeniedError", () => {
+  it("matches the server entitlement denial message", () => {
+    assert.equal(isEntitlementDeniedError(new Error(ENTITLEMENT_DENIED_UI_MESSAGE)), true);
+    assert.equal(isEntitlementDeniedError(new Error("خطأ آخر")), false);
   });
 });

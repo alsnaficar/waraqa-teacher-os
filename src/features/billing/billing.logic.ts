@@ -121,6 +121,58 @@ export function grantsAccess(access: SubscriptionAccess): boolean {
   return access === "active" || access === "expiring";
 }
 
+/** Presentation-only vocabulary. Does not affect entitlement or access checks. */
+export type SubscriptionDisplayKind =
+  "none" | "awaiting_transfer" | "awaiting_admin" | "scheduled" | "active" | "expiring" | "expired";
+
+export interface DeriveSubscriptionDisplayKindInput {
+  access: SubscriptionAccess;
+  subscriptionStartsAt?: string | null;
+  subscriptionExpiresAt?: string | null;
+  openCheckoutPaymentStatus?: string | null;
+  today?: string;
+}
+
+/**
+ * Maps server subscription/checkout state to UI labels without changing access logic.
+ * Uses checkout payment status when present; otherwise infers scheduled subscriptions
+ * from a future official start date with no open checkout.
+ */
+export function deriveSubscriptionDisplayKind(
+  input: DeriveSubscriptionDisplayKindInput,
+): SubscriptionDisplayKind {
+  const today = input.today ?? todayIso();
+  const paymentStatus = input.openCheckoutPaymentStatus?.trim() || null;
+
+  if (input.access === "none") return "none";
+  if (input.access === "active") return "active";
+  if (input.access === "expiring") return "expiring";
+  if (input.access === "expired") return "expired";
+
+  if (paymentStatus === "submitted") return "awaiting_admin";
+  if (paymentStatus === "created" || paymentStatus === "rejected") return "awaiting_transfer";
+
+  const startsAt = input.subscriptionStartsAt?.trim() || null;
+  if (startsAt && daysUntil(startsAt, today) > 0) return "scheduled";
+
+  if (paymentStatus) return "awaiting_transfer";
+
+  return "awaiting_admin";
+}
+
+/** Matches the server entitlement denial message for UI-only CTA wiring. */
+export const ENTITLEMENT_DENIED_UI_MESSAGE =
+  "هذه الميزة تتطلب اشتراكاً نشطاً. لا يمكن المتابعة بدون صلاحية.";
+
+export function isEntitlementDeniedError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message;
+  return (
+    message.includes(ENTITLEMENT_DENIED_UI_MESSAGE) ||
+    message.includes("FEATURE_ENTITLEMENT_REQUIRED")
+  );
+}
+
 export function normaliseStatus(value: string | null | undefined): SubscriptionStatus {
   if (value === "active" || value === "pending" || value === "expired" || value === "cancelled") {
     return value;

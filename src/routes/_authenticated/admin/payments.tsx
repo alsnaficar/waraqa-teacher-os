@@ -70,6 +70,66 @@ function formatPeriod(startsOn: string, endsOn: string): string {
   return `${formatDate(startsOn)} – ${formatDate(endsOn)}`;
 }
 
+function PaymentAmountDetails({
+  amountSar,
+  discountSar,
+  netSar,
+  currency,
+  compact = false,
+}: {
+  amountSar: number;
+  discountSar: number;
+  netSar: number;
+  currency: string;
+  compact?: boolean;
+}) {
+  if (!(discountSar > 0)) {
+    return <span className="font-semibold tabular-nums">{formatSar(netSar, currency)}</span>;
+  }
+
+  if (compact) {
+    return (
+      <div className="space-y-0.5 text-end">
+        <p className="text-xs text-muted-foreground line-through">
+          {formatSar(amountSar, currency)}
+        </p>
+        <p className="font-semibold tabular-nums">{formatSar(netSar, currency)}</p>
+        <p className="text-xs text-emerald-700 dark:text-emerald-300">
+          خصم {formatSar(discountSar, currency)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <dl className="grid min-w-0 gap-1 text-sm">
+      <div className="flex min-w-0 justify-between gap-3">
+        <dt className="text-muted-foreground">السعر الأصلي</dt>
+        <dd className="tabular-nums">{formatSar(amountSar, currency)}</dd>
+      </div>
+      <div className="flex min-w-0 justify-between gap-3">
+        <dt className="text-muted-foreground">الخصم</dt>
+        <dd className="tabular-nums text-emerald-700 dark:text-emerald-300">
+          {formatSar(discountSar, currency)}
+        </dd>
+      </div>
+      <div className="flex min-w-0 justify-between gap-3">
+        <dt className="text-muted-foreground">المبلغ النهائي</dt>
+        <dd className="font-semibold tabular-nums">{formatSar(netSar, currency)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function ReceiptAvailability({ hasReceipt }: { hasReceipt: boolean }) {
+  if (hasReceipt) return null;
+  return (
+    <Badge variant="outline" className="whitespace-normal text-muted-foreground">
+      بدون إيصال
+    </Badge>
+  );
+}
+
 function subscriptionStatusLabel(status: string): string {
   switch (status) {
     case "pending_payment":
@@ -297,12 +357,19 @@ function AdminPaymentsPage() {
                           <Badge variant="outline" className="max-w-full whitespace-normal">
                             {subscriptionStatusLabel(item.subscription.status)}
                           </Badge>
+                          <ReceiptAvailability hasReceipt={item.hasReceipt} />
                         </div>
                         <dl className="grid min-w-0 gap-1.5 text-sm">
                           <div className="flex min-w-0 justify-between gap-3">
                             <dt className="text-muted-foreground">المبلغ</dt>
-                            <dd className="font-semibold tabular-nums">
-                              {formatSar(item.netSar, item.currency)}
+                            <dd>
+                              <PaymentAmountDetails
+                                amountSar={item.amountSar}
+                                discountSar={item.discountSar}
+                                netSar={item.netSar}
+                                currency={item.currency}
+                                compact
+                              />
                             </dd>
                           </div>
                           <div className="flex min-w-0 justify-between gap-3">
@@ -410,8 +477,17 @@ function AdminPaymentsPage() {
                         <TableCell className="py-3.5 align-top">
                           {item.plan.name || item.plan.code || "—"}
                         </TableCell>
-                        <TableCell className="py-3.5 align-top tabular-nums">
-                          {formatSar(item.netSar, item.currency)}
+                        <TableCell className="py-3.5 align-top">
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <PaymentAmountDetails
+                              amountSar={item.amountSar}
+                              discountSar={item.discountSar}
+                              netSar={item.netSar}
+                              currency={item.currency}
+                              compact
+                            />
+                            <ReceiptAvailability hasReceipt={item.hasReceipt} />
+                          </div>
                         </TableCell>
                         <TableCell className="py-3.5 align-top">
                           <span className="break-all font-mono text-sm" dir="ltr">
@@ -508,11 +584,13 @@ function AdminPaymentsPage() {
                 </p>
               </div>
               <dl className="grid min-w-0 gap-2 text-sm">
-                <div className="flex min-w-0 justify-between gap-3">
-                  <dt className="text-muted-foreground">المبلغ</dt>
-                  <dd className="font-semibold tabular-nums">
-                    {formatSar(selected.netSar, selected.currency)}
-                  </dd>
+                <div className="min-w-0">
+                  <PaymentAmountDetails
+                    amountSar={selected.amountSar}
+                    discountSar={selected.discountSar}
+                    netSar={selected.netSar}
+                    currency={selected.currency}
+                  />
                 </div>
                 <div className="flex min-w-0 justify-between gap-3">
                   <dt className="text-muted-foreground">رقم التحويل</dt>
@@ -607,11 +685,13 @@ function AdminPaymentsPage() {
                 </p>
               </div>
               <dl className="grid min-w-0 gap-2 text-sm">
-                <div className="flex min-w-0 justify-between gap-3">
-                  <dt className="text-muted-foreground">المبلغ</dt>
-                  <dd className="font-semibold tabular-nums">
-                    {formatSar(rejectTarget.netSar, rejectTarget.currency)}
-                  </dd>
+                <div className="min-w-0">
+                  <PaymentAmountDetails
+                    amountSar={rejectTarget.amountSar}
+                    discountSar={rejectTarget.discountSar}
+                    netSar={rejectTarget.netSar}
+                    currency={rejectTarget.currency}
+                  />
                 </div>
                 <div className="flex min-w-0 justify-between gap-3">
                   <dt className="text-muted-foreground">رقم التحويل</dt>
