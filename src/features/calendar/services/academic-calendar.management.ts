@@ -510,8 +510,17 @@ export async function listAdminAcademicYears(
   auth: SupabaseUserContext,
   adminClient: AdminClient,
 ): Promise<AcademicYearRecord[]> {
-  await requireAdminActor(auth, adminClient);
-  return listAcademicYears(auth);
+  const { client } = await requireAdminActor(auth, adminClient);
+
+  const { data, error } = await client
+    .from("academic_years")
+    .select("id, label, start_date, end_date, is_active")
+    .order("is_active", { ascending: false })
+    .order("start_date", { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map(mapYear);
 }
 
 export async function createAdminAcademicYear(

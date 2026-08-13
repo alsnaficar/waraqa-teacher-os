@@ -53,7 +53,7 @@ const emptyYearForm = {
   label: "",
   startDate: "",
   endDate: "",
-  activate: true,
+  activate: false,
 };
 const emptySemesterForm = { label: "", startDate: "", endDate: "", orderIndex: 0 };
 
@@ -485,7 +485,7 @@ function AdminAcademicCalendarPage() {
                     </p>
                   </div>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="max-h-[min(24rem,70vh)] space-y-2 overflow-y-auto overscroll-contain">
                     {years.map((year) => {
                       const selected = year.id === selectedYearId;
                       return (

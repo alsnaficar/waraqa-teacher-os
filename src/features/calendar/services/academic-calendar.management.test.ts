@@ -22,6 +22,7 @@ import {
   deleteAdminAcademicYear,
   deleteAdminSemester,
   listAcademicYears,
+  listAdminAcademicYears,
   updateAdminAcademicYear,
   updateAdminSemester,
 } from "./academic-calendar.management.ts";
@@ -1148,6 +1149,92 @@ describe("admin academic year / semester management", () => {
     assert.equal(years[0].id, "y-a");
   });
 
+  it("creating a future year with activate false keeps the current year active", async () => {
+    const { client, db } = createMockClient(existingOwnedCalendar(USER_A));
+    const created = await createAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
+      label: "العام الدراسي 1449-1450هـ",
+      startDate: "2027-08-22",
+      endDate: "2028-01-13",
+      activate: false,
+    });
+    assert.equal(created.isActive, false);
+    assert.equal(db.academic_years.find((y) => y.id === EXISTING_YEAR_ID)?.is_active, true);
+    assert.equal(db.academic_years.length, 2);
+  });
+
+  it("listAdminAcademicYears is not owner-filtered", async () => {
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: "y-a",
+          user_id: USER_A,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: "2027-01-08",
+          is_active: true,
+        },
+        {
+          id: "y-b",
+          user_id: USER_B,
+          label: "العام الدراسي 1449-1450هـ",
+          start_date: "2027-08-22",
+          end_date: "2028-01-13",
+          is_active: false,
+        },
+      ],
+    });
+    const years = await listAdminAcademicYears(auth(USER_A, client), mockAdminClient("admin"));
+    assert.equal(years.length, 2);
+    assert.equal(
+      years
+        .map((year) => year.id)
+        .sort()
+        .join(","),
+      "y-a,y-b",
+    );
+  });
+
+  it("listAdminAcademicYears returns every year without truncating to 4", async () => {
+    const makeYears = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `year-${String(index + 1).padStart(2, "0")}`,
+        user_id: index % 2 === 0 ? USER_A : USER_B,
+        label: `عام ${1448 + index}`,
+        start_date: `${2026 + index}-08-23`,
+        end_date: `${2027 + index}-07-01`,
+        is_active: index === 0,
+      }));
+
+    const ten = createMockClient({ academic_years: makeYears(10) });
+    const tenYears = await listAdminAcademicYears(
+      auth(USER_A, ten.client),
+      mockAdminClient("admin"),
+    );
+    assert.equal(tenYears.length, 10);
+
+    const fifty = createMockClient({ academic_years: makeYears(50) });
+    const fiftyYears = await listAdminAcademicYears(
+      auth(USER_A, fifty.client),
+      mockAdminClient("admin"),
+    );
+    assert.equal(fiftyYears.length, 50);
+  });
+
+  it("admin list query does not filter by user_id while create still writes JWT user_id", () => {
+    const source = readFileSync(join(ROOT, MANAGEMENT_FILE), "utf8");
+    const adminList = source.slice(
+      source.indexOf("export async function listAdminAcademicYears"),
+      source.indexOf("export async function createAdminAcademicYear"),
+    );
+    const ownerList = source.slice(
+      source.indexOf("export async function listAcademicYears"),
+      source.indexOf("export async function listSemestersForYear"),
+    );
+    assert.equal(/\.eq\("user_id"/.test(adminList), false);
+    assert.match(ownerList, /\.eq\("user_id"/);
+    assert.match(source, /user_id:\s*userId/);
+  });
+
   it("invalid academic-year date range rejected", async () => {
     const { client } = createMockClient({ academic_years: [] });
     await assert.rejects(
@@ -1384,6 +1471,12 @@ describe("academic calendar server / UI security wiring", () => {
     assert.match(page, /window\.confirm/);
     assert.match(page, /سنة نشطة/);
     assert.match(page, /الترتيب/);
+    assert.match(page, /activate:\s*false/);
+    assert.equal(/activate:\s*true/.test(page), false);
+    assert.match(page, /activate:\s*yearForm\.activate/);
+    assert.match(page, /overflow-y-auto/);
+    assert.match(page, /years\.map/);
+    assert.equal(/slice\(0,\s*4\)/.test(page), false);
     assert.equal(/userId:\s*|teacherId:|ownerId:|profileId:/.test(page), false);
     assert.match(shell, /\/admin\/academic-calendar/);
     assert.match(shell, /التقويم الدراسي/);
