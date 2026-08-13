@@ -45,10 +45,26 @@ export {
 
 export { MadrasatiSyncService } from "./sync/madrasati-sync.service.ts";
 export type {
+  MadrasatiApplyAuthContext,
+  MadrasatiApplyOptions,
+  MadrasatiApplyResult,
   MadrasatiSyncPreviewCounts,
   MadrasatiSyncResult,
   MadrasatiSyncServiceOptions,
 } from "./sync/madrasati-sync.service.ts";
+export {
+  MADRASATI_APPLY_EMPTY_CODE,
+  MADRASATI_APPLY_INCOMPLETE_CODE,
+  MADRASATI_APPLY_NOT_MOCK_CODE,
+  MADRASATI_MOCK_APPLY_DISCLAIMER,
+  MADRASATI_APPLY_EMPTY_MESSAGE,
+  MADRASATI_APPLY_INCOMPLETE_MESSAGE,
+  MADRASATI_APPLY_NOT_MOCK_MESSAGE,
+} from "./sync/madrasati-sync.service.ts";
+export {
+  mapMadrasatiTimetableToTeacherDrafts,
+  type TeacherTimetableDraft,
+} from "./sync/map-to-teacher-timetable.ts";
 export {
   normalizeTimetableEntries,
   type NormalizedTimetableResult,
