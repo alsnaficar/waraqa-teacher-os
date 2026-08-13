@@ -1,10 +1,11 @@
-import { getHolidayDates } from "@/features/calendar/services/calendar.service";
-import { supabase } from "@/platform/database/supabase/client";
-import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import {
   getActiveAcademicYear,
   getCurrentAcademicTerm,
+  getHolidayDates,
+  type CalendarAcademicYear,
+  type CalendarTerm,
 } from "@/features/calendar/services/calendar.service";
+import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 
@@ -118,6 +119,7 @@ export function normalisePlanEntry(
   };
 }
 
+/** Legacy fixture kept for tests and identity checks — not a generation success path. */
 export const DEFAULT_CALENDAR: AcademicCalendarConfig = {
   academicYear: "1447",
   semesterId: "s1",
@@ -211,24 +213,47 @@ export async function loadTimetable(context?: SupabaseUserContext): Promise<Time
   return DEFAULT_TIMETABLE;
 }
 
-export async function loadCalendarConfig(): Promise<AcademicCalendarConfig> {
-  const year = await getActiveAcademicYear();
-  const term = await getCurrentAcademicTerm();
+export const PLANNER_CALENDAR_REQUIRED_MESSAGE =
+  "لا يمكن توليد خطة الفصل بدون تقويم دراسي رسمي صالح.";
 
-  if (!year || !term || !term.startDate || !term.endDate) {
-    return DEFAULT_CALENDAR;
+/**
+ * Maps an official year/term into planner calendar config.
+ *
+ * Official complete dates win. A null academic-year end date is irrelevant.
+ * Missing or incomplete official dates fail closed — DEFAULT_CALENDAR is never
+ * a generation success path.
+ */
+export function resolvePlannerCalendarConfig(
+  year: CalendarAcademicYear | null,
+  term: CalendarTerm | null,
+): AcademicCalendarConfig {
+  if (year && term?.startDate && term.endDate) {
+    return {
+      academicYear: year.label,
+      semesterId: term.id,
+      semesterStart: term.startDate,
+      semesterEnd: term.endDate,
+      teachingWeeksCount: 15,
+      periodsPerDay: 7,
+      workingDays: [0, 1, 2, 3, 4],
+      holidays: [],
+      examWeeks: [],
+    };
   }
 
+  throw new Error(PLANNER_CALENDAR_REQUIRED_MESSAGE);
+}
+
+export async function loadCalendarConfig(
+  context?: SupabaseUserContext,
+): Promise<AcademicCalendarConfig> {
+  const year = await getActiveAcademicYear(context);
+  const term = await getCurrentAcademicTerm(context);
+  const config = resolvePlannerCalendarConfig(year, term);
+
   return {
-    academicYear: year.label,
-    semesterId: term.id,
-    semesterStart: term.startDate,
-    semesterEnd: term.endDate,
-    teachingWeeksCount: 15,
-    periodsPerDay: 7,
-    workingDays: [0, 1, 2, 3, 4],
-    holidays: await getHolidayDates(),
-    examWeeks: [],
+    ...config,
+    holidays: await getHolidayDates(context),
   };
 }
 
@@ -530,7 +555,7 @@ export async function generateSchedule(
   });
 
   // 4. Load config, timetable and overrides
-  const config = await loadCalendarConfig();
+  const config = await loadCalendarConfig(resolved);
   const timetable = await loadTimetable(resolved);
   const overrides = await loadUserOverrides(planId, resolved);
 
