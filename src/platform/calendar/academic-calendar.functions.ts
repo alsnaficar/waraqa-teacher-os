@@ -56,6 +56,7 @@ const UpdateAcademicYearInput = z.object({
   label: z.string().min(1).max(120),
   startDate: IsoDate,
   endDate: IsoDate,
+  isActive: z.boolean().optional(),
 });
 
 const UpdateSemesterInput = z.object({
@@ -155,6 +156,7 @@ export const updateAdminAcademicYear = createServerFn({ method: "POST" })
       label: data.label,
       startDate: data.startDate,
       endDate: data.endDate,
+      isActive: data.isActive,
     });
   });
 

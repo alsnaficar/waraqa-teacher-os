@@ -92,11 +92,13 @@ function AdminAcademicCalendarPage() {
     label: "",
     startDate: "",
     endDate: "",
+    isActive: false,
   });
   const [semesterEditForm, setSemesterEditForm] = useState({
     label: "",
     startDate: "",
     endDate: "",
+    orderIndex: 0,
   });
   const [savingYearEdit, setSavingYearEdit] = useState(false);
   const [savingSemesterEdit, setSavingSemesterEdit] = useState(false);
@@ -252,6 +254,7 @@ function AdminAcademicCalendarPage() {
       label: year.label,
       startDate: year.startDate,
       endDate: year.endDate,
+      isActive: year.isActive,
     });
   };
 
@@ -261,6 +264,7 @@ function AdminAcademicCalendarPage() {
       label: sem.label,
       startDate: sem.startDate,
       endDate: sem.endDate,
+      orderIndex: sem.orderIndex,
     });
   };
 
@@ -275,6 +279,15 @@ function AdminAcademicCalendarPage() {
       toast.error("تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
       return;
     }
+    if (
+      yearEditForm.startDate !== editingYear.startDate ||
+      yearEditForm.endDate !== editingYear.endDate
+    ) {
+      const confirmed = window.confirm(
+        "سيتم تغيير تواريخ السنة الدراسية. الحصص المرتبطة تبقى على نفس السنة. هل تريد حفظ التعديلات؟",
+      );
+      if (!confirmed) return;
+    }
     setSavingYearEdit(true);
     try {
       const updated = await updateAdminAcademicYear({
@@ -283,6 +296,7 @@ function AdminAcademicCalendarPage() {
           label: yearEditForm.label.trim(),
           startDate: yearEditForm.startDate,
           endDate: yearEditForm.endDate,
+          isActive: yearEditForm.isActive,
         },
       });
       toast.success("تم حفظ تعديل السنة الدراسية");
@@ -320,6 +334,15 @@ function AdminAcademicCalendarPage() {
       toast.error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية");
       return;
     }
+    if (
+      semesterEditForm.startDate !== editingSemester.startDate ||
+      semesterEditForm.endDate !== editingSemester.endDate
+    ) {
+      const confirmed = window.confirm(
+        "سيتم تغيير تواريخ الفصل الدراسي. الحصص المرتبطة تبقى على نفس الفصل. هل تريد حفظ التعديلات؟",
+      );
+      if (!confirmed) return;
+    }
     setSavingSemesterEdit(true);
     try {
       await updateAdminSemester({
@@ -329,6 +352,7 @@ function AdminAcademicCalendarPage() {
           label: semesterEditForm.label.trim(),
           startDate: semesterEditForm.startDate,
           endDate: semesterEditForm.endDate,
+          orderIndex: semesterEditForm.orderIndex,
         },
       });
       toast.success("تم حفظ تعديل الفصل الدراسي");
@@ -649,7 +673,8 @@ function AdminAcademicCalendarPage() {
                                   )}
                                 </div>
                                 <p className="text-[11px] text-muted-foreground">
-                                  {sem.startDate || "—"} → {sem.endDate || "—"}
+                                  {sem.startDate || "—"} → {sem.endDate || "—"} · الترتيب:{" "}
+                                  {sem.orderIndex}
                                 </p>
                                 {sem.startDate || sem.endDate ? (
                                   <p className="text-[11px] text-muted-foreground">
@@ -730,6 +755,15 @@ function AdminAcademicCalendarPage() {
                 </p>
               ) : null}
             </div>
+            <label className="sm:col-span-2 flex items-center gap-2 text-xs font-medium text-slate-700 min-h-[44px]">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={yearEditForm.isActive}
+                onChange={(e) => setYearEditForm((f) => ({ ...f, isActive: e.target.checked }))}
+              />
+              سنة نشطة (سنة واحدة فقط تكون نشطة)
+            </label>
             <DialogFooter className="sm:col-span-2 flex flex-wrap gap-2">
               <Button type="submit" disabled={savingYearEdit} className="h-11 font-bold text-xs">
                 {savingYearEdit ? "جارٍ الحفظ…" : "حفظ التعديلات"}
@@ -798,6 +832,22 @@ function AdminAcademicCalendarPage() {
                   الهجري: {hijriHint(semesterEditForm.endDate)}
                 </p>
               ) : null}
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-xs font-bold">الترتيب</Label>
+              <Input
+                type="number"
+                min={0}
+                max={20}
+                className="h-11"
+                value={semesterEditForm.orderIndex}
+                onChange={(e) =>
+                  setSemesterEditForm((f) => ({
+                    ...f,
+                    orderIndex: Number.parseInt(e.target.value, 10) || 0,
+                  }))
+                }
+              />
             </div>
             <DialogFooter className="sm:col-span-2 flex flex-wrap gap-2">
               <Button

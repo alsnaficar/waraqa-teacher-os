@@ -293,6 +293,7 @@ export async function updateAcademicYear(
     label: string;
     startDate: string;
     endDate: string;
+    isActive?: boolean;
   },
 ): Promise<AcademicYearRecord> {
   const { client, userId } = requireAuth(auth);
@@ -334,12 +335,25 @@ export async function updateAcademicYear(
     });
   }
 
+  const nextActive = input.isActive ?? owned.is_active;
+  if (nextActive) {
+    const { error: clearError } = await client
+      .from("academic_years")
+      .update({ is_active: false })
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .neq("id", owned.id);
+
+    if (clearError) throw clearError;
+  }
+
   const { data, error } = await client
     .from("academic_years")
     .update({
       label,
       start_date: input.startDate,
       end_date: input.endDate,
+      is_active: nextActive,
     })
     .eq("id", owned.id)
     .eq("user_id", userId)
@@ -531,6 +545,7 @@ export async function updateAdminAcademicYear(
     label: string;
     startDate: string;
     endDate: string;
+    isActive?: boolean;
   },
 ): Promise<AcademicYearRecord> {
   await requireAdminActor(auth, adminClient);
