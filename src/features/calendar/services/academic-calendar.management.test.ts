@@ -10,6 +10,7 @@ import {
   assertSemesterWithinAcademicYear,
   assertSemestersDoNotOverlap,
   assertValidDateRange,
+  assertValidStartAndOptionalEnd,
   normalizeCalendarLabel,
 } from "./academic-calendar.logic.ts";
 import {
@@ -264,6 +265,10 @@ describe("academic calendar validation logic", () => {
       /تتداخل/,
     );
   });
+
+  it("allows a start date without an end date", () => {
+    assert.doesNotThrow(() => assertValidStartAndOptionalEnd("2026-08-23", null));
+  });
 });
 
 describe("admin academic year / semester management", () => {
@@ -509,6 +514,65 @@ describe("admin academic year / semester management", () => {
     assert.equal(db.lesson_sessions.length, 1);
     assert.equal(db.lesson_sessions[0].academic_year_id, EXISTING_YEAR_ID);
     assert.equal(db.lesson_sessions[0].semester_id, EXISTING_SEMESTER_ID);
+  });
+
+  it("admin can set official 1448 start and nullable end without touching semester or sessions", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "العام الدراسي الحالي 1447هـ",
+          start_date: "2026-08-30",
+          end_date: "2027-07-01",
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الفصل الدراسي الأول",
+          start_date: "2026-08-30",
+          end_date: "2027-01-08",
+          order_index: 1,
+        },
+      ],
+      lesson_sessions: Array.from({ length: 14 }, (_, i) => ({
+        id: `sess-${i}`,
+        academic_year_id: EXISTING_YEAR_ID,
+        semester_id: EXISTING_SEMESTER_ID,
+      })),
+      semester_plans: [
+        {
+          id: "plan-1",
+          academic_year_id: EXISTING_YEAR_ID,
+          semester_id: EXISTING_SEMESTER_ID,
+        },
+      ],
+    });
+    const updated = await updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
+      academicYearId: EXISTING_YEAR_ID,
+      label: "العام الدراسي 1448-1449هـ",
+      startDate: "2026-08-23",
+      endDate: null,
+      isActive: true,
+    });
+    assert.equal(updated.id, EXISTING_YEAR_ID);
+    assert.equal(updated.label, "العام الدراسي 1448-1449هـ");
+    assert.equal(updated.startDate, "2026-08-23");
+    assert.equal(updated.endDate, "");
+    assert.equal(db.academic_years.length, 1);
+    assert.equal(db.academic_years[0].end_date, null);
+    assert.equal(db.semesters[0].id, EXISTING_SEMESTER_ID);
+    assert.equal(db.semesters[0].start_date, "2026-08-30");
+    assert.equal(db.semesters[0].end_date, "2027-01-08");
+    assert.equal(db.lesson_sessions.length, 14);
+    assert.ok(db.lesson_sessions.every((s) => s.academic_year_id === EXISTING_YEAR_ID));
+    assert.ok(db.lesson_sessions.every((s) => s.semester_id === EXISTING_SEMESTER_ID));
+    assert.equal(db.semester_plans[0].academic_year_id, EXISTING_YEAR_ID);
+    assert.equal(db.semester_plans[0].semester_id, EXISTING_SEMESTER_ID);
   });
 
   it("admin can update semester dates without changing id", async () => {

@@ -11,6 +11,12 @@ export function isIsoDate(value: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+export function normalizeOptionalIsoDate(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function assertValidDateRange(startDate: string, endDate: string): void {
   if (!isIsoDate(startDate) || !isIsoDate(endDate)) {
     throw new Error("التواريخ يجب أن تكون بصيغة YYYY-MM-DD.");
@@ -18,6 +24,14 @@ export function assertValidDateRange(startDate: string, endDate: string): void {
   if (startDate > endDate) {
     throw new Error("تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية.");
   }
+}
+
+export function assertValidStartAndOptionalEnd(startDate: string, endDate: string | null): void {
+  if (!isIsoDate(startDate)) {
+    throw new Error("التواريخ يجب أن تكون بصيغة YYYY-MM-DD.");
+  }
+  if (endDate == null) return;
+  assertValidDateRange(startDate, endDate);
 }
 
 export function assertSemesterWithinAcademicYear(options: {
@@ -47,6 +61,7 @@ export function assertSemestersDoNotOverlap(
   existing: Array<{ id?: string; startDate: string; endDate: string }>,
   candidate: { id?: string; startDate: string; endDate: string },
 ): void {
+  if (!candidate.endDate) return;
   assertValidDateRange(candidate.startDate, candidate.endDate);
 
   for (const row of existing) {

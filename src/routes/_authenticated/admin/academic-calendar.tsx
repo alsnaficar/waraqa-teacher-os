@@ -271,11 +271,11 @@ function AdminAcademicCalendarPage() {
   const onSaveYearEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingYear) return;
-    if (!yearEditForm.label.trim() || !yearEditForm.startDate || !yearEditForm.endDate) {
-      toast.error("أدخل الاسم وتاريخ البداية والنهاية");
+    if (!yearEditForm.label.trim() || !yearEditForm.startDate) {
+      toast.error("أدخل الاسم وتاريخ البداية");
       return;
     }
-    if (yearEditForm.startDate > yearEditForm.endDate) {
+    if (yearEditForm.endDate && yearEditForm.startDate > yearEditForm.endDate) {
       toast.error("تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
       return;
     }
@@ -295,7 +295,7 @@ function AdminAcademicCalendarPage() {
           academicYearId: editingYear.id,
           label: yearEditForm.label.trim(),
           startDate: yearEditForm.startDate,
-          endDate: yearEditForm.endDate,
+          endDate: yearEditForm.endDate || null,
           isActive: yearEditForm.isActive,
         },
       });
@@ -314,22 +314,22 @@ function AdminAcademicCalendarPage() {
   const onSaveSemesterEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSemester) return;
-    if (
-      !semesterEditForm.label.trim() ||
-      !semesterEditForm.startDate ||
-      !semesterEditForm.endDate
-    ) {
-      toast.error("أدخل الاسم وتاريخ البداية والنهاية");
+    if (!semesterEditForm.label.trim() || !semesterEditForm.startDate) {
+      toast.error("أدخل الاسم وتاريخ البداية");
       return;
     }
-    if (semesterEditForm.startDate > semesterEditForm.endDate) {
+    if (semesterEditForm.endDate && semesterEditForm.startDate > semesterEditForm.endDate) {
       toast.error("تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
       return;
     }
+    if (selectedYear && semesterEditForm.startDate < selectedYear.startDate) {
+      toast.error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية");
+      return;
+    }
     if (
-      selectedYear &&
-      (semesterEditForm.startDate < selectedYear.startDate ||
-        semesterEditForm.endDate > selectedYear.endDate)
+      selectedYear?.endDate &&
+      semesterEditForm.endDate &&
+      semesterEditForm.endDate > selectedYear.endDate
     ) {
       toast.error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية");
       return;
@@ -351,7 +351,7 @@ function AdminAcademicCalendarPage() {
           academicYearId: editingSemester.academicYearId,
           label: semesterEditForm.label.trim(),
           startDate: semesterEditForm.startDate,
-          endDate: semesterEditForm.endDate,
+          endDate: semesterEditForm.endDate || null,
           orderIndex: semesterEditForm.orderIndex,
         },
       });
@@ -710,8 +710,8 @@ function AdminAcademicCalendarPage() {
           <DialogHeader>
             <DialogTitle>تعديل السنة الدراسية</DialogTitle>
             <DialogDescription>
-              عدّل الاسم وتاريخ البداية والنهاية للصف الحالي فقط. أدخل التواريخ الرسمية الصادرة من
-              وزارة التعليم يدويًا. المعرّف لا يتغير.
+              عدّل الاسم وتاريخ البداية للصف الحالي فقط. يمكن ترك تاريخ النهاية فارغًا إذا لم يُنشر
+              رسميًا بعد. المعرّف لا يتغير.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSaveYearEdit} className="grid gap-3 sm:grid-cols-2">
@@ -721,7 +721,7 @@ function AdminAcademicCalendarPage() {
                 className="h-11"
                 value={yearEditForm.label}
                 onChange={(e) => setYearEditForm((f) => ({ ...f, label: e.target.value }))}
-                placeholder="مثلاً: العام الدراسي 1448هـ - 1449هـ"
+                placeholder="مثلاً: العام الدراسي 1448-1449هـ"
                 required
               />
             </div>
@@ -747,8 +747,10 @@ function AdminAcademicCalendarPage() {
                 className="h-11"
                 value={yearEditForm.endDate}
                 onChange={(e) => setYearEditForm((f) => ({ ...f, endDate: e.target.value }))}
-                required
               />
+              <p className="text-[11px] text-muted-foreground">
+                اختياري. اتركه فارغًا إذا لم تُنشر النهاية رسميًا.
+              </p>
               {yearEditForm.endDate ? (
                 <p className="text-[11px] text-muted-foreground">
                   الهجري: {hijriHint(yearEditForm.endDate)}
@@ -789,8 +791,8 @@ function AdminAcademicCalendarPage() {
           <DialogHeader>
             <DialogTitle>تعديل الفصل الدراسي</DialogTitle>
             <DialogDescription>
-              عدّل الاسم وتاريخ البداية والنهاية للصف الحالي فقط. أدخل التواريخ الرسمية الصادرة من
-              وزارة التعليم يدويًا. المعرّف لا يتغير.
+              عدّل الفصل الحالي فقط عند الحاجة. لا يُغيَّر تلقائيًا عند تعديل السنة. يمكن ترك
+              النهاية فارغة. المعرّف لا يتغير.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSaveSemesterEdit} className="grid gap-3 sm:grid-cols-2">
@@ -825,8 +827,10 @@ function AdminAcademicCalendarPage() {
                 className="h-11"
                 value={semesterEditForm.endDate}
                 onChange={(e) => setSemesterEditForm((f) => ({ ...f, endDate: e.target.value }))}
-                required
               />
+              <p className="text-[11px] text-muted-foreground">
+                اختياري إذا لم تُنشر النهاية رسميًا.
+              </p>
               {semesterEditForm.endDate ? (
                 <p className="text-[11px] text-muted-foreground">
                   الهجري: {hijriHint(semesterEditForm.endDate)}

@@ -27,6 +27,7 @@ import {
 } from "@/features/calendar/services/academic-calendar.management";
 
 const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "التاريخ يجب أن يكون بصيغة YYYY-MM-DD");
+const OptionalIsoDate = z.union([IsoDate, z.literal(""), z.null()]).optional();
 
 const CreateAcademicYearInput = z.object({
   label: z.string().min(1).max(120),
@@ -55,7 +56,7 @@ const UpdateAcademicYearInput = z.object({
   academicYearId: z.string().uuid(),
   label: z.string().min(1).max(120),
   startDate: IsoDate,
-  endDate: IsoDate,
+  endDate: OptionalIsoDate,
   isActive: z.boolean().optional(),
 });
 
@@ -64,7 +65,7 @@ const UpdateSemesterInput = z.object({
   academicYearId: z.string().uuid(),
   label: z.string().min(1).max(120),
   startDate: IsoDate,
-  endDate: IsoDate,
+  endDate: OptionalIsoDate,
   orderIndex: z.number().int().min(0).max(20).optional(),
 });
 
@@ -155,7 +156,7 @@ export const updateAdminAcademicYear = createServerFn({ method: "POST" })
       academicYearId: data.academicYearId,
       label: data.label,
       startDate: data.startDate,
-      endDate: data.endDate,
+      endDate: data.endDate || null,
       isActive: data.isActive,
     });
   });
@@ -170,7 +171,7 @@ export const updateAdminSemester = createServerFn({ method: "POST" })
       academicYearId: data.academicYearId,
       label: data.label,
       startDate: data.startDate,
-      endDate: data.endDate,
+      endDate: data.endDate || null,
       orderIndex: data.orderIndex,
     });
   });

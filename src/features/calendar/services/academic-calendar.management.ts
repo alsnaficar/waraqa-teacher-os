@@ -12,7 +12,9 @@ import {
   assertSemesterWithinAcademicYear,
   assertSemestersDoNotOverlap,
   assertValidDateRange,
+  assertValidStartAndOptionalEnd,
   normalizeCalendarLabel,
+  normalizeOptionalIsoDate,
 } from "./academic-calendar.logic.ts";
 
 type AdminClient = Awaited<
@@ -292,13 +294,14 @@ export async function updateAcademicYear(
     academicYearId: string;
     label: string;
     startDate: string;
-    endDate: string;
+    endDate?: string | null;
     isActive?: boolean;
   },
 ): Promise<AcademicYearRecord> {
   const { client, userId } = requireAuth(auth);
   const label = normalizeCalendarLabel(input.label);
-  assertValidDateRange(input.startDate, input.endDate);
+  const endDate = normalizeOptionalIsoDate(input.endDate);
+  assertValidStartAndOptionalEnd(input.startDate, endDate);
 
   const { data: owned, error: ownedError } = await client
     .from("academic_years")
@@ -314,24 +317,24 @@ export async function updateAcademicYear(
 
   const semesters = await listSemestersForYear(auth, owned.id);
   for (const semester of semesters) {
-    if (
-      semester.startDate &&
-      (semester.startDate < input.startDate || semester.startDate > input.endDate)
-    ) {
+    if (semester.startDate && semester.startDate < input.startDate) {
       throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
     }
-    if (
-      semester.endDate &&
-      (semester.endDate < input.startDate || semester.endDate > input.endDate)
-    ) {
+    if (endDate && semester.startDate && semester.startDate > endDate) {
       throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
     }
-    if (!semester.startDate || !semester.endDate) continue;
+    if (semester.endDate && semester.endDate < input.startDate) {
+      throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+    }
+    if (endDate && semester.endDate && semester.endDate > endDate) {
+      throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+    }
+    if (!semester.startDate || !semester.endDate || !endDate) continue;
     assertSemesterWithinAcademicYear({
       semesterStart: semester.startDate,
       semesterEnd: semester.endDate,
       yearStart: input.startDate,
-      yearEnd: input.endDate,
+      yearEnd: endDate,
     });
   }
 
@@ -352,7 +355,7 @@ export async function updateAcademicYear(
     .update({
       label,
       start_date: input.startDate,
-      end_date: input.endDate,
+      end_date: endDate,
       is_active: nextActive,
     })
     .eq("id", owned.id)
@@ -375,12 +378,14 @@ export async function updateSemester(
     academicYearId: string;
     label: string;
     startDate: string;
-    endDate: string;
+    endDate?: string | null;
     orderIndex?: number;
   },
 ): Promise<SemesterRecord> {
   const { client, userId } = requireAuth(auth);
   const label = normalizeCalendarLabel(input.label);
+  const endDate = normalizeOptionalIsoDate(input.endDate);
+  assertValidStartAndOptionalEnd(input.startDate, endDate);
 
   const { data: owned, error: ownedError } = await client
     .from("semesters")
@@ -408,22 +413,36 @@ export async function updateSemester(
   if (!year) {
     throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
   }
-  if (!year.start_date || !year.end_date) {
-    throw new Error("السنة الدراسية تفتقد تواريخ البداية/النهاية.");
+  if (!year.start_date) {
+    throw new Error("السنة الدراسية تفتقد تاريخ البداية.");
   }
 
-  assertSemesterWithinAcademicYear({
-    semesterStart: input.startDate,
-    semesterEnd: input.endDate,
-    yearStart: year.start_date,
-    yearEnd: year.end_date,
-  });
+  if (input.startDate < year.start_date) {
+    throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+  }
+  if (year.end_date && input.startDate > year.end_date) {
+    throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+  }
+  if (endDate && endDate < year.start_date) {
+    throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+  }
+  if (year.end_date && endDate && endDate > year.end_date) {
+    throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+  }
+  if (endDate && year.end_date) {
+    assertSemesterWithinAcademicYear({
+      semesterStart: input.startDate,
+      semesterEnd: endDate,
+      yearStart: year.start_date,
+      yearEnd: year.end_date,
+    });
+  }
 
   const siblings = await listSemestersForYear(auth, year.id);
   assertSemestersDoNotOverlap(siblings, {
     id: owned.id,
     startDate: input.startDate,
-    endDate: input.endDate,
+    endDate: endDate ?? "",
   });
 
   const orderIndex =
@@ -436,7 +455,7 @@ export async function updateSemester(
     .update({
       label,
       start_date: input.startDate,
-      end_date: input.endDate,
+      end_date: endDate,
       order_index: orderIndex,
     })
     .eq("id", owned.id)
@@ -544,7 +563,7 @@ export async function updateAdminAcademicYear(
     academicYearId: string;
     label: string;
     startDate: string;
-    endDate: string;
+    endDate?: string | null;
     isActive?: boolean;
   },
 ): Promise<AcademicYearRecord> {
@@ -560,7 +579,7 @@ export async function updateAdminSemester(
     academicYearId: string;
     label: string;
     startDate: string;
-    endDate: string;
+    endDate?: string | null;
     orderIndex?: number;
   },
 ): Promise<SemesterRecord> {
