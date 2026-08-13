@@ -56,7 +56,9 @@ export function DistributionImportPanel() {
   const [semesterPlanId, setSemesterPlanId] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [acknowledgeWarnings, setAcknowledgeWarnings] = useState(false);
-  const demandPeriods = draft?.summary.totalPeriods;
+  const demandKey = draft
+    ? draft.items.map((item) => (item.periods == null ? "" : String(item.periods))).join(",")
+    : null;
 
   useEffect(() => {
     if (!draft) return;
@@ -79,7 +81,13 @@ export function DistributionImportPanel() {
   }, [draft]);
 
   useEffect(() => {
-    if (demandPeriods == null) return;
+    if (demandKey == null) return;
+    const items =
+      demandKey === ""
+        ? []
+        : demandKey.split(",").map((raw) => ({
+            periods: raw === "" ? null : Number(raw),
+          }));
     if (!semesterPlanId) {
       setDraft((current) => {
         if (!current || current.capacity.status === "unknown") return current;
@@ -92,7 +100,7 @@ export function DistributionImportPanel() {
     }
     let active = true;
     void previewDistributionCapacity({
-      data: { semesterPlanId, totalPeriods: demandPeriods },
+      data: { semesterPlanId, items },
     })
       .then((capacity) => {
         if (!active) return;
@@ -105,7 +113,7 @@ export function DistributionImportPanel() {
     return () => {
       active = false;
     };
-  }, [demandPeriods, semesterPlanId]);
+  }, [demandKey, semesterPlanId]);
 
   async function handlePreview() {
     setLoading(true);

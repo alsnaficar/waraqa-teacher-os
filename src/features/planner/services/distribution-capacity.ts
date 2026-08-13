@@ -17,7 +17,10 @@ import {
   type DistributionCapacity,
   type DistributionDraft,
 } from "./distribution-import.logic.ts";
-import { compareDistributionCapacity } from "./distribution-capacity.logic.ts";
+import {
+  compareDistributionCapacity,
+  resolveDistributionDemand,
+} from "./distribution-capacity.logic.ts";
 import {
   buildPlanTeachingSlots,
   buildTeachingDates,
@@ -97,8 +100,10 @@ function withPlanContext(draft: DistributionDraft, plan: CapacityPlanRow): Distr
 export async function computeDistributionCapacityForPlan(
   context: SupabaseUserContext,
   semesterPlanId: string,
-  demandPeriods: number,
+  items: Array<{ periods: number | null }>,
+  untrustedClientTotalPeriods?: number,
 ): Promise<{ capacity: DistributionCapacity; plan: CapacityPlanRow | null }> {
+  const demandPeriods = resolveDistributionDemand(items, untrustedClientTotalPeriods);
   const planId = semesterPlanId.trim();
   if (!planId) {
     return {
@@ -178,10 +183,14 @@ export async function attachDistributionCapacity(
   const { capacity, plan } = await computeDistributionCapacityForPlan(
     context,
     semesterPlanId,
+    draft.items,
     draft.summary.totalPeriods,
   );
   const withCapacity = { ...draft, capacity };
-  return plan ? withPlanContext(withCapacity, plan) : withCapacity;
+  if (!plan) {
+    return withDistributionPlanContext(withCapacity, null);
+  }
+  return withPlanContext(withCapacity, plan);
 }
 
 export async function attachDistributionCapacityAuthorized(
@@ -199,12 +208,17 @@ export async function previewDistributionCapacityAuthorized(
   adminClient: AdminClient,
   actorId: string,
   jwtContext: SupabaseUserContext,
-  input: { semesterPlanId: string; totalPeriods: number },
+  input: {
+    semesterPlanId: string;
+    items: Array<{ periods: number | null }>;
+    totalPeriods?: number;
+  },
 ): Promise<DistributionCapacity> {
   await assertAdmin(adminClient, actorId);
   const { capacity } = await computeDistributionCapacityForPlan(
     jwtContext,
     input.semesterPlanId,
+    input.items,
     input.totalPeriods,
   );
   return capacity;

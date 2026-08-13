@@ -5,14 +5,25 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  DISTRIBUTION_CAPACITY_CALENDAR_FAILED_NOTE,
   DISTRIBUTION_CAPACITY_DEFICIT_NOTE,
   DISTRIBUTION_CAPACITY_FIT_NOTE,
+  DISTRIBUTION_CAPACITY_NO_PLAN_NOTE,
   DISTRIBUTION_CAPACITY_NO_TIMETABLE_NOTE,
   DISTRIBUTION_CAPACITY_SURPLUS_NOTE,
+  applyCurriculumMatches,
+  parseDistributionSheet,
   unknownDistributionCapacity,
 } from "./distribution-import.logic.ts";
-import { compareDistributionCapacity } from "./distribution-capacity.logic.ts";
-import { computeDistributionCapacityForPlan } from "./distribution-capacity.ts";
+import {
+  compareDistributionCapacity,
+  resolveDistributionDemand,
+} from "./distribution-capacity.logic.ts";
+import {
+  attachDistributionCapacity,
+  computeDistributionCapacityForPlan,
+} from "./distribution-capacity.ts";
+import { decideDistributionSnapshotApproval } from "./distribution-snapshot.logic.ts";
 import {
   buildPlanTeachingSlots,
   buildTeachingDates,
@@ -156,6 +167,9 @@ function shortConfig(): AcademicCalendarConfig {
   };
 }
 
+const DEMAND_ITEMS = [{ periods: 2 }, { periods: 1 }];
+const LESSON_ID = "11111111-1111-4111-8111-111111111111";
+
 function weeklyTimetable(): TimetableSlot[] {
   return [
     { dayOfWeek: 0, period: 2, className: "1/أ", subject: "لغتي", grade: "أول متوسط" },
@@ -284,6 +298,27 @@ describe("compareDistributionCapacity", () => {
   });
 });
 
+describe("resolveDistributionDemand", () => {
+  it("ignores a spoofed client totalPeriods of 999 when items sum to 3", () => {
+    assert.equal(resolveDistributionDemand(DEMAND_ITEMS, 999), 3);
+  });
+
+  it("ignores a spoofed client totalPeriods of 0 when items sum to 3", () => {
+    assert.equal(resolveDistributionDemand(DEMAND_ITEMS, 0), 3);
+  });
+
+  it("uses the same periods>=1 rule as snapshot approval", () => {
+    const items = [
+      { periods: 2 },
+      { periods: 1 },
+      { periods: null },
+      { periods: 0 },
+      { periods: -4 },
+    ];
+    assert.equal(resolveDistributionDemand(items, 50), 3);
+  });
+});
+
 describe("buildPlanTeachingSlots", () => {
   it("uses weekly subject slots, not every school period, and skips holidays", () => {
     const timetable = weeklyTimetable();
@@ -314,7 +349,7 @@ describe("computeDistributionCapacityForPlan", () => {
     const { capacity } = await computeDistributionCapacityForPlan(
       { userId: TEACHER, client: memory.client as never },
       PLAN_ID,
-      3,
+      DEMAND_ITEMS,
     );
 
     assert.equal(capacity.status, "known");
@@ -327,13 +362,188 @@ describe("computeDistributionCapacityForPlan", () => {
     assert.equal(memory.writes.length, 0);
   });
 
+  it("uses item periods as X even when the client sends totalPeriods 999", async () => {
+    const memory = createMemoryDb(capacitySeed(), { userId: TEACHER });
+    const { capacity } = await computeDistributionCapacityForPlan(
+      { userId: TEACHER, client: memory.client as never },
+      PLAN_ID,
+      DEMAND_ITEMS,
+      999,
+    );
+    assert.equal(capacity.totalPeriods, 3);
+    assert.equal(capacity.availableSlots, 4);
+    assert.equal(capacity.delta, 1);
+    assert.equal(capacity.comparison, "surplus");
+    assert.equal(memory.writes.length, 0);
+  });
+
+  it("uses item periods as X even when the client sends totalPeriods 0", async () => {
+    const memory = createMemoryDb(capacitySeed(), { userId: TEACHER });
+    const { capacity } = await computeDistributionCapacityForPlan(
+      { userId: TEACHER, client: memory.client as never },
+      PLAN_ID,
+      DEMAND_ITEMS,
+      0,
+    );
+    assert.equal(capacity.totalPeriods, 3);
+    assert.equal(capacity.availableSlots, 4);
+    assert.equal(capacity.delta, 1);
+    assert.equal(memory.writes.length, 0);
+  });
+
+  it("matches snapshot demand for a valid draft", async () => {
+    const parsed = parseDistributionSheet(
+      [
+        ["order", "unit", "lesson", "periods", "curriculum_lesson_id"],
+        ["1", "وحدة", "درس أ", "2", LESSON_ID],
+        ["2", "وحدة", "درس ب", "1", LESSON_ID],
+      ],
+      { spreadsheetId: "sheet-abc", worksheetName: "التوزيع" },
+    );
+    const draft = applyCurriculumMatches(parsed, [{ id: LESSON_ID, title: "درس أ" }]);
+    const decision = decideDistributionSnapshotApproval({
+      draft,
+      semesterPlanId: PLAN_ID,
+      planStatus: "draft",
+      confirmed: true,
+      acknowledgeWarnings: false,
+    });
+    assert.equal(decision.ok, true);
+    if (!decision.ok) return;
+    assert.equal(resolveDistributionDemand(draft.items, 999), 3);
+    assert.equal(decision.totalPeriods, 3);
+    assert.equal(resolveDistributionDemand(draft.items), decision.totalPeriods);
+
+    const memory = createMemoryDb(capacitySeed(), { userId: TEACHER });
+    const { capacity } = await computeDistributionCapacityForPlan(
+      { userId: TEACHER, client: memory.client as never },
+      PLAN_ID,
+      draft.items,
+      999,
+    );
+    assert.equal(capacity.totalPeriods, decision.totalPeriods);
+    assert.equal(memory.writes.length, 0);
+  });
+
+  it("keeps duplicate/error demand on the same periods>=1 rule as approval", async () => {
+    const parsed = parseDistributionSheet(
+      [
+        ["order", "unit", "lesson", "periods", "curriculum_lesson_id"],
+        ["1", "وحدة", "درس أ", "2", LESSON_ID],
+        ["1", "وحدة", "درس مكرر", "2", LESSON_ID],
+        ["2", "وحدة", "درس ب", "1", LESSON_ID],
+      ],
+      { spreadsheetId: "sheet-abc", worksheetName: "التوزيع" },
+    );
+    const draft = applyCurriculumMatches(parsed, [{ id: LESSON_ID, title: "درس أ" }]);
+    const decision = decideDistributionSnapshotApproval({
+      draft,
+      semesterPlanId: PLAN_ID,
+      planStatus: "draft",
+      confirmed: true,
+      acknowledgeWarnings: false,
+    });
+    assert.equal(decision.ok, false);
+    assert.equal(resolveDistributionDemand(draft.items, 999), 5);
+    assert.equal(draft.items.filter((item) => item.status === "error").length > 0, true);
+  });
+
+  it("does not invent plan context and stays unknown without a readable plan", async () => {
+    const memory = createMemoryDb(capacitySeed(), { userId: TEACHER });
+    const parsed = parseDistributionSheet(
+      [
+        ["order", "unit", "lesson", "periods"],
+        ["1", "وحدة", "درس أ", "2"],
+        ["2", "وحدة", "درس ب", "1"],
+      ],
+      { spreadsheetId: "sheet-abc", worksheetName: "التوزيع" },
+    );
+    parsed.context = {
+      academicYearId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      semesterId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      gradeId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      subjectId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      semesterPlanId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      available: true,
+      note: null,
+    };
+    parsed.summary.totalPeriods = 999;
+    const attached = await attachDistributionCapacity(
+      parsed,
+      {
+        userId: TEACHER,
+        client: memory.client as never,
+      },
+      "00000000-0000-4000-8000-000000000000",
+    );
+    assert.equal(attached.capacity.status, "unknown");
+    assert.equal(attached.capacity.note, DISTRIBUTION_CAPACITY_NO_PLAN_NOTE);
+    assert.equal(attached.capacity.totalPeriods, 3);
+    assert.equal(attached.context.academicYearId, null);
+    assert.equal(attached.context.semesterId, null);
+    assert.equal(attached.context.gradeId, null);
+    assert.equal(attached.context.subjectId, null);
+    assert.equal(memory.writes.length, 0);
+  });
+
+  it("reads plan context from the database when the plan is readable", async () => {
+    const memory = createMemoryDb(capacitySeed(), { userId: TEACHER });
+    const parsed = parseDistributionSheet(
+      [
+        ["order", "unit", "lesson", "periods"],
+        ["1", "وحدة", "درس أ", "2"],
+        ["2", "وحدة", "درس ب", "1"],
+      ],
+      { spreadsheetId: "sheet-abc", worksheetName: "التوزيع" },
+    );
+    parsed.context = {
+      academicYearId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      semesterId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      gradeId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      subjectId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      semesterPlanId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      available: true,
+      note: null,
+    };
+    const attached = await attachDistributionCapacity(
+      parsed,
+      { userId: TEACHER, client: memory.client as never },
+      PLAN_ID,
+    );
+    assert.equal(attached.capacity.status, "known");
+    assert.equal(attached.context.academicYearId, YEAR_ID);
+    assert.equal(attached.context.semesterId, SEMESTER_ID);
+    assert.equal(attached.context.semesterPlanId, PLAN_ID);
+    assert.equal(attached.context.gradeId, null);
+    assert.equal(attached.context.subjectId, null);
+    assert.equal(memory.writes.length, 0);
+  });
+
+  it("keeps capacity unknown when the official calendar cannot be resolved", async () => {
+    const seed = capacitySeed();
+    seed.academic_years = [];
+    seed.semesters = [];
+    const memory = createMemoryDb(seed, { userId: TEACHER });
+    const { capacity } = await computeDistributionCapacityForPlan(
+      { userId: TEACHER, client: memory.client as never },
+      PLAN_ID,
+      DEMAND_ITEMS,
+      999,
+    );
+    assert.equal(capacity.status, "unknown");
+    assert.equal(capacity.availableSlots, null);
+    assert.equal(capacity.totalPeriods, 3);
+    assert.equal(capacity.note, DISTRIBUTION_CAPACITY_CALENDAR_FAILED_NOTE);
+    assert.equal(memory.writes.length, 0);
+  });
+
   it("lets an admin read another teacher's timetable as known capacity", async () => {
     const memory = createMemoryDb(capacitySeed(), { userId: ADMIN, isAdmin: true });
 
     const { capacity } = await computeDistributionCapacityForPlan(
       { userId: ADMIN, client: memory.client as never },
       PLAN_ID,
-      3,
+      DEMAND_ITEMS,
     );
 
     assert.equal(capacity.status, "known");
@@ -352,7 +562,7 @@ describe("computeDistributionCapacityForPlan", () => {
     const { capacity } = await computeDistributionCapacityForPlan(
       { userId: PEER_TEACHER, client: memory.client as never },
       PLAN_ID,
-      3,
+      DEMAND_ITEMS,
     );
 
     assert.equal(capacity.status, "unknown");
@@ -367,7 +577,7 @@ describe("computeDistributionCapacityForPlan", () => {
     const { capacity } = await computeDistributionCapacityForPlan(
       { userId: TEACHER, client: memory.client as never },
       PLAN_ID,
-      3,
+      DEMAND_ITEMS,
     );
     assert.equal(capacity.status, "unknown");
     assert.equal(capacity.availableSlots, null);
@@ -384,7 +594,7 @@ describe("computeDistributionCapacityForPlan", () => {
     const { capacity } = await computeDistributionCapacityForPlan(
       { userId: ADMIN, client: memory.client as never },
       PLAN_ID,
-      3,
+      DEMAND_ITEMS,
     );
     assert.equal(capacity.status, "unknown");
     assert.equal(capacity.availableSlots, null);
@@ -410,8 +620,12 @@ describe("capacity preview contracts", () => {
     assert.doesNotMatch(logic, /generateSchedule/);
     assert.match(engine, /buildPlanTeachingSlots\(/);
     assert.match(functions, /previewDistributionCapacity/);
+    assert.match(functions, /items:\s*z/);
+    assert.doesNotMatch(functions, /CapacityInput[\s\S]{0,280}totalPeriods/);
     assert.doesNotMatch(functions, /generateSchedule/);
     assert.match(panel, /previewDistributionCapacity/);
+    assert.match(panel, /items/);
+    assert.doesNotMatch(panel, /totalPeriods:\s*demand/);
     assert.doesNotMatch(panel, /generateSchedule/);
     assert.doesNotMatch(panel, /WESTERN/);
   });

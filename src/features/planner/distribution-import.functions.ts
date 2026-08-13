@@ -90,7 +90,13 @@ export const previewDistributionDraft = createServerFn({ method: "POST" })
 
 const CapacityInput = z.object({
   semesterPlanId: z.string().uuid(),
-  totalPeriods: z.number().int().nonnegative(),
+  items: z
+    .array(
+      z.object({
+        periods: z.number().int().nullable(),
+      }),
+    )
+    .max(500),
 });
 
 export const previewDistributionCapacity = createServerFn({ method: "POST" })
@@ -102,7 +108,7 @@ export const previewDistributionCapacity = createServerFn({ method: "POST" })
       supabaseAdmin,
       context.userId,
       authFromContext(context),
-      data,
+      { semesterPlanId: data.semesterPlanId, items: data.items },
     );
   });
 

@@ -7,9 +7,21 @@ import {
   DISTRIBUTION_CAPACITY_DEFICIT_NOTE,
   DISTRIBUTION_CAPACITY_FIT_NOTE,
   DISTRIBUTION_CAPACITY_SURPLUS_NOTE,
+  sumDistributionPeriods,
   unknownDistributionCapacity,
   type DistributionCapacity,
 } from "./distribution-import.logic.ts";
+
+/**
+ * Server demand X. Always Σ periods>=1 from items.
+ * Ignores any client-supplied totalPeriods.
+ */
+export function resolveDistributionDemand(
+  items: Array<{ periods: number | null }>,
+  _untrustedClientTotalPeriods?: number,
+): number {
+  return sumDistributionPeriods(items);
+}
 
 export function compareDistributionCapacity(
   demandPeriods: number,

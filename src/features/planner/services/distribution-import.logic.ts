@@ -284,7 +284,7 @@ function reviewReasonFrom(issues: DistributionIssue[]): string | null {
   return issues.map((entry) => entry.message).join(" ");
 }
 
-export function sumDistributionPeriods(items: DistributionDraftItem[]): number {
+export function sumDistributionPeriods(items: Array<{ periods: number | null }>): number {
   return items.reduce((sum, item) => {
     if (item.periods == null || item.periods < 1) return sum;
     return sum + item.periods;
