@@ -32,7 +32,7 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const FUNCTIONS_FILE = "src/platform/calendar/academic-calendar.functions.ts";
 const SETTINGS_FILE = "src/routes/_authenticated/settings.tsx";
-const UI_FILE = "src/features/calendar/components/academic-calendar-settings-section.tsx";
+const PLANNER_FILE = "src/routes/_authenticated/planner.tsx";
 const MANAGEMENT_FILE = "src/features/calendar/services/academic-calendar.management.ts";
 const ADMIN_PAGE = "src/routes/_authenticated/admin/academic-calendar.tsx";
 const ADMIN_SHELL = "src/components/admin/admin-shell.tsx";
@@ -1713,25 +1713,38 @@ describe("academic calendar server / UI security wiring", () => {
     assert.equal(/\.delete\(/.test(source), false);
   });
 
-  it("teacher Settings no longer exposes calendar CRUD", () => {
+  it("teacher Settings no longer exposes calendar, assignment, or weekly timetable UI", () => {
     const settings = readFileSync(join(ROOT, SETTINGS_FILE), "utf8");
-    const ui = readFileSync(join(ROOT, UI_FILE), "utf8");
-    assert.match(settings, /AcademicCalendarSettingsSection/);
-    assert.match(ui, /لم يُعتمد التقويم الدراسي بعد/);
+    const planner = readFileSync(join(ROOT, PLANNER_FILE), "utf8");
+    const timetableService = readFileSync(
+      join(ROOT, "src/features/teacher-timetable/services/teacher-timetable.service.ts"),
+      "utf8",
+    );
+    const plannerEngine = readFileSync(
+      join(ROOT, "src/features/planner/services/planner-engine.ts"),
+      "utf8",
+    );
+
+    assert.equal(/AcademicCalendarSettingsSection/.test(settings), false);
+    assert.equal(/لم يُعتمد التقويم الدراسي بعد/.test(settings), false);
+    assert.equal(/academic-calendar-settings-section/.test(settings), false);
+    assert.equal(/الإسناد الدراسي \(المواد والصفوف\)/.test(settings), false);
+    assert.equal(/الجدول الأسبوعي للحصص/.test(settings), false);
+    assert.equal(/TeacherTimetableService/.test(settings), false);
+    assert.equal(/addAssignment|removeAssignment|updateAssignment/.test(settings), false);
     assert.equal(
       /createTeacherAcademicYear|createAdminAcademicYear|activateTeacherAcademicYear|activateAdminAcademicYear|createTeacherSemester|createAdminSemester/.test(
         settings,
       ),
       false,
     );
-    assert.equal(
-      /createTeacherAcademicYear|createAdminAcademicYear|activateTeacherAcademicYear|activateAdminAcademicYear|createTeacherSemester|createAdminSemester/.test(
-        ui,
-      ),
-      false,
-    );
-    assert.equal(/إضافة سنة دراسية|إضافة فصل/.test(ui), false);
-    assert.equal(/userId:\s*|teacherId:|ownerId:/.test(ui), false);
+    assert.equal(/إضافة سنة دراسية|إضافة فصل/.test(settings), false);
+
+    assert.match(planner, /SemesterPlanCalendarField/);
+    assert.match(planner, /updateSemesterPlanCalendarVariant/);
+    assert.match(timetableService, /export class TeacherTimetableService/);
+    assert.match(plannerEngine, /TeacherTimetableService\.getTimetable/);
+    assert.match(plannerEngine, /loadTimetable/);
   });
 
   it("AI / planner / Madrasati remain unwired to calendar writes", () => {
