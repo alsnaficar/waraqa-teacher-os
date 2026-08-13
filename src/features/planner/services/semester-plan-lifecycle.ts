@@ -178,6 +178,25 @@ export async function getCurrentPlanVersion(
   return data;
 }
 
+export const SEMESTER_PLAN_SCOPE_REQUIRED_MESSAGE =
+  "لا يمكن إنشاء خطة الفصل دون عام دراسي وفصل دراسي.";
+
+async function resolveAcademicYearId(
+  provided: string | null | undefined,
+  context: SupabaseUserContext,
+): Promise<string | null> {
+  if (provided !== undefined) return provided;
+  return (await getActiveAcademicYear(context))?.id ?? null;
+}
+
+async function resolveSemesterId(
+  provided: string | null | undefined,
+  context: SupabaseUserContext,
+): Promise<string | null> {
+  if (provided !== undefined) return provided;
+  return (await getCurrentAcademicTerm(context))?.id ?? null;
+}
+
 /** Locate an existing plan for the teacher/subject/term scope. Does not create. */
 export async function findSemesterPlan(
   input: {
@@ -190,12 +209,11 @@ export async function findSemesterPlan(
   const resolved = await resolveUserContext(context);
   if (!resolved) return null;
 
-  const userId = resolved.userId;
   const subject = input.subject.trim();
   if (!subject) return null;
 
-  const yearId = input.academicYearId ?? (await getActiveAcademicYear(resolved))?.id ?? null;
-  const termId = input.semesterId ?? (await getCurrentAcademicTerm(resolved))?.id ?? null;
+  const yearId = await resolveAcademicYearId(input.academicYearId, resolved);
+  const termId = await resolveSemesterId(input.semesterId, resolved);
 
   let query = resolved.client
     .from("semester_plans")
@@ -238,8 +256,8 @@ export async function ensureSemesterPlan(
   const subject = input.subject.trim();
   if (!subject) throw new Error("المادة مطلوبة لإنشاء خطة الفصل");
 
-  const yearId = input.academicYearId ?? (await getActiveAcademicYear(resolved))?.id ?? null;
-  const termId = input.semesterId ?? (await getCurrentAcademicTerm(resolved))?.id ?? null;
+  const yearId = await resolveAcademicYearId(input.academicYearId, resolved);
+  const termId = await resolveSemesterId(input.semesterId, resolved);
 
   const existing = await findSemesterPlan(
     {
@@ -262,6 +280,10 @@ export async function ensureSemesterPlan(
 
     await linkOrphanEntriesToPlan(resolved, subject, existing.plan.id, existing.version.id);
     return existing;
+  }
+
+  if (!yearId || !termId) {
+    throw new Error(SEMESTER_PLAN_SCOPE_REQUIRED_MESSAGE);
   }
 
   const { data: created, error: createError } = await resolved.client
