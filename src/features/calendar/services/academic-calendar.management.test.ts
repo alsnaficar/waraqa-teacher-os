@@ -379,8 +379,8 @@ describe("admin academic year / semester management", () => {
     assert.equal(db.academic_years.length, 0);
   });
 
-  it("semester requires owned/managed year", async () => {
-    const { client } = createMockClient({
+  it("admin can create a semester on another admin's official year", async () => {
+    const { client, db } = createMockClient({
       academic_years: [
         {
           id: "y-b",
@@ -393,16 +393,17 @@ describe("admin academic year / semester management", () => {
       ],
       semesters: [],
     });
-    await assert.rejects(
-      () =>
-        createAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
-          academicYearId: "y-b",
-          label: "فصل",
-          startDate: "2026-01-01",
-          endDate: "2026-06-01",
-        }),
-      /غير موجودة|غير مملوكة/,
-    );
+    const created = await createAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+      academicYearId: "y-b",
+      label: "فصل",
+      startDate: "2026-01-01",
+      endDate: "2026-06-01",
+    });
+    assert.equal(created.academicYearId, "y-b");
+    assert.equal(created.label, "فصل");
+    assert.equal(db.academic_years[0].user_id, USER_B);
+    assert.equal(db.semesters[0].user_id, USER_A);
+    assert.equal(db.semesters[0].academic_year_id, "y-b");
   });
 
   it("semester date validation", async () => {
@@ -1352,6 +1353,27 @@ describe("admin academic year / semester management", () => {
     assert.match(ownerList, /\.eq\("user_id"/);
   });
 
+  it("admin write lookups and updates do not filter by user_id while insert still uses JWT", () => {
+    const source = readFileSync(join(ROOT, MANAGEMENT_FILE), "utf8");
+    const activate = source.slice(
+      source.indexOf("export async function activateAcademicYear"),
+      source.indexOf("export async function createSemester"),
+    );
+    const updateYear = source.slice(
+      source.indexOf("export async function updateAcademicYear"),
+      source.indexOf("export async function updateSemester"),
+    );
+    const updateTerm = source.slice(
+      source.indexOf("export async function updateSemester"),
+      source.indexOf("async function countLinkedLessonSessions"),
+    );
+    assert.equal(/\.eq\("user_id"/.test(activate), false);
+    assert.equal(/\.eq\("user_id"/.test(updateYear), false);
+    assert.equal(/\.eq\("user_id"/.test(updateTerm), false);
+    assert.match(source, /user_id:\s*userId/);
+    assert.match(source, /deactivateOtherActiveYears/);
+  });
+
   it("invalid academic-year date range rejected", async () => {
     const { client } = createMockClient({ academic_years: [] });
     await assert.rejects(
@@ -1365,7 +1387,7 @@ describe("admin academic year / semester management", () => {
     );
   });
 
-  it("cross-owner academic year update is rejected", async () => {
+  it("admin can update another admin's official year without changing created-by", async () => {
     const { client, db } = createMockClient({
       academic_years: [
         {
@@ -1385,25 +1407,29 @@ describe("admin academic year / semester management", () => {
         },
       ],
     });
-    await assert.rejects(
-      () =>
-        updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
-          academicYearId: EXISTING_YEAR_ID,
-          label: "مخترق",
-          startDate: "2026-08-23",
-          endDate: "2027-06-24",
-        }),
-      /غير موجودة|غير مملوكة/,
-    );
-    assert.equal(db.academic_years[0].id, EXISTING_YEAR_ID);
+    const updated = await updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
+      academicYearId: EXISTING_YEAR_ID,
+      label: "العام الدراسي 1448-1449هـ",
+      startDate: "2026-08-23",
+      endDate: "2027-06-24",
+    });
+    assert.equal(updated.id, EXISTING_YEAR_ID);
+    assert.equal(updated.label, "العام الدراسي 1448-1449هـ");
     assert.equal(db.academic_years[0].user_id, USER_B);
-    assert.equal(db.academic_years[0].label, "العام الدراسي الحالي 1447هـ");
     assert.equal(db.lesson_sessions[0].academic_year_id, EXISTING_YEAR_ID);
   });
 
-  it("cannot activate another user's academic year", async () => {
-    const { client } = createMockClient({
+  it("admin can activate another admin's year and deactivate every other active year", async () => {
+    const { client, db } = createMockClient({
       academic_years: [
+        {
+          id: "y-a",
+          user_id: USER_A,
+          label: "A",
+          start_date: "2025-01-01",
+          end_date: "2025-12-31",
+          is_active: true,
+        },
         {
           id: "y-b",
           user_id: USER_B,
@@ -1414,13 +1440,19 @@ describe("admin academic year / semester management", () => {
         },
       ],
     });
-    await assert.rejects(
-      () => activateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), "y-b"),
-      /غير موجودة|غير مملوكة/,
+    const activated = await activateAdminAcademicYear(
+      auth(USER_A, client),
+      mockAdminClient("admin"),
+      "y-b",
     );
+    assert.equal(activated.id, "y-b");
+    assert.equal(activated.isActive, true);
+    assert.equal(db.academic_years.find((y) => y.id === "y-a")?.is_active, false);
+    assert.equal(db.academic_years.find((y) => y.id === "y-b")?.is_active, true);
+    assert.equal(db.academic_years.find((y) => y.id === "y-b")?.user_id, USER_B);
   });
 
-  it("cross-user academic-year reference rejected", async () => {
+  it("admin can add a semester to another admin's official year", async () => {
     const { client, db } = createMockClient({
       academic_years: [
         {
@@ -1434,17 +1466,16 @@ describe("admin academic year / semester management", () => {
       ],
       semesters: [],
     });
-    await assert.rejects(
-      () =>
-        createSemester(auth(USER_A, client), {
-          academicYearId: "y-b",
-          label: "سرقة",
-          startDate: "2026-01-01",
-          endDate: "2026-03-01",
-        }),
-      /غير موجودة|غير مملوكة/,
-    );
-    assert.equal(db.semesters.length, 0);
+    const created = await createSemester(auth(USER_A, client), {
+      academicYearId: "y-b",
+      label: "الفصل الدراسي الأول",
+      startDate: "2026-01-01",
+      endDate: "2026-03-01",
+    });
+    assert.equal(created.academicYearId, "y-b");
+    assert.equal(db.semesters.length, 1);
+    assert.equal(db.semesters[0].user_id, USER_A);
+    assert.equal(db.academic_years[0].user_id, USER_B);
   });
 
   it("existing resolveAcademicScope can resolve the created active scope", async () => {

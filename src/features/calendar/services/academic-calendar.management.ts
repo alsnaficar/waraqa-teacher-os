@@ -1,9 +1,9 @@
 /**
  * Platform academic year / semester management.
  *
- * Writes stay compatible with current owner RLS: user_id always comes from
- * the authenticated JWT (admin actor), never from client-supplied owner fields.
- * Admin authorization (assertAdmin) is required at the admin-write boundary.
+ * Admin writes look up and update rows by id. RLS (admin-only INSERT/UPDATE/DELETE)
+ * is the authorization boundary. `user_id` is created-by metadata on INSERT from
+ * the JWT and is never taken from client input or changed on UPDATE.
  */
 
 import { assertAdmin } from "../../../platform/auth/assert-admin.ts";
@@ -91,6 +91,34 @@ function mapSemester(
   };
 }
 
+async function deactivateOtherActiveYears(
+  client: SupabaseUserContext["client"],
+  exceptYearId?: string,
+): Promise<void> {
+  let query = client.from("academic_years").update({ is_active: false }).eq("is_active", true);
+  if (exceptYearId) {
+    query = query.neq("id", exceptYearId);
+  }
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function listSemestersByAcademicYearId(
+  client: SupabaseUserContext["client"],
+  academicYearId: string,
+): Promise<SemesterRecord[]> {
+  const { data, error } = await client
+    .from("semesters")
+    .select("id, academic_year_id, label, start_date, end_date, order_index")
+    .eq("academic_year_id", academicYearId)
+    .order("order_index", { ascending: true })
+    .order("start_date", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => mapSemester(row, academicYearId));
+}
+
 // --- Read / list (JWT-scoped; current owner RLS) ---
 
 export async function listAcademicYears(auth: SupabaseUserContext): Promise<AcademicYearRecord[]> {
@@ -149,17 +177,17 @@ export async function createAcademicYear(
   const label = normalizeCalendarLabel(input.label);
   assertValidDateRange(input.startDate, input.endDate);
 
-  const existing = await listAcademicYears(auth);
-  const shouldActivate = input.activate === true || existing.length === 0;
+  const { data: existingRows, error: existingError } = await client
+    .from("academic_years")
+    .select("id")
+    .limit(1);
+
+  if (existingError) throw existingError;
+
+  const shouldActivate = input.activate === true || (existingRows ?? []).length === 0;
 
   if (shouldActivate) {
-    const { error: clearError } = await client
-      .from("academic_years")
-      .update({ is_active: false })
-      .eq("user_id", userId)
-      .eq("is_active", true);
-
-    if (clearError) throw clearError;
+    await deactivateOtherActiveYears(client);
   }
 
   const { data, error } = await client
@@ -183,40 +211,32 @@ export async function activateAcademicYear(
   auth: SupabaseUserContext,
   academicYearId: string,
 ): Promise<AcademicYearRecord> {
-  const { client, userId } = requireAuth(auth);
+  const { client } = requireAuth(auth);
 
   if (!academicYearId || typeof academicYearId !== "string") {
     throw new Error("معرّف السنة الدراسية مطلوب.");
   }
 
-  const { data: owned, error: ownedError } = await client
+  const { data: year, error: yearError } = await client
     .from("academic_years")
     .select("id, start_date, end_date")
     .eq("id", academicYearId)
-    .eq("user_id", userId)
     .maybeSingle();
 
-  if (ownedError) throw ownedError;
-  if (!owned) {
-    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+  if (yearError) throw yearError;
+  if (!year) {
+    throw new Error("السنة الدراسية غير موجودة.");
   }
-  if (!owned.start_date || !owned.end_date) {
+  if (!year.start_date || !year.end_date) {
     throw new Error("لا يمكن تفعيل سنة دراسية بدون تواريخ بداية ونهاية صحيحة.");
   }
 
-  const { error: clearError } = await client
-    .from("academic_years")
-    .update({ is_active: false })
-    .eq("user_id", userId)
-    .eq("is_active", true);
-
-  if (clearError) throw clearError;
+  await deactivateOtherActiveYears(client, year.id);
 
   const { data, error } = await client
     .from("academic_years")
     .update({ is_active: true })
-    .eq("id", academicYearId)
-    .eq("user_id", userId)
+    .eq("id", year.id)
     .select("id, label, start_date, end_date, is_active")
     .single();
 
@@ -242,12 +262,11 @@ export async function createSemester(
     .from("academic_years")
     .select("id, start_date, end_date")
     .eq("id", input.academicYearId)
-    .eq("user_id", userId)
     .maybeSingle();
 
   if (yearError) throw yearError;
   if (!year) {
-    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+    throw new Error("السنة الدراسية غير موجودة.");
   }
   if (!year.start_date || !year.end_date) {
     throw new Error("السنة الدراسية تفتقد تواريخ البداية/النهاية.");
@@ -260,7 +279,7 @@ export async function createSemester(
     yearEnd: year.end_date,
   });
 
-  const existing = await listSemestersForYear(auth, input.academicYearId);
+  const existing = await listSemestersByAcademicYearId(client, input.academicYearId);
   assertSemestersDoNotOverlap(existing, {
     startDate: input.startDate,
     endDate: input.endDate,
@@ -298,7 +317,7 @@ export async function updateAcademicYear(
     isActive?: boolean;
   },
 ): Promise<AcademicYearRecord> {
-  const { client, userId } = requireAuth(auth);
+  const { client } = requireAuth(auth);
   const label = normalizeCalendarLabel(input.label);
   const endDate = normalizeOptionalIsoDate(input.endDate);
   assertValidStartAndOptionalEnd(input.startDate, endDate);
@@ -307,15 +326,14 @@ export async function updateAcademicYear(
     .from("academic_years")
     .select("id, is_active")
     .eq("id", input.academicYearId)
-    .eq("user_id", userId)
     .maybeSingle();
 
   if (ownedError) throw ownedError;
   if (!owned) {
-    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+    throw new Error("السنة الدراسية غير موجودة.");
   }
 
-  const semesters = await listSemestersForYear(auth, owned.id);
+  const semesters = await listSemestersByAcademicYearId(client, owned.id);
   for (const semester of semesters) {
     if (semester.startDate && semester.startDate < input.startDate) {
       throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
@@ -340,14 +358,7 @@ export async function updateAcademicYear(
 
   const nextActive = input.isActive ?? owned.is_active;
   if (nextActive) {
-    const { error: clearError } = await client
-      .from("academic_years")
-      .update({ is_active: false })
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .neq("id", owned.id);
-
-    if (clearError) throw clearError;
+    await deactivateOtherActiveYears(client, owned.id);
   }
 
   const { data, error } = await client
@@ -359,7 +370,6 @@ export async function updateAcademicYear(
       is_active: nextActive,
     })
     .eq("id", owned.id)
-    .eq("user_id", userId)
     .select("id, label, start_date, end_date, is_active")
     .single();
 
@@ -382,7 +392,7 @@ export async function updateSemester(
     orderIndex?: number;
   },
 ): Promise<SemesterRecord> {
-  const { client, userId } = requireAuth(auth);
+  const { client } = requireAuth(auth);
   const label = normalizeCalendarLabel(input.label);
   const endDate = normalizeOptionalIsoDate(input.endDate);
   assertValidStartAndOptionalEnd(input.startDate, endDate);
@@ -391,12 +401,11 @@ export async function updateSemester(
     .from("semesters")
     .select("id, academic_year_id, order_index")
     .eq("id", input.semesterId)
-    .eq("user_id", userId)
     .maybeSingle();
 
   if (ownedError) throw ownedError;
   if (!owned?.academic_year_id) {
-    throw new Error("الفصل الدراسي غير موجود أو غير مملوك لك.");
+    throw new Error("الفصل الدراسي غير موجود.");
   }
   if (owned.academic_year_id !== input.academicYearId) {
     throw new Error("الفصل الدراسي لا ينتمي إلى السنة المحددة.");
@@ -406,12 +415,11 @@ export async function updateSemester(
     .from("academic_years")
     .select("id, start_date, end_date")
     .eq("id", owned.academic_year_id)
-    .eq("user_id", userId)
     .maybeSingle();
 
   if (yearError) throw yearError;
   if (!year) {
-    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+    throw new Error("السنة الدراسية غير موجودة.");
   }
   if (!year.start_date) {
     throw new Error("السنة الدراسية تفتقد تاريخ البداية.");
@@ -438,7 +446,7 @@ export async function updateSemester(
     });
   }
 
-  const siblings = await listSemestersForYear(auth, year.id);
+  const siblings = await listSemestersByAcademicYearId(client, year.id);
   assertSemestersDoNotOverlap(siblings, {
     id: owned.id,
     startDate: input.startDate,
@@ -459,7 +467,6 @@ export async function updateSemester(
       order_index: orderIndex,
     })
     .eq("id", owned.id)
-    .eq("user_id", userId)
     .select("id, academic_year_id, label, start_date, end_date, order_index")
     .single();
 
