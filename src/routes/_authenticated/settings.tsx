@@ -7,6 +7,7 @@ import { Plus, Trash2, BookOpen, RefreshCw } from "lucide-react";
 import { PageShell } from "@/components/layout/page-shell";
 import { SectionHeader } from "@/shared/components/section-header";
 import { MadrasatiAuthModal } from "@/platform/integration/connectors/madrasati/components/madrasati-auth-modal";
+import { AcademicCalendarSettingsSection } from "@/features/calendar/components/academic-calendar-settings-section";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -241,6 +242,8 @@ function SettingsPage() {
     <PageShell>
       <SectionHeader title="الإعدادات" description="حدّث بيانات ملفك الشخصي والإسناد الدراسي." />
       <div className="space-y-6">
+        <AcademicCalendarSettingsSection />
+
         {/* Madrasati Integration Card — status only; no credential collection */}
         <Card className="shadow-sm border-amber-100 bg-amber-50/40">
           <CardContent className="p-6">
