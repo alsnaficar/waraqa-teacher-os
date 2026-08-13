@@ -21,9 +21,9 @@ function coversDate(date: string, startDate: string | null, endDate: string | nu
 }
 
 /**
- * Resolves the academic year and semester that contain `date` for the current
- * teacher. Returns null when the teacher has not configured an academic year or
- * any semester yet, which is a normal pre-onboarding state rather than an error.
+ * Resolves the official academic year and semester that contain `date`.
+ * Visibility is enforced by RLS (active official rows + admin/legacy owner).
+ * Returns null when no visible year/semester exists.
  */
 export async function resolveAcademicScope(
   date: string,
@@ -33,12 +33,11 @@ export async function resolveAcademicScope(
 
   if (!resolved) return null;
 
-  const { client, userId } = resolved;
+  const { client } = resolved;
 
   const { data: years, error: yearsError } = await client
     .from("academic_years")
     .select("id, label, start_date, end_date, is_active")
-    .eq("user_id", userId)
     .order("is_active", { ascending: false })
     .order("start_date", { ascending: false });
 
@@ -52,7 +51,6 @@ export async function resolveAcademicScope(
   const { data: semesters, error: semestersError } = await client
     .from("semesters")
     .select("id, label, start_date, end_date, order_index")
-    .eq("user_id", userId)
     .eq("academic_year_id", year.id)
     .order("order_index", { ascending: true });
 

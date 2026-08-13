@@ -1265,6 +1265,36 @@ describe("admin academic year / semester management", () => {
     assert.equal(scope!.academicYearLabel, "1447");
     assert.equal(scope!.semesterLabel, "الفصل الأول");
   });
+
+  it("resolveAcademicScope can use an official year not owned by the teacher", async () => {
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: null,
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الفصل الدراسي الأول",
+          start_date: "2026-08-30",
+          end_date: "2027-01-08",
+          order_index: 1,
+        },
+      ],
+    });
+    const scope = await resolveAcademicScope("2026-09-15", auth(USER_B, client));
+    assert.ok(scope);
+    assert.equal(scope!.academicYearId, EXISTING_YEAR_ID);
+    assert.equal(scope!.semesterId, EXISTING_SEMESTER_ID);
+  });
 });
 
 describe("academic calendar server / UI security wiring", () => {

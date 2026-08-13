@@ -1,12 +1,12 @@
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 
 /**
- * Read model for the teacher's academic calendar.
+ * Read model for the official academic calendar.
  *
  * Terms are read from `semesters`, which is the table `lesson_sessions.semester_id`
- * points at. The parallel `academic_terms` table from 20260806100000 is shared
- * across teachers and unused, so treating `semesters` as canonical keeps one
- * per-teacher calendar model instead of two competing ones.
+ * points at. The parallel `academic_terms` table from 20260806100000 is unused.
+ * RLS (not a user_id filter) decides which official rows an authenticated caller
+ * may SELECT.
  */
 export interface CalendarAcademicYear {
   id: string;
@@ -49,7 +49,6 @@ export async function getActiveAcademicYear(
   const { data, error } = await resolved.client
     .from("academic_years")
     .select("id, label, start_date, end_date, is_active")
-    .eq("user_id", resolved.userId)
     .eq("is_active", true)
     .limit(1)
     .maybeSingle();
@@ -83,7 +82,6 @@ export async function getCurrentAcademicTerm(
   const { data, error } = await resolved.client
     .from("semesters")
     .select("id, label, start_date, end_date, order_index")
-    .eq("user_id", resolved.userId)
     .eq("academic_year_id", year.id)
     .lte("start_date", today)
     .gte("end_date", today)
