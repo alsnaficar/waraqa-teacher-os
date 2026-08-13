@@ -1821,6 +1821,15 @@ export type Database = {
       };
     };
     Functions: {
+      approve_distribution_snapshot: {
+        Args: {
+          p_items: Json;
+          p_semester_plan_id: string;
+          p_spreadsheet_id: string;
+          p_worksheet_name: string;
+        };
+        Returns: Json;
+      };
       approve_semester_plan: {
         Args: { p_plan_id: string };
         Returns: Database["public"]["Tables"]["semester_plans"]["Row"];

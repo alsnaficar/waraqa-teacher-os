@@ -1,7 +1,8 @@
 /**
  * Approve a reviewed DistributionDraft into an independent snapshot.
- * JWT client writes only. Does not touch planner_entries, lesson_sessions,
- * the planner engine, or calendar tables.
+ * JWT → assertAdmin → JWT RPC (one PostgreSQL transaction).
+ * Does not touch operational planner or session tables, the planner engine,
+ * or calendar tables. Writes only through the JWT-authenticated RPC.
  */
 
 import { assertAdmin } from "../../../platform/auth/assert-admin.ts";
@@ -14,7 +15,6 @@ import {
   DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE,
   DISTRIBUTION_SNAPSHOT_VERSION_MISSING_MESSAGE,
   decideDistributionSnapshotApproval,
-  type DistributionSnapshotItemInput,
 } from "./distribution-snapshot.logic.ts";
 
 type AdminClient = Awaited<
@@ -22,6 +22,8 @@ type AdminClient = Awaited<
 >["supabaseAdmin"];
 
 type JwtClient = SupabaseUserContext["client"];
+
+export const APPROVE_DISTRIBUTION_SNAPSHOT_RPC = "approve_distribution_snapshot";
 
 export interface DraftSemesterPlanOption {
   id: string;
@@ -53,10 +55,25 @@ export type ApproveDistributionSnapshotResult =
       errors: string[];
     };
 
+export interface ApproveDistributionSnapshotRpcArgs {
+  p_semester_plan_id: string;
+  p_spreadsheet_id: string;
+  p_worksheet_name: string;
+  p_items: Array<{
+    order_index: number;
+    unit: string;
+    lesson: string;
+    periods: number;
+    notes: string;
+    curriculum_lesson_id: string | null;
+  }>;
+}
+
 export type DistributionSnapshotDeps = {
-  insertSnapshot?: (row: Record<string, unknown>) => Promise<{ id: string }>;
-  insertItems?: (rows: Record<string, unknown>[]) => Promise<void>;
-  supersedeCurrent?: (versionId: string) => Promise<void>;
+  rpc?: (
+    fn: string,
+    args: ApproveDistributionSnapshotRpcArgs,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>;
 };
 
 async function loadDraftPlan(
@@ -111,58 +128,35 @@ export async function listDraftSemesterPlans(
   }));
 }
 
-async function supersedeCurrentSnapshot(client: JwtClient, versionId: string): Promise<void> {
-  const { error } = await client
-    .from("distribution_snapshots")
-    .update({ is_current: false })
-    .eq("semester_plan_version_id", versionId)
-    .eq("is_current", true);
-  if (error) throw error;
-}
-
-async function insertSnapshotRow(
-  client: JwtClient,
-  row: {
-    semester_plan_id: string;
-    semester_plan_version_id: string;
-    spreadsheet_id: string;
-    worksheet_name: string;
-    source: "google_sheets";
-    item_count: number;
-    total_periods: number;
-    approved_by: string;
-    is_current: true;
-  },
-): Promise<{ id: string }> {
-  const { data, error } = await client
-    .from("distribution_snapshots")
-    .insert(row)
-    .select("id")
-    .single();
-  if (error || !data?.id) {
-    throw new Error(DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE);
+function parseApproveRpcResult(data: unknown): ApproveDistributionSnapshotResult | null {
+  let payload: unknown = data;
+  if (typeof data === "string") {
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return null;
+    }
   }
-  return { id: data.id };
-}
-
-async function insertSnapshotItems(
-  client: JwtClient,
-  snapshotId: string,
-  items: DistributionSnapshotItemInput[],
-): Promise<void> {
-  const rows = items.map((item) => ({
-    snapshot_id: snapshotId,
-    order_index: item.orderIndex,
-    unit: item.unit,
-    lesson: item.lesson,
-    periods: item.periods,
-    notes: item.notes,
-    curriculum_lesson_id: item.curriculumLessonId,
-  }));
-  const { error } = await client.from("distribution_snapshot_items").insert(rows);
-  if (error) {
-    throw new Error(DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE);
-  }
+  if (!payload || typeof payload !== "object") return null;
+  const row = payload as Record<string, unknown>;
+  const snapshotId = typeof row.snapshot_id === "string" ? row.snapshot_id : "";
+  const semesterPlanId = typeof row.semester_plan_id === "string" ? row.semester_plan_id : "";
+  const semesterPlanVersionId =
+    typeof row.semester_plan_version_id === "string" ? row.semester_plan_version_id : "";
+  const itemCount = typeof row.item_count === "number" ? row.item_count : Number(row.item_count);
+  const totalPeriods =
+    typeof row.total_periods === "number" ? row.total_periods : Number(row.total_periods);
+  if (!snapshotId || !semesterPlanId || !semesterPlanVersionId) return null;
+  if (!Number.isFinite(itemCount) || itemCount < 1) return null;
+  if (!Number.isFinite(totalPeriods) || totalPeriods < 1) return null;
+  return {
+    ok: true,
+    snapshotId,
+    semesterPlanId,
+    semesterPlanVersionId,
+    itemCount,
+    totalPeriods,
+  };
 }
 
 export async function listDraftSemesterPlansAuthorized(
@@ -208,49 +202,36 @@ export async function approveDistributionSnapshotAuthorized(
     return { ok: false, errors: [DISTRIBUTION_SNAPSHOT_VERSION_MISSING_MESSAGE] };
   }
 
+  const args: ApproveDistributionSnapshotRpcArgs = {
+    p_semester_plan_id: plan.id,
+    p_spreadsheet_id: input.draft.spreadsheetId,
+    p_worksheet_name: input.draft.worksheetName,
+    p_items: decision.items.map((item) => ({
+      order_index: item.orderIndex,
+      unit: item.unit,
+      lesson: item.lesson,
+      periods: item.periods,
+      notes: item.notes,
+      curriculum_lesson_id: item.curriculumLessonId,
+    })),
+  };
+
+  let response: { data: unknown; error: { message: string } | null };
   try {
-    if (deps.supersedeCurrent) {
-      await deps.supersedeCurrent(version.id);
-    } else {
-      await supersedeCurrentSnapshot(jwtClient, version.id);
-    }
-
-    const snapshotRow = {
-      semester_plan_id: plan.id,
-      semester_plan_version_id: version.id,
-      spreadsheet_id: input.draft.spreadsheetId,
-      worksheet_name: input.draft.worksheetName,
-      source: "google_sheets" as const,
-      item_count: decision.items.length,
-      total_periods: decision.totalPeriods,
-      approved_by: actorId,
-      is_current: true as const,
-    };
-
-    const inserted = deps.insertSnapshot
-      ? await deps.insertSnapshot(snapshotRow)
-      : await insertSnapshotRow(jwtClient, snapshotRow);
-
-    if (deps.insertItems) {
-      await deps.insertItems(
-        decision.items.map((item) => ({
-          snapshot_id: inserted.id,
-          ...item,
-        })),
-      );
-    } else {
-      await insertSnapshotItems(jwtClient, inserted.id, decision.items);
-    }
-
-    return {
-      ok: true,
-      snapshotId: inserted.id,
-      semesterPlanId: plan.id,
-      semesterPlanVersionId: version.id,
-      itemCount: decision.items.length,
-      totalPeriods: decision.totalPeriods,
-    };
+    response = deps.rpc
+      ? await deps.rpc(APPROVE_DISTRIBUTION_SNAPSHOT_RPC, args)
+      : await jwtClient.rpc(APPROVE_DISTRIBUTION_SNAPSHOT_RPC, args);
   } catch {
     return { ok: false, errors: [DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE] };
   }
+
+  if (response.error || !response.data) {
+    return { ok: false, errors: [DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE] };
+  }
+
+  const parsed = parseApproveRpcResult(response.data);
+  if (!parsed) {
+    return { ok: false, errors: [DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE] };
+  }
+  return parsed;
 }

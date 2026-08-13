@@ -3,7 +3,7 @@
  *
  * Preview: JWT → assertAdmin → Google SA read → draft. No DB write.
  * Capacity: JWT read of calendar + owner timetable. No schedule generation.
- * Approve: JWT → assertAdmin → JWT client INSERT into distribution snapshot tables.
+ * Approve: JWT → assertAdmin → JWT RPC approve_distribution_snapshot.
  * Does not write planner_entries or lesson_sessions.
  */
 

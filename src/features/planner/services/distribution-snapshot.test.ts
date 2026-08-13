@@ -13,7 +13,10 @@ import {
   DISTRIBUTION_SNAPSHOT_PLAN_NOT_DRAFT_MESSAGE,
   decideDistributionSnapshotApproval,
 } from "./distribution-snapshot.logic.ts";
-import { approveDistributionSnapshotAuthorized } from "./distribution-snapshot.ts";
+import {
+  approveDistributionSnapshotAuthorized,
+  type ApproveDistributionSnapshotRpcArgs,
+} from "./distribution-snapshot.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const LOGIC_FILE = join(ROOT, "src/features/planner/services/distribution-snapshot.logic.ts");
@@ -207,9 +210,9 @@ describe("approveDistributionSnapshotAuthorized", () => {
             acknowledgeWarnings: false,
           },
           {
-            insertSnapshot: async () => {
+            rpc: async () => {
               inserts += 1;
-              return { id: SNAPSHOT_ID };
+              return { data: { snapshot_id: SNAPSHOT_ID }, error: null };
             },
           },
         ),
@@ -265,9 +268,7 @@ describe("approveDistributionSnapshotAuthorized", () => {
       },
     };
 
-    const inserted: Record<string, unknown>[] = [];
-    const items: Record<string, unknown>[] = [];
-    let superseded = "";
+    const rpcCalls: Array<{ fn: string; args: ApproveDistributionSnapshotRpcArgs }> = [];
     const result = await approveDistributionSnapshotAuthorized(
       admin,
       ADMIN,
@@ -279,15 +280,18 @@ describe("approveDistributionSnapshotAuthorized", () => {
         acknowledgeWarnings: false,
       },
       {
-        supersedeCurrent: async (versionId) => {
-          superseded = versionId;
-        },
-        insertSnapshot: async (row) => {
-          inserted.push(row);
-          return { id: SNAPSHOT_ID };
-        },
-        insertItems: async (rows) => {
-          items.push(...rows);
+        rpc: async (fn, args) => {
+          rpcCalls.push({ fn, args });
+          return {
+            data: {
+              snapshot_id: SNAPSHOT_ID,
+              semester_plan_id: PLAN_ID,
+              semester_plan_version_id: VERSION_ID,
+              item_count: 2,
+              total_periods: 3,
+            },
+            error: null,
+          };
         },
       },
     );
@@ -299,10 +303,10 @@ describe("approveDistributionSnapshotAuthorized", () => {
       assert.equal(result.totalPeriods, 3);
       assert.equal(result.semesterPlanVersionId, VERSION_ID);
     }
-    assert.equal(superseded, VERSION_ID);
-    assert.equal(inserted[0]?.semester_plan_id, PLAN_ID);
-    assert.equal(inserted[0]?.source, "google_sheets");
-    assert.equal(items.length, 2);
+    assert.equal(rpcCalls.length, 1);
+    assert.equal(rpcCalls[0]?.fn, "approve_distribution_snapshot");
+    assert.equal(rpcCalls[0]?.args.p_semester_plan_id, PLAN_ID);
+    assert.equal((rpcCalls[0]?.args.p_items as Array<{ lesson: string }>)[0]?.lesson, "درس أ");
     assert.equal(
       writes.some((entry) => entry.startsWith("planner_entries")),
       false,
@@ -334,11 +338,15 @@ describe("distribution snapshot contracts", () => {
     const body = service.slice(start);
     assert.match(body, /await assertAdmin\(adminClient, actorId\)/);
     const assertIdx = body.indexOf("await assertAdmin");
-    const writeIdx = body.indexOf("supersedeCurrentSnapshot");
+    const rpcIdx = body.indexOf("APPROVE_DISTRIBUTION_SNAPSHOT_RPC");
     assert.ok(assertIdx >= 0);
-    assert.ok(writeIdx > assertIdx);
+    assert.ok(rpcIdx > assertIdx);
+    assert.match(service, /approve_distribution_snapshot/);
     assert.doesNotMatch(service, /service_role/);
     assert.doesNotMatch(service, /supabaseAdmin[\s\S]{0,80}\.insert/);
+    assert.doesNotMatch(service, /supersedeCurrentSnapshot/);
+    assert.doesNotMatch(service, /\.from\("distribution_snapshots"\)/);
+    assert.doesNotMatch(service, /\.from\("distribution_snapshot_items"\)/);
     const fn = readFileSync(FUNCTIONS_FILE, "utf8");
     assert.match(fn, /authFromContext\(context\)\.client/);
     assert.match(fn, /approveDistributionSnapshotAuthorized/);

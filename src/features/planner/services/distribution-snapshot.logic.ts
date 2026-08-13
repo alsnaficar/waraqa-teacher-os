@@ -19,7 +19,8 @@ export const DISTRIBUTION_SNAPSHOT_HAS_ERRORS_MESSAGE =
 export const DISTRIBUTION_SNAPSHOT_NEEDS_REVIEW_MESSAGE =
   "يوجد عناصر تحتاج مراجعة. أكّد المتابعة قبل حفظ اللقطة.";
 export const DISTRIBUTION_SNAPSHOT_VERSION_MISSING_MESSAGE = "إصدار خطة الفصل غير موجود.";
-export const DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE = "تعذر حفظ لقطة التوزيع.";
+export const DISTRIBUTION_SNAPSHOT_SAVE_FAILED_MESSAGE =
+  "تعذر اعتماد لقطة التوزيع. لم يتم حفظ أي تغيير.";
 
 export interface DistributionSnapshotItemInput {
   orderIndex: number;

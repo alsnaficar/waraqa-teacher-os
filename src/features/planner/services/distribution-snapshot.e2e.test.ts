@@ -18,7 +18,12 @@ import {
   DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE,
   loadCurrentDistributionScheduleLessons,
 } from "./distribution-schedule-source.ts";
-import { approveDistributionSnapshotAuthorized } from "./distribution-snapshot.ts";
+import { simulateApproveDistributionSnapshotRpc } from "./distribution-snapshot.atomic.memory.ts";
+import {
+  APPROVE_DISTRIBUTION_SNAPSHOT_RPC,
+  approveDistributionSnapshotAuthorized,
+  type ApproveDistributionSnapshotRpcArgs,
+} from "./distribution-snapshot.ts";
 import {
   generateSchedule,
   recalculateAndSyncPlanner,
@@ -84,11 +89,12 @@ function cloneRows(rows: Row[]): Row[] {
   return rows.map((row) => ({ ...row }));
 }
 
-function createMemoryDb(seed: Record<string, Row[]>) {
+function createMemoryDb(seed: Record<string, Row[]>, options: { authUid?: string | null } = {}) {
   const tables: Record<string, Row[]> = Object.fromEntries(
     Object.entries(seed).map(([name, rows]) => [name, cloneRows(rows)]),
   );
   const writes: WriteOp[] = [];
+  const authUid = options.authUid === undefined ? ADMIN : options.authUid;
 
   function tableRows(name: string): Row[] {
     if (!tables[name]) tables[name] = [];
@@ -218,6 +224,19 @@ function createMemoryDb(seed: Record<string, Row[]>) {
         },
       };
       return api;
+    },
+    rpc(fn: string, args: ApproveDistributionSnapshotRpcArgs) {
+      if (fn !== APPROVE_DISTRIBUTION_SNAPSHOT_RPC) {
+        throw new Error(`unexpected rpc ${fn}`);
+      }
+      writes.push({ table: fn, op: "insert", payload: args });
+      return Promise.resolve(
+        simulateApproveDistributionSnapshotRpc({
+          tables,
+          authUid,
+          args,
+        }),
+      );
     },
   };
 
