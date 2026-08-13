@@ -137,12 +137,15 @@ function applyExceptions(rows: ExceptionRow[]): {
   const remoteRanges: ResolvedCalendarRange[] = [];
   const extraTeachingDays: string[] = [];
   const cancelledDays: string[] = [];
-  const removedHolidayLabels = new Set<string>();
 
   for (const row of rows) {
     if (row.action === "remove" && row.kind === "holiday") {
-      removedHolidayLabels.add(row.title);
-      cancelledDays.push(...expandDateRange(row.starts_at, row.ends_at));
+      const removedDates = new Set(expandDateRange(row.starts_at, row.ends_at));
+      for (let i = holidays.length - 1; i >= 0; i -= 1) {
+        if (removedDates.has(holidays[i].date)) {
+          holidays.splice(i, 1);
+        }
+      }
       continue;
     }
 
@@ -187,7 +190,7 @@ function applyExceptions(rows: ExceptionRow[]): {
   }
 
   return {
-    holidays: holidays.filter((item) => !removedHolidayLabels.has(item.label)),
+    holidays,
     examRanges,
     remoteRanges,
     extraTeachingDays: [...new Set(extraTeachingDays)],

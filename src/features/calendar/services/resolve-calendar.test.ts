@@ -143,6 +143,32 @@ function officialTables(overrides: Record<string, Row[]> = {}): Record<string, R
   };
 }
 
+const HOLIDAY_A = "2026-09-23";
+const HOLIDAY_B = "2026-11-09";
+const RANGE_START = "2026-09-22";
+const RANGE_END = "2026-09-24";
+
+function exceptionRow(
+  partial: Partial<Row> & {
+    id: string;
+    variant_id: string;
+    kind: string;
+    action: string;
+    starts_at: string;
+    ends_at: string;
+    title: string;
+  },
+): Row {
+  return {
+    academic_year_id: OFFICIAL_YEAR_ID,
+    semester_id: OFFICIAL_SEMESTER_ID,
+    replaces_exception_id: null,
+    is_teaching_day: false,
+    is_remote: false,
+    ...partial,
+  };
+}
+
 describe("resolveCalendar", () => {
   it("GENERAL returns the official 1448 semester dates", async () => {
     const client = createReadClient(officialTables());
@@ -227,5 +253,193 @@ describe("resolveCalendar", () => {
     assert.equal(/DEFAULT_CALENDAR|1447/.test(resolver), false);
     assert.match(engine, /export const DEFAULT_CALENDAR/);
     assert.equal(/return DEFAULT_CALENDAR/.test(engine), false);
+  });
+});
+
+describe("resolveCalendar holiday remove", () => {
+  async function resolveVariant(
+    variantCode: string,
+    exceptions: Row[],
+  ): Promise<Awaited<ReturnType<typeof resolveCalendar>>> {
+    const client = createReadClient(officialTables({ calendar_exceptions: exceptions }));
+    return resolveCalendar(
+      {
+        academicYearId: OFFICIAL_YEAR_ID,
+        semesterId: OFFICIAL_SEMESTER_ID,
+        variantCode,
+      },
+      auth(TEACHER_ID, client),
+    );
+  }
+
+  it("holiday add excludes the date", async () => {
+    const calendar = await resolveVariant(GENERAL_VARIANT_CODE, [
+      exceptionRow({
+        id: "ex-add",
+        variant_id: GENERAL_ID,
+        kind: "holiday",
+        action: "add",
+        starts_at: HOLIDAY_A,
+        ends_at: HOLIDAY_A,
+        title: "إجازة عامة",
+      }),
+    ]);
+    assert.equal(
+      calendar.holidays.some((item) => item.date === HOLIDAY_A),
+      true,
+    );
+    assert.equal(calendar.cancelledDays.includes(HOLIDAY_A), false);
+  });
+
+  it("WESTERN remove restores a GENERAL holiday without cancelling the day", async () => {
+    const exceptions = [
+      exceptionRow({
+        id: "ex-general",
+        variant_id: GENERAL_ID,
+        kind: "holiday",
+        action: "add",
+        starts_at: HOLIDAY_A,
+        ends_at: HOLIDAY_A,
+        title: "اليوم الوطني",
+      }),
+      exceptionRow({
+        id: "ex-remove",
+        variant_id: WESTERN_ID,
+        kind: "holiday",
+        action: "remove",
+        starts_at: HOLIDAY_A,
+        ends_at: HOLIDAY_A,
+        title: "عنوان مختلف",
+      }),
+    ];
+
+    const western = await resolveVariant(WESTERN_VARIANT_CODE, exceptions);
+    assert.equal(
+      western.holidays.some((item) => item.date === HOLIDAY_A),
+      false,
+    );
+    assert.equal(western.cancelledDays.includes(HOLIDAY_A), false);
+
+    const general = await resolveVariant(GENERAL_VARIANT_CODE, exceptions);
+    assert.equal(
+      general.holidays.some((item) => item.date === HOLIDAY_A),
+      true,
+    );
+  });
+
+  it("remove is date-range based and does not drop another same-title holiday", async () => {
+    const calendar = await resolveVariant(WESTERN_VARIANT_CODE, [
+      exceptionRow({
+        id: "ex-a",
+        variant_id: GENERAL_ID,
+        kind: "holiday",
+        action: "add",
+        starts_at: HOLIDAY_A,
+        ends_at: HOLIDAY_A,
+        title: "إجازة",
+      }),
+      exceptionRow({
+        id: "ex-b",
+        variant_id: GENERAL_ID,
+        kind: "holiday",
+        action: "add",
+        starts_at: HOLIDAY_B,
+        ends_at: HOLIDAY_B,
+        title: "إجازة",
+      }),
+      exceptionRow({
+        id: "ex-remove-a",
+        variant_id: WESTERN_ID,
+        kind: "holiday",
+        action: "remove",
+        starts_at: HOLIDAY_A,
+        ends_at: HOLIDAY_A,
+        title: "إجازة",
+      }),
+    ]);
+
+    assert.equal(
+      calendar.holidays.some((item) => item.date === HOLIDAY_A),
+      false,
+    );
+    assert.equal(
+      calendar.holidays.some((item) => item.date === HOLIDAY_B),
+      true,
+    );
+    assert.equal(calendar.cancelledDays.includes(HOLIDAY_A), false);
+    assert.equal(calendar.cancelledDays.includes(HOLIDAY_B), false);
+  });
+
+  it("remove of one date inside a holiday range leaves the other days", async () => {
+    const calendar = await resolveVariant(WESTERN_VARIANT_CODE, [
+      exceptionRow({
+        id: "ex-range",
+        variant_id: GENERAL_ID,
+        kind: "holiday",
+        action: "add",
+        starts_at: RANGE_START,
+        ends_at: RANGE_END,
+        title: "إجازة ممتدة",
+      }),
+      exceptionRow({
+        id: "ex-remove-mid",
+        variant_id: WESTERN_ID,
+        kind: "holiday",
+        action: "remove",
+        starts_at: HOLIDAY_A,
+        ends_at: HOLIDAY_A,
+        title: "إجازة ممتدة",
+      }),
+    ]);
+
+    const holidayDates = calendar.holidays.map((item) => item.date).sort();
+    assert.deepEqual(holidayDates, [RANGE_START, RANGE_END]);
+    assert.equal(calendar.cancelledDays.includes(HOLIDAY_A), false);
+  });
+
+  it("variant holiday add remains a holiday", async () => {
+    const calendar = await resolveVariant(WESTERN_VARIANT_CODE, [
+      exceptionRow({
+        id: "ex-west-add",
+        variant_id: WESTERN_ID,
+        kind: "holiday",
+        action: "add",
+        starts_at: HOLIDAY_A,
+        ends_at: HOLIDAY_A,
+        title: "إجازة غربية",
+      }),
+    ]);
+    assert.equal(
+      calendar.holidays.some((item) => item.date === HOLIDAY_A),
+      true,
+    );
+  });
+
+  it("break still cancels teaching and exam ranges are unchanged", async () => {
+    const calendar = await resolveVariant(GENERAL_VARIANT_CODE, [
+      exceptionRow({
+        id: "ex-break",
+        variant_id: GENERAL_ID,
+        kind: "break",
+        action: "add",
+        starts_at: "2026-10-01",
+        ends_at: "2026-10-02",
+        title: "استراحة",
+      }),
+      exceptionRow({
+        id: "ex-exam",
+        variant_id: GENERAL_ID,
+        kind: "exam",
+        action: "add",
+        starts_at: "2026-12-01",
+        ends_at: "2026-12-03",
+        title: "اختبارات",
+      }),
+    ]);
+    assert.deepEqual(calendar.cancelledDays.slice().sort(), ["2026-10-01", "2026-10-02"]);
+    assert.deepEqual(calendar.examRanges, [
+      { startDate: "2026-12-01", endDate: "2026-12-03", label: "اختبارات" },
+    ]);
+    assert.equal(calendar.holidays.length, 0);
   });
 });

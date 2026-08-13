@@ -267,6 +267,58 @@ describe("planner calendar variant wiring", () => {
     );
   });
 
+  it("WESTERN holiday remove does not skip the restored teaching date", async () => {
+    const { client } = createReadClient(
+      officialTables({
+        calendar_exceptions: [
+          {
+            id: "ex-general-holiday",
+            variant_id: GENERAL_ID,
+            academic_year_id: YEAR_ID,
+            semester_id: SEMESTER_ID,
+            kind: "holiday",
+            action: "add",
+            starts_at: NATIONAL_DAY,
+            ends_at: NATIONAL_DAY,
+            title: "اليوم الوطني",
+            replaces_exception_id: null,
+            is_teaching_day: false,
+            is_remote: false,
+          },
+          {
+            id: "ex-western-remove",
+            variant_id: WESTERN_ID,
+            academic_year_id: YEAR_ID,
+            semester_id: SEMESTER_ID,
+            kind: "holiday",
+            action: "remove",
+            starts_at: NATIONAL_DAY,
+            ends_at: NATIONAL_DAY,
+            title: "عنوان مختلف",
+            replaces_exception_id: null,
+            is_teaching_day: false,
+            is_remote: false,
+          },
+        ],
+      }),
+    );
+
+    const western = await loadCalendarConfig(auth(TEACHER_ID, client), WESTERN_PLAN);
+    assert.equal(
+      western.holidays.some((item) => item.date === NATIONAL_DAY),
+      false,
+    );
+    const westernDates = buildTeachingDates(western);
+    const restored = westernDates.find((day) => day.date === NATIONAL_DAY);
+    assert.equal(restored?.isHoliday, false);
+
+    const general = await loadCalendarConfig(auth(TEACHER_ID, client), GENERAL_PLAN);
+    assert.equal(
+      general.holidays.some((item) => item.date === NATIONAL_DAY),
+      true,
+    );
+  });
+
   it("calendar exceptions skip teaching dates", () => {
     const config = mapResolvedCalendarToPlannerConfig({
       year: {
