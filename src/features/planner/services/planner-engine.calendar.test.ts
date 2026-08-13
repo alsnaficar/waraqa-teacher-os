@@ -471,6 +471,7 @@ describe("generateSchedule distribution snapshot fail-closed", () => {
     );
     assert.ok(entries.length > 0);
     assert.ok(entries.some((entry) => entry.lessonTitle.includes("الدرس الأول")));
+    assert.ok(entries.every((entry) => entry.distributionSnapshotId == null));
     assert.ok(mock.reads.includes("curriculum_lessons"));
     assert.equal(mock.writes.length, 0);
   });
@@ -490,6 +491,7 @@ describe("generateSchedule distribution snapshot fail-closed", () => {
     );
     assert.ok(entries.length > 0);
     assert.ok(entries.some((entry) => entry.lessonTitle.includes("درس التوزيع")));
+    assert.ok(entries.every((entry) => entry.distributionSnapshotId === SNAPSHOT_A_ID));
     assert.equal(
       entries.some((entry) => entry.lessonTitle.includes("الدرس الأول")),
       false,
@@ -578,6 +580,7 @@ describe("generateSchedule distribution snapshot fail-closed", () => {
       auth(TEACHER_ID, mock.client),
     );
     assert.ok(entries.some((entry) => entry.lessonTitle.includes("لقطة ب")));
+    assert.ok(entries.every((entry) => entry.distributionSnapshotId === SNAPSHOT_B_ID));
     assert.equal(
       entries.some((entry) => entry.lessonTitle.includes("لقطة أ")),
       false,

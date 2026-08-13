@@ -36,6 +36,11 @@ export interface DistributionSnapshotItemRow {
   curriculum_lesson_id: string | null;
 }
 
+export interface CurrentDistributionSchedule {
+  snapshotId: string;
+  lessons: ScheduleSourceLesson[];
+}
+
 export function mapSnapshotItemsToScheduleLessons(
   items: DistributionSnapshotItemRow[],
 ): ScheduleSourceLesson[] {
@@ -83,7 +88,7 @@ export async function loadCurrentDistributionScheduleLessons(
   client: JwtClient,
   planId: string,
   currentVersion: number,
-): Promise<ScheduleSourceLesson[] | null> {
+): Promise<CurrentDistributionSchedule | null> {
   const { data: version, error: versionError } = await client
     .from("semester_plan_versions")
     .select("id")
@@ -112,7 +117,7 @@ export async function loadCurrentDistributionScheduleLessons(
   if (!items?.length) return null;
 
   const mapped = mapSnapshotItemsToScheduleLessons(items);
-  return mapped.length ? mapped : null;
+  return mapped.length ? { snapshotId: snapshot.id, lessons: mapped } : null;
 }
 
 /**
@@ -128,9 +133,9 @@ export async function resolveDistributionScheduleLessons(
   client: JwtClient,
   planId: string,
   currentVersion: number,
-): Promise<ScheduleSourceLesson[] | null> {
+): Promise<CurrentDistributionSchedule | null> {
   const current = await loadCurrentDistributionScheduleLessons(client, planId, currentVersion);
-  if (current?.length) return current;
+  if (current?.lessons.length) return current;
 
   if (await planHasDistributionSnapshots(client, planId)) {
     throw new Error(DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);

@@ -675,9 +675,10 @@ describe("distribution snapshot end-to-end (in-memory only)", () => {
 
     const loaded = await loadCurrentDistributionScheduleLessons(memory.client as never, PLAN_A, 1);
     assert.ok(loaded);
-    assert.equal(loaded?.[0]?.title, "الدرس الأول");
-    assert.equal(loaded?.[0]?.id, LESSON_ID);
-    assert.equal(loaded?.[1]?.id, null);
+    assert.equal(loaded?.snapshotId, approved.snapshotId);
+    assert.equal(loaded?.lessons[0]?.title, "الدرس الأول");
+    assert.equal(loaded?.lessons[0]?.id, LESSON_ID);
+    assert.equal(loaded?.lessons[1]?.id, null);
 
     const generated = await generateSchedule(
       "لغتي",
@@ -698,6 +699,7 @@ describe("distribution snapshot end-to-end (in-memory only)", () => {
     assert.equal(generated[0]?.remainingPeriods, 1);
     assert.equal(generated[1]?.remainingPeriods, 0);
     assert.equal(generated[2]?.periodsCount, 1);
+    assert.ok(generated.every((entry) => entry.distributionSnapshotId === approved.snapshotId));
 
     assert.equal(
       generated.some((entry) => entry.lessonTitle.includes("درس المنهج المنشور")),

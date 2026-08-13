@@ -243,10 +243,11 @@ describe("mapSnapshotItemsToScheduleLessons", () => {
 describe("loadCurrentDistributionScheduleLessons", () => {
   it("returns mapped items for the current plan version snapshot", async () => {
     const { client } = createSourceClient(currentSnapshotTables());
-    const lessons = await loadCurrentDistributionScheduleLessons(client as never, PLAN_ID, 1);
-    assert.equal(lessons?.length, 2);
-    assert.equal(lessons?.[0]?.title, "الدرس الأول");
-    assert.equal(lessons?.[0]?.periodsCount, 2);
+    const current = await loadCurrentDistributionScheduleLessons(client as never, PLAN_ID, 1);
+    assert.equal(current?.snapshotId, SNAPSHOT_A_ID);
+    assert.equal(current?.lessons.length, 2);
+    assert.equal(current?.lessons[0]?.title, "الدرس الأول");
+    assert.equal(current?.lessons[0]?.periodsCount, 2);
   });
 
   it("returns null when the current version has no snapshot", async () => {
@@ -296,9 +297,10 @@ describe("resolveDistributionScheduleLessons", () => {
 
   it("uses the current snapshot when it is valid", async () => {
     const { client } = createSourceClient(currentSnapshotTables());
-    const lessons = await resolveDistributionScheduleLessons(client as never, PLAN_ID, 1);
-    assert.equal(lessons?.length, 2);
-    assert.equal(lessons?.[0]?.title, "الدرس الأول");
+    const current = await resolveDistributionScheduleLessons(client as never, PLAN_ID, 1);
+    assert.equal(current?.snapshotId, SNAPSHOT_A_ID);
+    assert.equal(current?.lessons.length, 2);
+    assert.equal(current?.lessons[0]?.title, "الدرس الأول");
   });
 
   it("fails closed when a distribution plan has no snapshot on the current version", async () => {
@@ -407,12 +409,13 @@ describe("resolveDistributionScheduleLessons", () => {
         },
       ],
     });
-    const lessons = await resolveDistributionScheduleLessons(client as never, PLAN_ID, 1);
-    assert.equal(lessons?.length, 1);
-    assert.equal(lessons?.[0]?.title, "لقطة ب");
-    assert.equal(lessons?.[0]?.periodsCount, 3);
+    const current = await resolveDistributionScheduleLessons(client as never, PLAN_ID, 1);
+    assert.equal(current?.snapshotId, SNAPSHOT_B_ID);
+    assert.equal(current?.lessons.length, 1);
+    assert.equal(current?.lessons[0]?.title, "لقطة ب");
+    assert.equal(current?.lessons[0]?.periodsCount, 3);
     assert.equal(
-      lessons?.some((lesson) => lesson.title === "لقطة أ"),
+      current?.lessons.some((lesson) => lesson.title === "لقطة أ"),
       false,
     );
   });
@@ -465,7 +468,11 @@ describe("planner snapshot source contracts", () => {
     const curriculumIdx = engine.indexOf('from("curriculum_lessons")');
     assert.ok(snapshotIdx > 0);
     assert.ok(curriculumIdx > snapshotIdx);
+    assert.match(engine, /fromSnapshot\?\.lessons\.length/);
+    assert.match(engine, /distributionSnapshotId = fromSnapshot\.snapshotId/);
     assert.match(engine, /if \(parsedLessons\.length === 0\)/);
+    const constructorStamps = engine.match(/distributionSnapshotId,/g) ?? [];
+    assert.ok(constructorStamps.length >= 3);
   });
 
   it("does not auto-create snapshots or write curriculum from the source module", () => {

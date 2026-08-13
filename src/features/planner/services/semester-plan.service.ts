@@ -13,6 +13,12 @@ import {
   type ScheduleOverride,
 } from "./planner-engine";
 import {
+  DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE,
+  nextLiveDateReadAction,
+  nextLoadOrGeneratePlanAction,
+  resolveStoredPlannerEntriesLive,
+} from "./distribution-snapshot-staleness";
+import {
   assertWritableDraft,
   ensureSemesterPlan,
   findSemesterPlan,
@@ -129,7 +135,16 @@ export async function loadCanonicalSemesterPlan(
   try {
     const ctx = await findSemesterPlan({ subject });
     if (!ctx) return [];
-    return loadPlanEntries(ctx.plan.id, ctx.version.id);
+    const stored = await loadPlanEntries(ctx.plan.id, ctx.version.id);
+    const live = await resolveStoredPlannerEntriesLive(
+      supabase,
+      ctx.plan.id,
+      ctx.plan.current_version,
+      stored,
+    );
+    return nextLiveDateReadAction(live.kind) === "return-stored" && live.kind === "allow"
+      ? live.entries
+      : [];
   } catch {
     return [];
   }
@@ -139,14 +154,38 @@ export async function loadCanonicalSemesterPlan(
  * Prefer linked Semester Plan rows. If the draft store is empty but legacy
  * unlinked rows exist, adopt them (link) instead of regenerating.
  */
+async function applyLiveStoredPlannerEntries(
+  ctx: SemesterPlanContext,
+  stored: CalculatedLessonEntry[],
+): Promise<LoadedSemesterPlan | "continue-generate"> {
+  const live = await resolveStoredPlannerEntriesLive(
+    supabase,
+    ctx.plan.id,
+    ctx.plan.current_version,
+    stored,
+  );
+  const action = nextLoadOrGeneratePlanAction(live.kind, stored.length);
+  if (action === "fail-closed") {
+    throw new Error(DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);
+  }
+  if (action === "return-empty") {
+    return { ...ctx, entries: [] };
+  }
+  if (action === "return-stored" && live.kind === "allow") {
+    return { ...ctx, entries: live.entries };
+  }
+  return "continue-generate";
+}
+
 export async function loadOrGeneratePlan(
   subject: string,
   grade: string,
 ): Promise<LoadedSemesterPlan> {
   const ctx = await ensureSemesterPlan({ subject, grade });
   let stored = await loadPlanEntries(ctx.plan.id, ctx.version.id);
-  if (stored.length > 0) {
-    return { ...ctx, entries: stored };
+  const first = await applyLiveStoredPlannerEntries(ctx, stored);
+  if (first !== "continue-generate") {
+    return first;
   }
 
   // Compatibility: legacy unlinked rows for this subject become the draft schedule.
@@ -154,7 +193,8 @@ export async function loadOrGeneratePlan(
   if (legacy.length > 0) {
     stored = await loadPlanEntries(ctx.plan.id, ctx.version.id);
     if (stored.length > 0) {
-      return { ...ctx, entries: stored };
+      const linked = await applyLiveStoredPlannerEntries(ctx, stored);
+      if (linked !== "continue-generate") return linked;
     }
     // ensureSemesterPlan already attempted linkOrphan; re-read after a second link.
     const { data: userData } = await supabase.auth.getUser();
@@ -173,7 +213,8 @@ export async function loadOrGeneratePlan(
 
       stored = await loadPlanEntries(ctx.plan.id, ctx.version.id);
       if (stored.length > 0) {
-        return { ...ctx, entries: stored };
+        const linked = await applyLiveStoredPlannerEntries(ctx, stored);
+        if (linked !== "continue-generate") return linked;
       }
     }
     // Linked read still empty (e.g. column missing pre-migration) — return legacy as-is.
@@ -243,7 +284,16 @@ async function loadLinkedEntriesAcrossPlansForDate(date: string): Promise<Calcul
     const version = await getCurrentPlanVersion(plan as SemesterPlanRow);
     if (!version) continue;
     const rows = await loadPlanEntries(plan.id, version.id);
-    for (const row of rows) {
+    const live = await resolveStoredPlannerEntriesLive(
+      supabase,
+      plan.id,
+      plan.current_version,
+      rows,
+    );
+    if (nextLiveDateReadAction(live.kind) !== "return-stored" || live.kind !== "allow") {
+      continue;
+    }
+    for (const row of live.entries) {
       if (row.suggestedDate === date) entries.push(row);
     }
   }

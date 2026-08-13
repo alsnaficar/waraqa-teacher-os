@@ -88,6 +88,11 @@ export interface CalculatedLessonEntry {
   assessmentMethods: string;
   /** Free-form curriculum notes carried into the plan row. */
   planNotes: string;
+  /**
+   * Distribution snapshot that generated this operational row.
+   * Null for legacy curriculum-generated plans. Persisted in planner_entries.notes.
+   */
+  distributionSnapshotId?: string | null;
 }
 
 // Fallback / default configs to ensure zero-cold-start
@@ -122,6 +127,7 @@ export function normalisePlanEntry(
     teachingResources: raw.teachingResources ?? "",
     assessmentMethods: raw.assessmentMethods ?? "",
     planNotes: raw.planNotes ?? "",
+    distributionSnapshotId: raw.distributionSnapshotId ?? null,
   };
 }
 
@@ -634,6 +640,7 @@ export async function generateSchedule(
   // Calendar comes from the plan variant. Lessons prefer a current snapshot.
   // Distribution-based plans fail closed when that snapshot is missing.
   let parsedLessons: ScheduleSourceLesson[] = [];
+  let distributionSnapshotId: string | null = null;
   let plan: {
     academic_year_id?: string | null;
     semester_id?: string | null;
@@ -656,8 +663,9 @@ export async function generateSchedule(
       planId,
       planRow.current_version,
     );
-    if (fromSnapshot?.length) {
-      parsedLessons = fromSnapshot;
+    if (fromSnapshot?.lessons.length) {
+      parsedLessons = fromSnapshot.lessons;
+      distributionSnapshotId = fromSnapshot.snapshotId;
     }
   }
 
@@ -818,6 +826,7 @@ export async function generateSchedule(
         teachingResources: "",
         assessmentMethods: "",
         planNotes: "",
+        distributionSnapshotId,
       });
       continue;
     }
@@ -852,6 +861,7 @@ export async function generateSchedule(
           teachingResources: originalLesson.teachingResources,
           assessmentMethods: originalLesson.assessmentMethods,
           planNotes: originalLesson.planNotes,
+          distributionSnapshotId,
         });
         // Skip placing regular flat lesson on this slot
         continue;
@@ -883,6 +893,7 @@ export async function generateSchedule(
         teachingResources: lesson.teachingResources,
         assessmentMethods: lesson.assessmentMethods,
         planNotes: lesson.planNotes,
+        distributionSnapshotId,
       });
       flatLessonIdx++;
     }
