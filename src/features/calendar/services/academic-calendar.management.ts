@@ -546,8 +546,29 @@ export async function listAdminSemestersForYear(
   adminClient: AdminClient,
   academicYearId: string,
 ): Promise<SemesterRecord[]> {
-  await requireAdminActor(auth, adminClient);
-  return listSemestersForYear(auth, academicYearId);
+  const { client } = await requireAdminActor(auth, adminClient);
+
+  const { data: year, error: yearError } = await client
+    .from("academic_years")
+    .select("id")
+    .eq("id", academicYearId)
+    .maybeSingle();
+
+  if (yearError) throw yearError;
+  if (!year) {
+    throw new Error("السنة الدراسية غير موجودة.");
+  }
+
+  const { data, error } = await client
+    .from("semesters")
+    .select("id, academic_year_id, label, start_date, end_date, order_index")
+    .eq("academic_year_id", academicYearId)
+    .order("order_index", { ascending: true })
+    .order("start_date", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => mapSemester(row, academicYearId));
 }
 
 export async function createAdminSemester(

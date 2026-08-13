@@ -23,6 +23,8 @@ import {
   deleteAdminSemester,
   listAcademicYears,
   listAdminAcademicYears,
+  listAdminSemestersForYear,
+  listSemestersForYear,
   updateAdminAcademicYear,
   updateAdminSemester,
 } from "./academic-calendar.management.ts";
@@ -1233,6 +1235,121 @@ describe("admin academic year / semester management", () => {
     assert.equal(/\.eq\("user_id"/.test(adminList), false);
     assert.match(ownerList, /\.eq\("user_id"/);
     assert.match(source, /user_id:\s*userId/);
+  });
+
+  it("listAdminSemestersForYear returns official semesters not owned by the admin", async () => {
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_B,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: null,
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_B,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الفصل الدراسي الأول",
+          start_date: "2026-08-30",
+          end_date: "2027-01-08",
+          order_index: 1,
+        },
+      ],
+    });
+
+    await assert.rejects(
+      () => listSemestersForYear(auth(USER_A, client), EXISTING_YEAR_ID),
+      /غير موجودة|غير مملوكة/,
+    );
+
+    const rows = await listAdminSemestersForYear(
+      auth(USER_A, client),
+      mockAdminClient("admin"),
+      EXISTING_YEAR_ID,
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.id, EXISTING_SEMESTER_ID);
+    assert.equal(rows[0]?.academicYearId, EXISTING_YEAR_ID);
+    assert.equal(rows[0]?.label, "الفصل الدراسي الأول");
+  });
+
+  it("listAdminSemestersForYear returns every semester for the selected year", async () => {
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_B,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: null,
+          is_active: true,
+        },
+        {
+          id: "other-year",
+          user_id: USER_B,
+          label: "عام آخر",
+          start_date: "2027-08-22",
+          end_date: "2028-01-13",
+          is_active: false,
+        },
+      ],
+      semesters: [
+        {
+          id: "sem-1",
+          user_id: USER_B,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الفصل الدراسي الأول",
+          start_date: "2026-08-30",
+          end_date: "2027-01-08",
+          order_index: 1,
+        },
+        {
+          id: "sem-2",
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الفصل الدراسي الثاني",
+          start_date: "2027-01-18",
+          end_date: "2027-05-28",
+          order_index: 2,
+        },
+        {
+          id: "sem-other",
+          user_id: USER_B,
+          academic_year_id: "other-year",
+          label: "فصل سنة أخرى",
+          start_date: "2027-08-30",
+          end_date: "2028-01-08",
+          order_index: 1,
+        },
+      ],
+    });
+
+    const rows = await listAdminSemestersForYear(
+      auth(USER_A, client),
+      mockAdminClient("admin"),
+      EXISTING_YEAR_ID,
+    );
+    assert.equal(rows.length, 2);
+    assert.equal(rows.map((row) => row.id).join(","), "sem-1,sem-2");
+  });
+
+  it("admin semester list query does not filter by user_id", () => {
+    const source = readFileSync(join(ROOT, MANAGEMENT_FILE), "utf8");
+    const adminList = source.slice(
+      source.indexOf("export async function listAdminSemestersForYear"),
+      source.indexOf("export async function createAdminSemester"),
+    );
+    const ownerList = source.slice(
+      source.indexOf("export async function listSemestersForYear"),
+      source.indexOf("// --- Admin write operations"),
+    );
+    assert.equal(/\.eq\("user_id"/.test(adminList), false);
+    assert.match(ownerList, /\.eq\("user_id"/);
   });
 
   it("invalid academic-year date range rejected", async () => {
