@@ -14,7 +14,10 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { previewDistributionDraftAuthorized } from "./distribution-import.ts";
-import { loadCurrentDistributionScheduleLessons } from "./distribution-schedule-source.ts";
+import {
+  DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE,
+  loadCurrentDistributionScheduleLessons,
+} from "./distribution-schedule-source.ts";
 import { approveDistributionSnapshotAuthorized } from "./distribution-snapshot.ts";
 import {
   generateSchedule,
@@ -833,17 +836,18 @@ describe("distribution snapshot end-to-end (in-memory only)", () => {
       1,
     );
     assert.equal(loaded, null);
-    const generated = await generateSchedule(
-      "لغتي",
-      "أول متوسط",
-      PLAN_STALE,
-      ctx(TEACHER, memory.client),
+    await assert.rejects(
+      () => generateSchedule("لغتي", "أول متوسط", PLAN_STALE, ctx(TEACHER, memory.client)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);
+        return true;
+      },
     );
     assert.equal(
-      generated.some((entry) => entry.lessonTitle.includes("درس لقطة غير حالية")),
+      memory.writes.some((write) => write.table === "curriculum_lessons"),
       false,
     );
-    assert.equal(generated[0]?.lessonTitle, "درس المنهج المنشور");
   });
 
   it("fails closed on an empty current snapshot instead of inventing lessons", async () => {
@@ -855,23 +859,29 @@ describe("distribution snapshot end-to-end (in-memory only)", () => {
     );
     assert.equal(loaded, null);
 
-    const withCurriculum = await generateSchedule(
-      "لغتي",
-      "أول متوسط",
-      PLAN_EMPTY,
-      ctx(TEACHER, memory.client),
+    await assert.rejects(
+      () => generateSchedule("لغتي", "أول متوسط", PLAN_EMPTY, ctx(TEACHER, memory.client)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);
+        return true;
+      },
     );
-    assert.equal(withCurriculum[0]?.lessonTitle, "درس المنهج المنشور");
 
-    const closed = await generateSchedule(
-      "تجويد",
-      "أول متوسط",
-      PLAN_EMPTY,
-      ctx(TEACHER, memory.client),
+    await assert.rejects(
+      () => generateSchedule("تجويد", "أول متوسط", PLAN_EMPTY, ctx(TEACHER, memory.client)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);
+        return true;
+      },
     );
-    assert.deepEqual(closed, []);
     assert.equal(
       memory.writes.some((write) => write.table === "distribution_snapshot_items"),
+      false,
+    );
+    assert.equal(
+      memory.writes.some((write) => write.table === "curriculum_lessons"),
       false,
     );
   });

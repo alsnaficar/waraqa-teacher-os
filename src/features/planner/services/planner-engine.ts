@@ -11,7 +11,7 @@ import { resolveUserContext, type SupabaseUserContext } from "@/platform/databas
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import {
-  loadCurrentDistributionScheduleLessons,
+  resolveDistributionScheduleLessons,
   type ScheduleSourceLesson,
 } from "./distribution-schedule-source";
 
@@ -632,6 +632,7 @@ export async function generateSchedule(
 
   // 2. Load the semester plan once when generating for a plan scope.
   // Calendar comes from the plan variant. Lessons prefer a current snapshot.
+  // Distribution-based plans fail closed when that snapshot is missing.
   let parsedLessons: ScheduleSourceLesson[] = [];
   let plan: {
     academic_year_id?: string | null;
@@ -650,7 +651,7 @@ export async function generateSchedule(
       throw new Error(PLANNER_CALENDAR_REQUIRED_MESSAGE);
     }
     plan = planRow;
-    const fromSnapshot = await loadCurrentDistributionScheduleLessons(
+    const fromSnapshot = await resolveDistributionScheduleLessons(
       client,
       planId,
       planRow.current_version,
@@ -660,7 +661,7 @@ export async function generateSchedule(
     }
   }
 
-  // 3. Plans without a current snapshot keep the published curriculum path.
+  // 3. Legacy plans that never used a distribution snapshot keep curriculum.
   if (parsedLessons.length === 0) {
     const { data: files } = await client
       .from("curriculum_files")

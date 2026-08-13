@@ -11,6 +11,7 @@ import type {
 
 import { CALENDAR_RESOLVE_REQUIRED_MESSAGE } from "@/features/calendar/services/resolve-calendar";
 
+import { DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE } from "./distribution-schedule-source.ts";
 import {
   DEFAULT_CALENDAR,
   generateSchedule,
@@ -43,9 +44,11 @@ function matches(row: Row, filters: Filter[]): boolean {
 
 function createMockDb(db: Record<string, Row[]>) {
   const writes: { table: string; op: "insert" | "update" | "delete"; row?: Row }[] = [];
+  const reads: string[] = [];
 
   const client = {
     from(table: string) {
+      reads.push(table);
       const filters: Filter[] = [];
       const orders: { column: string; ascending: boolean }[] = [];
       let pendingInsert: Row[] | null = null;
@@ -156,7 +159,7 @@ function createMockDb(db: Record<string, Row[]>) {
     },
   };
 
-  return { client, db, writes };
+  return { client, db, writes, reads };
 }
 
 function auth(userId: string, client: ReturnType<typeof createMockDb>["client"]) {
@@ -394,5 +397,192 @@ describe("planner calendar config", () => {
     );
 
     assert.equal(mock.writes.filter((item) => item.table === "planner_entries").length, 0);
+  });
+});
+
+const PLAN_ID = "33333333-3333-4333-8333-333333333333";
+const VERSION_1_ID = "44444444-4444-4444-8444-444444444444";
+const VERSION_2_ID = "55555555-5555-4555-8555-555555555555";
+const SNAPSHOT_A_ID = "66666666-6666-4666-8666-666666666666";
+const SNAPSHOT_B_ID = "77777777-7777-4777-8777-777777777777";
+const VARIANT_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+function planTables(
+  overrides: Record<string, Row[]> = {},
+  currentVersion = 1,
+): Record<string, Row[]> {
+  return officialTables({
+    semester_plans: [
+      {
+        id: PLAN_ID,
+        academic_year_id: OFFICIAL_YEAR_ID,
+        semester_id: OFFICIAL_SEMESTER_ID,
+        calendar_variant_id: VARIANT_ID,
+        current_version: currentVersion,
+      },
+    ],
+    semester_plan_versions: [
+      {
+        id: VERSION_1_ID,
+        semester_plan_id: PLAN_ID,
+        version_number: 1,
+      },
+      {
+        id: VERSION_2_ID,
+        semester_plan_id: PLAN_ID,
+        version_number: 2,
+      },
+    ],
+    distribution_snapshots: [],
+    distribution_snapshot_items: [],
+    ...overrides,
+  });
+}
+
+function snapshotRow(options: { id?: string; versionId: string; isCurrent: boolean }): Row {
+  return {
+    id: options.id ?? SNAPSHOT_A_ID,
+    semester_plan_id: PLAN_ID,
+    semester_plan_version_id: options.versionId,
+    is_current: options.isCurrent,
+  };
+}
+
+function snapshotItemRow(options: { snapshotId?: string; lesson: string; periods?: number }): Row {
+  return {
+    snapshot_id: options.snapshotId ?? SNAPSHOT_A_ID,
+    order_index: 1,
+    unit: "وحدة التوزيع",
+    lesson: options.lesson,
+    periods: options.periods ?? 1,
+    notes: "",
+    curriculum_lesson_id: null,
+  };
+}
+
+describe("generateSchedule distribution snapshot fail-closed", () => {
+  it("legacy plan without any snapshot keeps curriculum_lessons", async () => {
+    const mock = createMockDb(planTables());
+    const entries = await generateSchedule(
+      "لغتي",
+      "صف أول",
+      PLAN_ID,
+      auth(TEACHER_ID, mock.client),
+    );
+    assert.ok(entries.length > 0);
+    assert.ok(entries.some((entry) => entry.lessonTitle.includes("الدرس الأول")));
+    assert.ok(mock.reads.includes("curriculum_lessons"));
+    assert.equal(mock.writes.length, 0);
+  });
+
+  it("uses the current distribution snapshot instead of curriculum", async () => {
+    const mock = createMockDb(
+      planTables({
+        distribution_snapshots: [snapshotRow({ versionId: VERSION_1_ID, isCurrent: true })],
+        distribution_snapshot_items: [snapshotItemRow({ lesson: "درس التوزيع" })],
+      }),
+    );
+    const entries = await generateSchedule(
+      "لغتي",
+      "صف أول",
+      PLAN_ID,
+      auth(TEACHER_ID, mock.client),
+    );
+    assert.ok(entries.length > 0);
+    assert.ok(entries.some((entry) => entry.lessonTitle.includes("درس التوزيع")));
+    assert.equal(
+      entries.some((entry) => entry.lessonTitle.includes("الدرس الأول")),
+      false,
+    );
+    assert.equal(mock.reads.includes("curriculum_lessons"), false);
+    assert.equal(mock.writes.length, 0);
+  });
+
+  it("fails closed when a distribution plan has no snapshot on the current version", async () => {
+    const mock = createMockDb(
+      planTables(
+        {
+          distribution_snapshots: [snapshotRow({ versionId: VERSION_1_ID, isCurrent: true })],
+          distribution_snapshot_items: [snapshotItemRow({ lesson: "لقطة الإصدار الأول" })],
+        },
+        2,
+      ),
+    );
+    await assert.rejects(
+      () => generateSchedule("لغتي", "صف أول", PLAN_ID, auth(TEACHER_ID, mock.client)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);
+        return true;
+      },
+    );
+    assert.equal(mock.reads.includes("curriculum_lessons"), false);
+    assert.equal(mock.writes.length, 0);
+  });
+
+  it("fails closed when the only snapshot has is_current=false", async () => {
+    const mock = createMockDb(
+      planTables({
+        distribution_snapshots: [snapshotRow({ versionId: VERSION_1_ID, isCurrent: false })],
+        distribution_snapshot_items: [snapshotItemRow({ lesson: "لقطة غير معتمدة" })],
+      }),
+    );
+    await assert.rejects(
+      () => generateSchedule("لغتي", "صف أول", PLAN_ID, auth(TEACHER_ID, mock.client)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);
+        return true;
+      },
+    );
+    assert.equal(mock.reads.includes("curriculum_lessons"), false);
+    assert.equal(mock.writes.length, 0);
+  });
+
+  it("fails closed when the current snapshot has no valid items", async () => {
+    const mock = createMockDb(
+      planTables({
+        distribution_snapshots: [snapshotRow({ versionId: VERSION_1_ID, isCurrent: true })],
+        distribution_snapshot_items: [snapshotItemRow({ lesson: "   ", periods: 0 })],
+      }),
+    );
+    await assert.rejects(
+      () => generateSchedule("لغتي", "صف أول", PLAN_ID, auth(TEACHER_ID, mock.client)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, DISTRIBUTION_SNAPSHOT_REQUIRED_MESSAGE);
+        return true;
+      },
+    );
+    assert.equal(mock.reads.includes("curriculum_lessons"), false);
+    assert.equal(mock.writes.length, 0);
+  });
+
+  it("uses snapshot B after it replaces snapshot A on the same version", async () => {
+    const mock = createMockDb(
+      planTables({
+        distribution_snapshots: [
+          snapshotRow({ id: SNAPSHOT_A_ID, versionId: VERSION_1_ID, isCurrent: false }),
+          snapshotRow({ id: SNAPSHOT_B_ID, versionId: VERSION_1_ID, isCurrent: true }),
+        ],
+        distribution_snapshot_items: [
+          snapshotItemRow({ snapshotId: SNAPSHOT_A_ID, lesson: "لقطة أ" }),
+          snapshotItemRow({ snapshotId: SNAPSHOT_B_ID, lesson: "لقطة ب" }),
+        ],
+      }),
+    );
+    const entries = await generateSchedule(
+      "لغتي",
+      "صف أول",
+      PLAN_ID,
+      auth(TEACHER_ID, mock.client),
+    );
+    assert.ok(entries.some((entry) => entry.lessonTitle.includes("لقطة ب")));
+    assert.equal(
+      entries.some((entry) => entry.lessonTitle.includes("لقطة أ")),
+      false,
+    );
+    assert.equal(mock.reads.includes("curriculum_lessons"), false);
+    assert.equal(mock.writes.length, 0);
   });
 });
