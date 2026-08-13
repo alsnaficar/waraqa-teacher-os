@@ -794,6 +794,117 @@ export type Database = {
           },
         ];
       };
+      distribution_snapshot_items: {
+        Row: {
+          created_at: string;
+          curriculum_lesson_id: string | null;
+          id: string;
+          lesson: string;
+          notes: string;
+          order_index: number;
+          periods: number;
+          snapshot_id: string;
+          unit: string;
+        };
+        Insert: {
+          created_at?: string;
+          curriculum_lesson_id?: string | null;
+          id?: string;
+          lesson: string;
+          notes?: string;
+          order_index: number;
+          periods: number;
+          snapshot_id: string;
+          unit?: string;
+        };
+        Update: {
+          created_at?: string;
+          curriculum_lesson_id?: string | null;
+          id?: string;
+          lesson?: string;
+          notes?: string;
+          order_index?: number;
+          periods?: number;
+          snapshot_id?: string;
+          unit?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "distribution_snapshot_items_curriculum_lesson_id_fkey";
+            columns: ["curriculum_lesson_id"];
+            isOneToOne: false;
+            referencedRelation: "curriculum_lessons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "distribution_snapshot_items_snapshot_id_fkey";
+            columns: ["snapshot_id"];
+            isOneToOne: false;
+            referencedRelation: "distribution_snapshots";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      distribution_snapshots: {
+        Row: {
+          approved_at: string;
+          approved_by: string;
+          created_at: string;
+          id: string;
+          is_current: boolean;
+          item_count: number;
+          semester_plan_id: string;
+          semester_plan_version_id: string;
+          source: string;
+          spreadsheet_id: string;
+          total_periods: number;
+          worksheet_name: string;
+        };
+        Insert: {
+          approved_at?: string;
+          approved_by: string;
+          created_at?: string;
+          id?: string;
+          is_current?: boolean;
+          item_count: number;
+          semester_plan_id: string;
+          semester_plan_version_id: string;
+          source?: string;
+          spreadsheet_id: string;
+          total_periods: number;
+          worksheet_name: string;
+        };
+        Update: {
+          approved_at?: string;
+          approved_by?: string;
+          created_at?: string;
+          id?: string;
+          is_current?: boolean;
+          item_count?: number;
+          semester_plan_id?: string;
+          semester_plan_version_id?: string;
+          source?: string;
+          spreadsheet_id?: string;
+          total_periods?: number;
+          worksheet_name?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "distribution_snapshots_semester_plan_id_fkey";
+            columns: ["semester_plan_id"];
+            isOneToOne: false;
+            referencedRelation: "semester_plans";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "distribution_snapshots_semester_plan_version_id_fkey";
+            columns: ["semester_plan_version_id"];
+            isOneToOne: false;
+            referencedRelation: "semester_plan_versions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       grades: {
         Row: {
           created_at: string;

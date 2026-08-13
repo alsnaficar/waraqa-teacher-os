@@ -39,6 +39,7 @@ import {
   DiagnosticResult,
   ExportResult,
 } from "@/features/planner/sheets.functions";
+import { DistributionImportPanel } from "@/features/planner/components/distribution-import-panel";
 
 interface LocalSyncLog {
   id: string;
@@ -370,6 +371,8 @@ export function GoogleSheetsIntegrationPage() {
         title="تكامل Google Sheets"
         description="مركز الإدارة والتحكم لمزامنة الخطط والتقويم والمناهج الدراسية مع أوراق عمل Google Sheets"
       />
+
+      <DistributionImportPanel />
 
       {/* Section 1 & 2: Connection Status & Tools */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">

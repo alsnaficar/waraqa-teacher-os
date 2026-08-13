@@ -558,7 +558,7 @@ describe("semester plan calendar variant selection", () => {
 });
 
 describe("semester plan calendar variant source guards", () => {
-  it("does not rewrite planner-engine or Google Sheets", () => {
+  it("planner engine reads the plan variant; Sheets stay untouched", () => {
     const lifecycle = readFileSync(join(ROOT, LIFECYCLE_FILE), "utf8");
     const service = readFileSync(join(ROOT, SERVICE_FILE), "utf8");
     const engine = readFileSync(join(ROOT, ENGINE_FILE), "utf8");
@@ -570,7 +570,7 @@ describe("semester plan calendar variant source guards", () => {
     assert.match(lifecycle, /updateSemesterPlanCalendarVariant/);
     assert.equal(/loadCalendarConfig|generateSchedule/.test(lifecycle), false);
     assert.equal(/lesson_sessions/.test(lifecycle), false);
-    assert.equal(/calendar_variant_id/.test(engine), false);
+    assert.match(engine, /calendar_variant_id/);
     assert.equal(/calendar_variant/.test(sheets), false);
     assert.equal(/UPDATE.*calendar_variant_id/.test(selection), false);
     assert.match(service, /calendarVariantId/);

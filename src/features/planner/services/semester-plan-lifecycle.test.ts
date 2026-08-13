@@ -169,6 +169,16 @@ function officialCalendar() {
         order_index: 1,
       },
     ],
+    calendar_variants: [
+      {
+        id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        code: "GENERAL",
+        label: "جميع المناطق",
+        is_default: true,
+        is_selectable: true,
+        sort_order: 0,
+      },
+    ],
     semester_plans: [] as Row[],
     semester_plan_versions: [] as Row[],
     planner_entries: [] as Row[],

@@ -9,6 +9,8 @@ import type {
   CalendarTerm,
 } from "@/features/calendar/services/calendar.service";
 
+import { CALENDAR_RESOLVE_REQUIRED_MESSAGE } from "@/features/calendar/services/resolve-calendar";
+
 import {
   DEFAULT_CALENDAR,
   generateSchedule,
@@ -201,6 +203,18 @@ function officialTables(overrides: Record<string, Row[]> = {}): Record<string, R
       },
     ],
     calendar_events: [],
+    calendar_variants: [
+      {
+        id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        code: "GENERAL",
+        label: "جميع المناطق",
+        is_default: true,
+        is_selectable: true,
+        sort_order: 0,
+      },
+    ],
+    calendar_term_overrides: [],
+    calendar_exceptions: [],
     profiles: [
       {
         id: TEACHER_ID,
@@ -344,7 +358,7 @@ describe("planner calendar config", () => {
       () => generateSchedule("لغتي", "صف أول", undefined, auth(TEACHER_ID, mock.client)),
       (error: unknown) => {
         assert.ok(error instanceof Error);
-        assert.equal(error.message, PLANNER_CALENDAR_REQUIRED_MESSAGE);
+        assert.equal(error.message, CALENDAR_RESOLVE_REQUIRED_MESSAGE);
         return true;
       },
     );
@@ -374,7 +388,7 @@ describe("planner calendar config", () => {
       () => generateSchedule("لغتي", "صف أول", undefined, auth(TEACHER_ID, mock.client)),
       (error: unknown) => {
         assert.ok(error instanceof Error);
-        assert.equal(error.message, PLANNER_CALENDAR_REQUIRED_MESSAGE);
+        assert.equal(error.message, CALENDAR_RESOLVE_REQUIRED_MESSAGE);
         return true;
       },
     );

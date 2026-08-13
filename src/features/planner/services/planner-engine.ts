@@ -10,6 +10,10 @@ import {
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
+import {
+  loadCurrentDistributionScheduleLessons,
+  type ScheduleSourceLesson,
+} from "./distribution-schedule-source";
 
 function createPlannerId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -561,71 +565,19 @@ export async function generateSchedule(
     return [];
   }
 
-  // 2. Fetch the published curriculum file for this grade & subject
-  const { data: files } = await client
-    .from("curriculum_files")
-    .select("id")
-    .eq("grade", activeGrade)
-    .eq("subject", activeSubject)
-    .eq("status", "published")
-    .limit(1);
-
-  const publishedFileId = files?.[0]?.id;
-
-  if (!publishedFileId) {
-    return [];
-  }
-
-  let parsedLessons: Array<{
-    id: string | null;
-    title: string;
-    unitTitle: string;
-    periodsCount: number;
-    orderIndex: number;
-    objectives: string;
-    teachingResources: string;
-    assessmentMethods: string;
-    planNotes: string;
-  }> = [];
-
-  // 3. Fetch all curriculum lessons for this file
-  const { data: lessons, error: lessonsError } = await client
-    .from("curriculum_lessons")
-    .select("*")
-    .eq("curriculum_file_id", publishedFileId)
-    .order("order_index", { ascending: true });
-
-  if (lessonsError || !lessons || lessons.length === 0) {
-    return [];
-  }
-
-  // Deserialise and index the curriculum lessons
-  parsedLessons = lessons.map((l) => {
-    const extra = deserializeLessonNotes(l.notes);
-    return {
-      id: l.id,
-      title: l.title,
-      unitTitle: extra.unitName || "الوحدة الأولى",
-      periodsCount: Math.max(1, parseInt(extra.periods || "1", 10)),
-      orderIndex: l.order_index,
-      objectives: (l.objectives || extra.outcomes || "").trim(),
-      teachingResources: (extra.activities || extra.resources || "").trim(),
-      assessmentMethods: (extra.assessment || "").trim(),
-      planNotes: (extra.notes || "").trim(),
-    };
-  });
-
-  // 4. Load config, timetable and overrides.
-  // Calendar comes from the semester plan variant when planId is present.
+  // 2. Load the semester plan once when generating for a plan scope.
+  // Calendar comes from the plan variant. Lessons prefer a current snapshot.
+  let parsedLessons: ScheduleSourceLesson[] = [];
   let plan: {
     academic_year_id?: string | null;
     semester_id?: string | null;
     calendar_variant_id?: string | null;
+    current_version?: number;
   } | null = null;
   if (planId) {
     const { data: planRow, error: planError } = await client
       .from("semester_plans")
-      .select("academic_year_id, semester_id, calendar_variant_id")
+      .select("academic_year_id, semester_id, calendar_variant_id, current_version")
       .eq("id", planId)
       .maybeSingle();
     if (planError) throw planError;
@@ -633,8 +585,58 @@ export async function generateSchedule(
       throw new Error(PLANNER_CALENDAR_REQUIRED_MESSAGE);
     }
     plan = planRow;
+    const fromSnapshot = await loadCurrentDistributionScheduleLessons(
+      client,
+      planId,
+      planRow.current_version,
+    );
+    if (fromSnapshot?.length) {
+      parsedLessons = fromSnapshot;
+    }
   }
 
+  // 3. Plans without a current snapshot keep the published curriculum path.
+  if (parsedLessons.length === 0) {
+    const { data: files } = await client
+      .from("curriculum_files")
+      .select("id")
+      .eq("grade", activeGrade)
+      .eq("subject", activeSubject)
+      .eq("status", "published")
+      .limit(1);
+
+    const publishedFileId = files?.[0]?.id;
+    if (!publishedFileId) {
+      return [];
+    }
+
+    const { data: lessons, error: lessonsError } = await client
+      .from("curriculum_lessons")
+      .select("*")
+      .eq("curriculum_file_id", publishedFileId)
+      .order("order_index", { ascending: true });
+
+    if (lessonsError || !lessons || lessons.length === 0) {
+      return [];
+    }
+
+    parsedLessons = lessons.map((l) => {
+      const extra = deserializeLessonNotes(l.notes);
+      return {
+        id: l.id,
+        title: l.title,
+        unitTitle: extra.unitName || "الوحدة الأولى",
+        periodsCount: Math.max(1, parseInt(extra.periods || "1", 10)),
+        orderIndex: l.order_index,
+        objectives: (l.objectives || extra.outcomes || "").trim(),
+        teachingResources: (extra.activities || extra.resources || "").trim(),
+        assessmentMethods: (extra.assessment || "").trim(),
+        planNotes: (extra.notes || "").trim(),
+      };
+    });
+  }
+
+  // 4. Load config, timetable and overrides.
   const config = await loadCalendarConfig(resolved, plan);
   const timetable = await loadTimetable(resolved);
   const overrides = await loadUserOverrides(planId, resolved);
