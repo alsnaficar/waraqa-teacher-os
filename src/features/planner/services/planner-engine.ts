@@ -1,10 +1,12 @@
-import {
-  getActiveAcademicYear,
-  getCurrentAcademicTerm,
-  getHolidayDates,
-  type CalendarAcademicYear,
-  type CalendarTerm,
+import type {
+  CalendarAcademicYear,
+  CalendarTerm,
 } from "@/features/calendar/services/calendar.service";
+import {
+  resolveCalendar,
+  resolveCalendarForPlan,
+  type ResolvedCalendar,
+} from "@/features/calendar/services/resolve-calendar";
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
@@ -244,17 +246,76 @@ export function resolvePlannerCalendarConfig(
   throw new Error(PLANNER_CALENDAR_REQUIRED_MESSAGE);
 }
 
-export async function loadCalendarConfig(
-  context?: SupabaseUserContext,
-): Promise<AcademicCalendarConfig> {
-  const year = await getActiveAcademicYear(context);
-  const term = await getCurrentAcademicTerm(context);
-  const config = resolvePlannerCalendarConfig(year, term);
+function expandIsoDateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(last.getTime()) || start > end) {
+    return dates;
+  }
+  while (cursor <= last) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+/**
+ * Maps the official resolved calendar onto planner config.
+ * Holidays, cancelled days, and exam ranges skip teaching dates.
+ * Effective semester bounds include variant term overrides.
+ */
+export function mapResolvedCalendarToPlannerConfig(
+  calendar: ResolvedCalendar,
+): AcademicCalendarConfig {
+  const config = resolvePlannerCalendarConfig(
+    {
+      id: calendar.year.id,
+      label: calendar.year.label,
+      startDate: calendar.year.startDate,
+      endDate: calendar.year.endDate,
+      isActive: calendar.year.isActive,
+    },
+    {
+      id: calendar.semester.id,
+      label: calendar.semester.label,
+      startDate: calendar.effectiveSemesterStart,
+      endDate: calendar.effectiveSemesterEnd,
+      orderIndex: calendar.semester.orderIndex,
+    },
+  );
+
+  const holidays = new Map<string, string>();
+  for (const item of calendar.holidays) {
+    holidays.set(item.date, item.label);
+  }
+  for (const date of calendar.cancelledDays) {
+    if (!holidays.has(date)) holidays.set(date, "");
+  }
+  for (const range of calendar.examRanges) {
+    for (const date of expandIsoDateRange(range.startDate, range.endDate)) {
+      if (!holidays.has(date)) holidays.set(date, range.label);
+    }
+  }
 
   return {
     ...config,
-    holidays: await getHolidayDates(context),
+    holidays: [...holidays.entries()].map(([date, label]) => ({ date, label })),
   };
+}
+
+export async function loadCalendarConfig(
+  context?: SupabaseUserContext,
+  plan?: {
+    academic_year_id?: string | null;
+    semester_id?: string | null;
+    calendar_variant_id?: string | null;
+  } | null,
+): Promise<AcademicCalendarConfig> {
+  const calendar = plan
+    ? await resolveCalendarForPlan(plan, context)
+    : await resolveCalendar({}, context);
+  return mapResolvedCalendarToPlannerConfig(calendar);
 }
 
 export async function saveCalendarConfig(_config: AcademicCalendarConfig): Promise<void> {
@@ -554,8 +615,27 @@ export async function generateSchedule(
     };
   });
 
-  // 4. Load config, timetable and overrides
-  const config = await loadCalendarConfig(resolved);
+  // 4. Load config, timetable and overrides.
+  // Calendar comes from the semester plan variant when planId is present.
+  let plan: {
+    academic_year_id?: string | null;
+    semester_id?: string | null;
+    calendar_variant_id?: string | null;
+  } | null = null;
+  if (planId) {
+    const { data: planRow, error: planError } = await client
+      .from("semester_plans")
+      .select("academic_year_id, semester_id, calendar_variant_id")
+      .eq("id", planId)
+      .maybeSingle();
+    if (planError) throw planError;
+    if (!planRow) {
+      throw new Error(PLANNER_CALENDAR_REQUIRED_MESSAGE);
+    }
+    plan = planRow;
+  }
+
+  const config = await loadCalendarConfig(resolved, plan);
   const timetable = await loadTimetable(resolved);
   const overrides = await loadUserOverrides(planId, resolved);
 
