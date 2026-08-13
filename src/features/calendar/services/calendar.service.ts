@@ -66,6 +66,59 @@ export async function getActiveAcademicYear(
   };
 }
 
+function mapSemesterRow(row: {
+  id: string;
+  label: string;
+  start_date: string | null;
+  end_date: string | null;
+  order_index: number;
+}): CalendarTerm {
+  return {
+    id: row.id,
+    label: row.label,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    orderIndex: row.order_index,
+  };
+}
+
+/**
+ * Resolve the academic term for a calendar date.
+ *
+ * Priority:
+ * 1. Term that covers `date` (`start_date <= date <= end_date`)
+ * 2. Else nearest future term (earliest `start_date > date`)
+ * 3. Else null
+ *
+ * A semester with a null `end_date` is not treated as covering `date`.
+ * That matches the previous SQL `.gte("end_date", today)`, which excluded NULLs.
+ * Upcoming fallback uses `start_date` only and does not consult `order_index`.
+ */
+export function pickAcademicTermForDate(terms: CalendarTerm[], date: string): CalendarTerm | null {
+  const covering = terms.filter(
+    (term) =>
+      term.startDate != null &&
+      term.endDate != null &&
+      term.startDate <= date &&
+      term.endDate >= date,
+  );
+
+  if (covering.length === 1) return covering[0] ?? null;
+
+  if (covering.length > 1) {
+    return (
+      [...covering].sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)))[0] ??
+      null
+    );
+  }
+
+  const upcoming = terms
+    .filter((term) => term.startDate != null && term.startDate > date)
+    .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+
+  return upcoming[0] ?? null;
+}
+
 export async function getCurrentAcademicTerm(
   context?: SupabaseUserContext,
 ): Promise<CalendarTerm | null> {
@@ -77,28 +130,16 @@ export async function getCurrentAcademicTerm(
 
   if (!year) return null;
 
-  const today = new Date().toISOString().slice(0, 10);
-
   const { data, error } = await resolved.client
     .from("semesters")
     .select("id, label, start_date, end_date, order_index")
     .eq("academic_year_id", year.id)
-    .lte("start_date", today)
-    .gte("end_date", today)
-    .limit(1)
-    .maybeSingle();
+    .order("start_date", { ascending: true });
 
   if (error) throw error;
 
-  if (!data) return null;
-
-  return {
-    id: data.id,
-    label: data.label,
-    startDate: data.start_date,
-    endDate: data.end_date,
-    orderIndex: data.order_index,
-  };
+  const today = new Date().toISOString().slice(0, 10);
+  return pickAcademicTermForDate((data ?? []).map(mapSemesterRow), today);
 }
 
 export async function getEventsBetween(
