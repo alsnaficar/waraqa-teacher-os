@@ -227,8 +227,8 @@ export async function activateAcademicYear(
   if (!year) {
     throw new Error("السنة الدراسية غير موجودة.");
   }
-  if (!year.start_date || !year.end_date) {
-    throw new Error("لا يمكن تفعيل سنة دراسية بدون تواريخ بداية ونهاية صحيحة.");
+  if (!year.start_date) {
+    throw new Error("لا يمكن تفعيل سنة دراسية بدون تاريخ بداية صحيح.");
   }
 
   await deactivateOtherActiveYears(client, year.id);
@@ -257,6 +257,7 @@ export async function createSemester(
 ): Promise<SemesterRecord> {
   const { client, userId } = requireAuth(auth);
   const label = normalizeCalendarLabel(input.label);
+  assertValidDateRange(input.startDate, input.endDate);
 
   const { data: year, error: yearError } = await client
     .from("academic_years")
@@ -268,16 +269,20 @@ export async function createSemester(
   if (!year) {
     throw new Error("السنة الدراسية غير موجودة.");
   }
-  if (!year.start_date || !year.end_date) {
-    throw new Error("السنة الدراسية تفتقد تواريخ البداية/النهاية.");
+  if (!year.start_date) {
+    throw new Error("السنة الدراسية تفتقد تاريخ البداية.");
   }
-
-  assertSemesterWithinAcademicYear({
-    semesterStart: input.startDate,
-    semesterEnd: input.endDate,
-    yearStart: year.start_date,
-    yearEnd: year.end_date,
-  });
+  if (input.startDate < year.start_date || input.endDate < year.start_date) {
+    throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+  }
+  if (year.end_date) {
+    assertSemesterWithinAcademicYear({
+      semesterStart: input.startDate,
+      semesterEnd: input.endDate,
+      yearStart: year.start_date,
+      yearEnd: year.end_date,
+    });
+  }
 
   const existing = await listSemestersByAcademicYearId(client, input.academicYearId);
   assertSemestersDoNotOverlap(existing, {

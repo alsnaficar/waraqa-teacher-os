@@ -321,26 +321,41 @@ describe("admin academic year / semester management", () => {
     assert.equal(db.academic_years.length, 2);
   });
 
-  it("cannot activate a year without complete dates", async () => {
+  it("admin can activate a year with a null end date and deactivate every other active year", async () => {
     const { client, db } = createMockClient({
       academic_years: [
         {
-          id: EXISTING_YEAR_ID,
+          id: "y-a",
           user_id: USER_A,
-          label: "العام الدراسي الحالي 1447هـ",
-          start_date: "2026-08-30",
-          end_date: null,
+          label: "سنة أخرى نشطة",
+          start_date: "2025-08-23",
+          end_date: "2026-06-24",
           is_active: true,
+        },
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_B,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: null,
+          is_active: false,
         },
       ],
     });
-    await assert.rejects(
-      () =>
-        activateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), EXISTING_YEAR_ID),
-      /بدون تواريخ/,
+    const activated = await activateAdminAcademicYear(
+      auth(USER_A, client),
+      mockAdminClient("admin"),
+      EXISTING_YEAR_ID,
     );
-    assert.equal(db.academic_years[0].id, EXISTING_YEAR_ID);
-    assert.equal(db.academic_years[0].end_date, null);
+    assert.equal(activated.id, EXISTING_YEAR_ID);
+    assert.equal(activated.isActive, true);
+    assert.equal(activated.endDate, "");
+    assert.equal(db.academic_years.find((y) => y.id === EXISTING_YEAR_ID)?.is_active, true);
+    assert.equal(db.academic_years.find((y) => y.id === EXISTING_YEAR_ID)?.end_date, null);
+    assert.equal(db.academic_years.find((y) => y.id === EXISTING_YEAR_ID)?.user_id, USER_B);
+    assert.equal(db.academic_years.find((y) => y.id === "y-a")?.is_active, false);
+    assert.equal(db.academic_years.find((y) => y.id === "y-a")?.user_id, USER_A);
+    assert.equal(db.academic_years.length, 2);
   });
 
   it("only authenticated admin can write", async () => {
@@ -404,6 +419,114 @@ describe("admin academic year / semester management", () => {
     assert.equal(db.academic_years[0].user_id, USER_B);
     assert.equal(db.semesters[0].user_id, USER_A);
     assert.equal(db.semesters[0].academic_year_id, "y-b");
+  });
+
+  it("admin can create a semester when the official year has no end date", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_B,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: null,
+          is_active: true,
+        },
+      ],
+      semesters: [],
+    });
+    const created = await createAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+      academicYearId: EXISTING_YEAR_ID,
+      label: "الفصل الدراسي الأول",
+      startDate: "2026-08-30",
+      endDate: "2027-01-08",
+    });
+    assert.equal(created.academicYearId, EXISTING_YEAR_ID);
+    assert.equal(created.startDate, "2026-08-30");
+    assert.equal(created.endDate, "2027-01-08");
+    assert.equal(db.semesters.length, 1);
+    assert.equal(db.semesters[0].start_date, "2026-08-30");
+    assert.equal(db.semesters[0].end_date, "2027-01-08");
+    assert.equal(db.semesters[0].user_id, USER_A);
+    assert.equal(db.academic_years[0].end_date, null);
+    assert.equal(db.academic_years[0].user_id, USER_B);
+    assert.equal(db.academic_years[0].label, "العام الدراسي 1448-1449هـ");
+  });
+
+  it("rejects a semester without dates even when the year end is null", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_B,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: null,
+          is_active: true,
+        },
+      ],
+      semesters: [],
+    });
+    await assert.rejects(
+      () =>
+        createAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+          academicYearId: EXISTING_YEAR_ID,
+          label: "فصل بلا نهاية",
+          startDate: "2026-08-30",
+          endDate: "",
+        }),
+      /التواريخ|YYYY-MM-DD/,
+    );
+    await assert.rejects(
+      () =>
+        createAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+          academicYearId: EXISTING_YEAR_ID,
+          label: "فصل معكوس",
+          startDate: "2027-01-08",
+          endDate: "2026-08-30",
+        }),
+      /البداية/,
+    );
+    assert.equal(db.semesters.length, 0);
+    assert.equal(db.academic_years[0].end_date, null);
+  });
+
+  it("non-admin cannot create a semester or activate a year", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_B,
+          label: "العام الدراسي 1448-1449هـ",
+          start_date: "2026-08-23",
+          end_date: null,
+          is_active: false,
+        },
+      ],
+      semesters: [],
+    });
+    await assert.rejects(
+      () =>
+        createAdminSemester(auth(USER_A, client), mockAdminClient("teacher"), {
+          academicYearId: EXISTING_YEAR_ID,
+          label: "ممنوع",
+          startDate: "2026-08-30",
+          endDate: "2027-01-08",
+        }),
+      /مديري النظام/,
+    );
+    await assert.rejects(
+      () =>
+        activateAdminAcademicYear(
+          auth(USER_A, client),
+          mockAdminClient("teacher"),
+          EXISTING_YEAR_ID,
+        ),
+      /مديري النظام/,
+    );
+    assert.equal(db.semesters.length, 0);
+    assert.equal(db.academic_years[0].is_active, false);
+    assert.equal(db.academic_years[0].user_id, USER_B);
   });
 
   it("semester date validation", async () => {
@@ -1372,6 +1495,36 @@ describe("admin academic year / semester management", () => {
     assert.equal(/\.eq\("user_id"/.test(updateTerm), false);
     assert.match(source, /user_id:\s*userId/);
     assert.match(source, /deactivateOtherActiveYears/);
+    assert.equal(/DEFAULT_CALENDAR|1447/.test(activate), false);
+    assert.equal(
+      /DEFAULT_CALENDAR/.test(
+        source.slice(
+          source.indexOf("export async function createSemester"),
+          source.indexOf("export async function updateAcademicYear"),
+        ),
+      ),
+      false,
+    );
+    assert.match(activate, /if \(!year\.start_date\)/);
+    assert.equal(/!year\.end_date/.test(activate), false);
+  });
+
+  it("admin create-semester UI does not treat an empty year end as an upper bound", () => {
+    const page = readFileSync(join(ROOT, ADMIN_PAGE), "utf8");
+    const createHandler = page.slice(
+      page.indexOf("const onCreateSemester"),
+      page.indexOf("const onSaveYearEdit"),
+    );
+    assert.match(createHandler, /selectedYear\?\.endDate/);
+    assert.equal(
+      /semesterForm\.startDate < selectedYear\.startDate \|\|[\s\S]*?semesterForm\.endDate > selectedYear\.endDate/.test(
+        createHandler,
+      ),
+      false,
+    );
+    assert.match(createHandler, /semesterForm\.startDate/);
+    assert.match(createHandler, /semesterForm\.endDate/);
+    assert.equal(/DEFAULT_CALENDAR|1447/.test(createHandler), false);
   });
 
   it("invalid academic-year date range rejected", async () => {

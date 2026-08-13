@@ -218,10 +218,14 @@ function AdminAcademicCalendarPage() {
       toast.error("تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
       return;
     }
+    if (selectedYear && semesterForm.startDate < selectedYear.startDate) {
+      toast.error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية");
+      return;
+    }
     if (
-      selectedYear &&
-      (semesterForm.startDate < selectedYear.startDate ||
-        semesterForm.endDate > selectedYear.endDate)
+      selectedYear?.endDate &&
+      semesterForm.endDate &&
+      semesterForm.endDate > selectedYear.endDate
     ) {
       toast.error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية");
       return;
