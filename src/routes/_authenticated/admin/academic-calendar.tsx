@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { formatHijri } from "@/shared/utils/date";
+import { CalendarImportPanel } from "@/features/calendar/components/calendar-import-panel";
 import {
   activateAdminAcademicYear,
   createAdminAcademicYear,
@@ -374,8 +375,10 @@ function AdminAcademicCalendarPage() {
     <div className="space-y-6">
       <SectionHeader
         title="التقويم الدراسي"
-        description="إنشاء وتعديل وتفعيل السنة الدراسية الرسمية وفصولها. المعلمون لا يديرون هذا التقويم. التواريخ تُحفظ بالميلادي."
+        description="إنشاء وتعديل وتفعيل السنة الدراسية الرسمية وفصولها. استيراد الإجازات من PDF أو صورة يحتاج مراجعة قبل الحفظ. المعلمون لا يديرون هذا التقويم."
       />
+
+      <CalendarImportPanel years={years} selectedYearId={selectedYearId} />
 
       <Card className="shadow-sm border-slate-100">
         <CardContent className="p-4 sm:p-6 space-y-6">
