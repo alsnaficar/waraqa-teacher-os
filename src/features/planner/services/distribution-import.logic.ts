@@ -38,6 +38,17 @@ export const DISTRIBUTION_PLAN_CONTEXT_UNAVAILABLE_NOTE =
   "سياق الخطة غير متوفر في مسار معاينة Google Sheets الحالي. لا يُخترع academic_year_id أو semester_id أو grade_id أو subject_id أو semester_plan_id. سيُمرَّر السياق لاحقًا عند الربط بخطة فصل.";
 export const DISTRIBUTION_CAPACITY_UNKNOWN_NOTE =
   "سعة الجدول غير معروفة. يُعرض مجموع الحصص فقط دون حساب شواغر أو تواريخ.";
+export const DISTRIBUTION_CAPACITY_NO_PLAN_NOTE =
+  "اختر مسودة خطة فصل لحساب الشواغر من التقويم وجدول المعلم.";
+export const DISTRIBUTION_CAPACITY_NO_TIMETABLE_NOTE =
+  "لا يوجد جدول معلم لهذه الخطة. لا تُستخدم السعة الافتراضية في المعاينة.";
+export const DISTRIBUTION_CAPACITY_MISSING_SCOPE_NOTE =
+  "لا يمكن حساب السعة بدون مادة وصف في خطة الفصل.";
+export const DISTRIBUTION_CAPACITY_CALENDAR_FAILED_NOTE = "تعذر حل تقويم الخطة. لم تُحسب الشواغر.";
+export const DISTRIBUTION_CAPACITY_FIT_NOTE = "طلب التوزيع يساوي عدد الشواغر المتاحة في الفصل.";
+export const DISTRIBUTION_CAPACITY_SURPLUS_NOTE = "يوجد شواغر فائضة بعد تغطية التوزيع.";
+export const DISTRIBUTION_CAPACITY_DEFICIT_NOTE =
+  "طلب التوزيع أكبر من الشواغر المتاحة. الحصص الزائدة لن تُجدول.";
 
 const CURRICULUM_LESSON_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -71,6 +82,7 @@ export type DistributionItemStatus = "ready" | "needs_review" | "error";
 export type DistributionCurriculumMatch =
   "matched" | "missing_id" | "not_found" | "invalid" | "unchecked";
 export type DistributionCapacityStatus = "known" | "unknown";
+export type DistributionCapacityComparison = "surplus" | "fit" | "deficit";
 
 export interface DistributionIssue {
   severity: DistributionIssueSeverity;
@@ -117,6 +129,10 @@ export interface DistributionCapacity {
   availableSlots: number | null;
   status: DistributionCapacityStatus;
   note: string;
+  delta: number | null;
+  comparison: DistributionCapacityComparison | null;
+  weeklyMatchingSlots: number | null;
+  teachingDayCount: number | null;
 }
 
 export interface DistributionDraft {
@@ -175,12 +191,19 @@ export function resolveDistributionPlanContext(
   };
 }
 
-export function unknownDistributionCapacity(totalPeriods: number): DistributionCapacity {
+export function unknownDistributionCapacity(
+  totalPeriods: number,
+  note: string = DISTRIBUTION_CAPACITY_UNKNOWN_NOTE,
+): DistributionCapacity {
   return {
     totalPeriods,
     availableSlots: null,
     status: "unknown",
-    note: DISTRIBUTION_CAPACITY_UNKNOWN_NOTE,
+    note,
+    delta: null,
+    comparison: null,
+    weeklyMatchingSlots: null,
+    teachingDayCount: null,
   };
 }
 

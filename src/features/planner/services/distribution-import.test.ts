@@ -160,6 +160,8 @@ describe("distribution preview summary", () => {
     assert.equal(draft.capacity.totalPeriods, 3);
     assert.equal(draft.capacity.status, "unknown");
     assert.equal(draft.capacity.availableSlots, null);
+    assert.equal(draft.capacity.delta, null);
+    assert.equal(draft.capacity.comparison, null);
     assert.equal(draft.capacity.note, DISTRIBUTION_CAPACITY_UNKNOWN_NOTE);
     assert.deepEqual(buildDistributionSummary(draft.items, [], []), draft.summary);
   });
@@ -572,6 +574,9 @@ describe("distribution import contracts", () => {
     assert.ok(assertIdx >= 0);
     assert.ok(loadIdx > assertIdx);
     assert.match(service, /return enrichPreviewDraft/);
+    assert.match(src, /previewDistributionCapacity/);
+    assert.doesNotMatch(src, /generateSchedule/);
+    assert.doesNotMatch(src, /syncScheduleToDatabase/);
   });
 
   it("is read-only toward Sheets and the database", () => {
@@ -618,6 +623,7 @@ describe("distribution import contracts", () => {
   it("preview UI can reload and later approve a snapshot without calling the planner", () => {
     const src = readFileSync(PANEL_FILE, "utf8");
     assert.match(src, /previewDistributionDraft/);
+    assert.match(src, /previewDistributionCapacity/);
     assert.match(src, /إعادة القراءة/);
     assert.match(src, /approveDistributionSnapshot/);
     assert.match(src, /اعتماد وحفظ اللقطة/);

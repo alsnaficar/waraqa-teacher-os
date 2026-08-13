@@ -2,8 +2,9 @@
  * Admin distribution preview (read-only) and snapshot approval.
  *
  * Preview: JWT → assertAdmin → Google SA read → draft. No DB write.
+ * Capacity: JWT read of calendar + owner timetable. No schedule generation.
  * Approve: JWT → assertAdmin → JWT client INSERT into distribution snapshot tables.
- * Does not write planner_entries, lesson_sessions, or call the planner engine.
+ * Does not write planner_entries or lesson_sessions.
  */
 
 import { createServerFn } from "@tanstack/react-start";
@@ -17,7 +18,13 @@ import {
   type PreviewDistributionInput,
 } from "./services/distribution-import.ts";
 import {
+  attachDistributionCapacityAuthorized,
+  previewDistributionCapacityAuthorized,
+} from "./services/distribution-capacity.ts";
+import {
   DEFAULT_DISTRIBUTION_WORKSHEET,
+  unknownDistributionCapacity,
+  type DistributionCapacity,
   type DistributionDraft,
   type DistributionDraftItem,
 } from "./services/distribution-import.logic.ts";
@@ -43,6 +50,13 @@ type AdminClient = Awaited<
   typeof import("@/platform/database/supabase/client.server")
 >["supabaseAdmin"];
 
+function authFromContext(context: {
+  userId: string;
+  supabase: SupabaseUserContext["client"];
+}): SupabaseUserContext {
+  return { client: context.supabase, userId: context.userId };
+}
+
 export async function previewDistributionDraftForAdmin(
   client: AdminClient,
   actorId: string,
@@ -63,7 +77,33 @@ export const previewDistributionDraft = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => PreviewInput.parse(data ?? {}))
   .handler(async ({ data, context }): Promise<DistributionDraft> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-    return previewDistributionDraftForAdmin(supabaseAdmin, context.userId, data);
+    const draft = await previewDistributionDraftForAdmin(supabaseAdmin, context.userId, data);
+    if (!data.semesterPlanId) return draft;
+    return attachDistributionCapacityAuthorized(
+      supabaseAdmin,
+      context.userId,
+      authFromContext(context),
+      draft,
+      data.semesterPlanId,
+    );
+  });
+
+const CapacityInput = z.object({
+  semesterPlanId: z.string().uuid(),
+  totalPeriods: z.number().int().nonnegative(),
+});
+
+export const previewDistributionCapacity = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => CapacityInput.parse(data))
+  .handler(async ({ data, context }): Promise<DistributionCapacity> => {
+    const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
+    return previewDistributionCapacityAuthorized(
+      supabaseAdmin,
+      context.userId,
+      authFromContext(context),
+      data,
+    );
   });
 
 const DraftItemInput = z.object({
@@ -108,13 +148,6 @@ const ApproveInput = z.object({
   }),
 });
 
-function authFromContext(context: {
-  userId: string;
-  supabase: SupabaseUserContext["client"];
-}): SupabaseUserContext {
-  return { client: context.supabase, userId: context.userId };
-}
-
 export const listDraftSemesterPlansForDistribution = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<DraftSemesterPlanOption[]> => {
@@ -145,12 +178,7 @@ export const approveDistributionSnapshot = createServerFn({ method: "POST" })
         available: true,
         note: null,
       },
-      capacity: {
-        totalPeriods: data.draft.summary.totalPeriods,
-        availableSlots: null,
-        status: "unknown" as const,
-        note: "",
-      },
+      capacity: unknownDistributionCapacity(data.draft.summary.totalPeriods, ""),
       readyCount: data.draft.summary.readyCount,
       reviewCount: data.draft.summary.reviewCount,
       errors: data.draft.errors,

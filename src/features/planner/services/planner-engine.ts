@@ -519,6 +519,71 @@ export function buildTeachingDates(config: AcademicCalendarConfig): Array<{
   return dates;
 }
 
+export interface PlanTeachingSlot {
+  date: string;
+  weekNumber: number;
+  teachingWeek: number;
+  dayOfWeek: number;
+  period: number;
+  className: string;
+}
+
+function timetableMatchesPlan(
+  slot: TimetableSlot,
+  activeSubject: string,
+  activeGrade: string,
+): boolean {
+  return (
+    (!slot.subject || slot.subject === activeSubject) && (!slot.grade || slot.grade === activeGrade)
+  );
+}
+
+export function countWeeklyMatchingTimetableSlots(
+  timetable: TimetableSlot[],
+  activeSubject: string,
+  activeGrade: string,
+): number {
+  return timetable.filter((slot) => timetableMatchesPlan(slot, activeSubject, activeGrade)).length;
+}
+
+/**
+ * Same teaching-slot grid the scheduler uses.
+ * Holidays are skipped. Matching is subject/grade, not every school period.
+ */
+export function buildPlanTeachingSlots(
+  schoolDates: ReturnType<typeof buildTeachingDates>,
+  timetable: TimetableSlot[],
+  activeSubject: string,
+  activeGrade: string,
+): PlanTeachingSlot[] {
+  const teachingSlots: PlanTeachingSlot[] = [];
+
+  for (const day of schoolDates) {
+    // Skip holidays and exam-range days mapped into holidays.
+    if (day.isHoliday) continue;
+    // سنضيف دعم أسابيع الاختبارات من calendar_events لاحقًا
+
+    const slotsForDay = timetable.filter(
+      (slot) =>
+        slot.dayOfWeek === day.dayOfWeek && timetableMatchesPlan(slot, activeSubject, activeGrade),
+    );
+    slotsForDay.sort((a, b) => a.period - b.period);
+
+    for (const slot of slotsForDay) {
+      teachingSlots.push({
+        date: day.date,
+        weekNumber: day.weekNumber,
+        teachingWeek: day.teachingWeek,
+        dayOfWeek: day.dayOfWeek,
+        period: slot.period,
+        className: slot.className,
+      });
+    }
+  }
+
+  return teachingSlots;
+}
+
 /**
  * The Smart Scheduler Engine.
  * Combines Published Curriculum Lessons + Calendar Config + Teacher Timetable + Overrides.
@@ -645,42 +710,7 @@ export async function generateSchedule(
   const schoolDates = buildTeachingDates(config);
 
   // 6. Build the list of available teaching slots sequentially
-  const teachingSlots: Array<{
-    date: string;
-    weekNumber: number;
-    teachingWeek: number;
-    dayOfWeek: number;
-    period: number;
-    className: string;
-  }> = [];
-
-  for (const day of schoolDates) {
-    // Skip holidays and exam weeks
-    if (day.isHoliday) continue;
-    // سنضيف دعم أسابيع الاختبارات من calendar_events لاحقًا
-
-    // Find timetable slots for this day and current subject/grade.
-    // Legacy rows without subject/grade remain usable as a fallback.
-    const slotsForDay = timetable.filter(
-      (t) =>
-        t.dayOfWeek === day.dayOfWeek &&
-        (!t.subject || t.subject === activeSubject) &&
-        (!t.grade || t.grade === activeGrade),
-    );
-    // Sort slots by period ascending
-    slotsForDay.sort((a, b) => a.period - b.period);
-
-    for (const slot of slotsForDay) {
-      teachingSlots.push({
-        date: day.date,
-        weekNumber: day.weekNumber,
-        teachingWeek: day.teachingWeek,
-        dayOfWeek: day.dayOfWeek,
-        period: slot.period,
-        className: slot.className,
-      });
-    }
-  }
+  const teachingSlots = buildPlanTeachingSlots(schoolDates, timetable, activeSubject, activeGrade);
 
   // 7. Prepare the curriculum lessons list, applying overrides (skips, swaps, etc.)
   const activeLessons = [...parsedLessons];

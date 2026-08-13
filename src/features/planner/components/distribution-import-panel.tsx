@@ -10,11 +10,13 @@ import { Badge } from "@/shared/ui/badge";
 import {
   approveDistributionSnapshot,
   listDraftSemesterPlansForDistribution,
+  previewDistributionCapacity,
   previewDistributionDraft,
 } from "@/features/planner/distribution-import.functions";
 import type { DraftSemesterPlanOption } from "@/features/planner/services/distribution-snapshot";
 import {
   DEFAULT_DISTRIBUTION_WORKSHEET,
+  unknownDistributionCapacity,
   type DistributionCurriculumMatch,
   type DistributionDraft,
   type DistributionDraftItem,
@@ -54,6 +56,7 @@ export function DistributionImportPanel() {
   const [semesterPlanId, setSemesterPlanId] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [acknowledgeWarnings, setAcknowledgeWarnings] = useState(false);
+  const demandPeriods = draft?.summary.totalPeriods;
 
   useEffect(() => {
     if (!draft) return;
@@ -75,11 +78,43 @@ export function DistributionImportPanel() {
     };
   }, [draft]);
 
+  useEffect(() => {
+    if (demandPeriods == null) return;
+    if (!semesterPlanId) {
+      setDraft((current) => {
+        if (!current || current.capacity.status === "unknown") return current;
+        return {
+          ...current,
+          capacity: unknownDistributionCapacity(current.summary.totalPeriods),
+        };
+      });
+      return;
+    }
+    let active = true;
+    void previewDistributionCapacity({
+      data: { semesterPlanId, totalPeriods: demandPeriods },
+    })
+      .then((capacity) => {
+        if (!active) return;
+        setDraft((current) => (current ? { ...current, capacity } : current));
+      })
+      .catch((err) => {
+        if (!active) return;
+        toast.error(err instanceof Error ? err.message : "تعذر حساب سعة الخطة.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [demandPeriods, semesterPlanId]);
+
   async function handlePreview() {
     setLoading(true);
     try {
       const next = await previewDistributionDraft({
-        data: { worksheetName: worksheetName.trim() || DEFAULT_DISTRIBUTION_WORKSHEET },
+        data: {
+          worksheetName: worksheetName.trim() || DEFAULT_DISTRIBUTION_WORKSHEET,
+          semesterPlanId: semesterPlanId || undefined,
+        },
       });
       setDraft(next);
       if (next.errors.length) {
@@ -192,12 +227,36 @@ export function DistributionImportPanel() {
                 المعرّف: {draft.spreadsheetId}
               </Badge>
               <Badge variant="outline" className="max-w-full whitespace-normal">
-                السعة: {draft.capacity.status === "unknown" ? "غير معروفة" : "معروفة"}
+                السعة: {capacityStatusLabel(draft.capacity)}
               </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <SummaryStat label="طلب التوزيع" value={draft.capacity.totalPeriods} />
+              <SummaryStat
+                label="الشواغر المتاحة"
+                value={draft.capacity.availableSlots}
+                tone={draft.capacity.comparison === "deficit" ? "error" : undefined}
+              />
+              <SummaryStat
+                label="الفرق"
+                value={draft.capacity.delta}
+                tone={
+                  draft.capacity.comparison === "deficit"
+                    ? "error"
+                    : draft.capacity.comparison === "surplus"
+                      ? "ready"
+                      : undefined
+                }
+              />
+              <SummaryStat label="حصص الأسبوع" value={draft.capacity.weeklyMatchingSlots} />
             </div>
 
             <p className="break-words text-xs leading-relaxed text-muted-foreground">
               {draft.capacity.note}
+              {draft.capacity.teachingDayCount != null
+                ? ` أيام التدريس التقويمية: ${draft.capacity.teachingDayCount}.`
+                : ""}
             </p>
             {draft.context.note ? (
               <p className="break-words text-xs leading-relaxed text-muted-foreground">
@@ -394,13 +453,20 @@ export function DistributionImportPanel() {
   );
 }
 
+function capacityStatusLabel(capacity: DistributionDraft["capacity"]): string {
+  if (capacity.status === "unknown") return "غير معروفة";
+  if (capacity.comparison === "deficit") return "عجز";
+  if (capacity.comparison === "surplus") return "فائض";
+  return "مطابقة";
+}
+
 function SummaryStat({
   label,
   value,
   tone,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   tone?: "ready" | "review" | "error" | "warning";
 }) {
   const toneClass =
@@ -416,7 +482,7 @@ function SummaryStat({
   return (
     <div className={`min-w-0 rounded-lg border px-3 py-2.5 ${toneClass}`}>
       <p className="text-[11px] font-medium leading-snug">{label}</p>
-      <p className="text-lg font-bold leading-tight">{value}</p>
+      <p className="text-lg font-bold leading-tight">{value == null ? "—" : value}</p>
     </div>
   );
 }
