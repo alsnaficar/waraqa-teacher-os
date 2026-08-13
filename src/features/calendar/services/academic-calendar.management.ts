@@ -1,15 +1,22 @@
 /**
- * Teacher-owned academic year / semester management.
+ * Platform academic year / semester management.
  *
- * Ownership always comes from auth.userId — never from client-supplied owner fields.
+ * Writes stay compatible with current owner RLS: user_id always comes from
+ * the authenticated JWT (admin actor), never from client-supplied owner fields.
+ * Admin authorization (assertAdmin) is required at the admin-write boundary.
  */
 
+import { assertAdmin } from "../../../platform/auth/assert-admin.ts";
 import type { SupabaseUserContext } from "../../../platform/database/supabase/context.ts";
 import {
   assertSemesterWithinAcademicYear,
   assertValidDateRange,
   normalizeCalendarLabel,
 } from "./academic-calendar.logic.ts";
+
+type AdminClient = Awaited<
+  typeof import("../../../platform/database/supabase/client.server.ts")
+>["supabaseAdmin"];
 
 export interface AcademicYearRecord {
   id: string;
@@ -35,6 +42,54 @@ function requireAuth(auth: SupabaseUserContext): SupabaseUserContext {
   return auth;
 }
 
+async function requireAdminActor(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+): Promise<SupabaseUserContext> {
+  const verified = requireAuth(auth);
+  await assertAdmin(adminClient, verified.userId);
+  return verified;
+}
+
+function mapYear(row: {
+  id: string;
+  label: string;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: boolean;
+}): AcademicYearRecord {
+  return {
+    id: row.id,
+    label: row.label,
+    startDate: row.start_date ?? "",
+    endDate: row.end_date ?? "",
+    isActive: row.is_active,
+  };
+}
+
+function mapSemester(
+  row: {
+    id: string;
+    academic_year_id: string | null;
+    label: string;
+    start_date: string | null;
+    end_date: string | null;
+    order_index: number;
+  },
+  academicYearId: string,
+): SemesterRecord {
+  return {
+    id: row.id,
+    academicYearId: row.academic_year_id ?? academicYearId,
+    label: row.label,
+    startDate: row.start_date ?? "",
+    endDate: row.end_date ?? "",
+    orderIndex: row.order_index,
+  };
+}
+
+// --- Read / list (JWT-scoped; current owner RLS) ---
+
 export async function listAcademicYears(auth: SupabaseUserContext): Promise<AcademicYearRecord[]> {
   const { client, userId } = requireAuth(auth);
 
@@ -47,14 +102,41 @@ export async function listAcademicYears(auth: SupabaseUserContext): Promise<Acad
 
   if (error) throw error;
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    label: row.label,
-    startDate: row.start_date ?? "",
-    endDate: row.end_date ?? "",
-    isActive: row.is_active,
-  }));
+  return (data ?? []).map(mapYear);
 }
+
+export async function listSemestersForYear(
+  auth: SupabaseUserContext,
+  academicYearId: string,
+): Promise<SemesterRecord[]> {
+  const { client, userId } = requireAuth(auth);
+
+  const { data: year, error: yearError } = await client
+    .from("academic_years")
+    .select("id")
+    .eq("id", academicYearId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (yearError) throw yearError;
+  if (!year) {
+    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+  }
+
+  const { data, error } = await client
+    .from("semesters")
+    .select("id, academic_year_id, label, start_date, end_date, order_index")
+    .eq("user_id", userId)
+    .eq("academic_year_id", academicYearId)
+    .order("order_index", { ascending: true })
+    .order("start_date", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => mapSemester(row, academicYearId));
+}
+
+// --- Admin write operations (JWT user_id; assertAdmin required) ---
 
 export async function createAcademicYear(
   auth: SupabaseUserContext,
@@ -91,13 +173,7 @@ export async function createAcademicYear(
 
   if (error || !data) throw error ?? new Error("فشل إنشاء السنة الدراسية.");
 
-  return {
-    id: data.id,
-    label: data.label,
-    startDate: data.start_date ?? input.startDate,
-    endDate: data.end_date ?? input.endDate,
-    isActive: data.is_active,
-  };
+  return mapYear(data);
 }
 
 export async function activateAcademicYear(
@@ -140,51 +216,7 @@ export async function activateAcademicYear(
 
   if (error || !data) throw error ?? new Error("فشل تفعيل السنة الدراسية.");
 
-  return {
-    id: data.id,
-    label: data.label,
-    startDate: data.start_date ?? "",
-    endDate: data.end_date ?? "",
-    isActive: data.is_active,
-  };
-}
-
-export async function listSemestersForYear(
-  auth: SupabaseUserContext,
-  academicYearId: string,
-): Promise<SemesterRecord[]> {
-  const { client, userId } = requireAuth(auth);
-
-  const { data: year, error: yearError } = await client
-    .from("academic_years")
-    .select("id")
-    .eq("id", academicYearId)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (yearError) throw yearError;
-  if (!year) {
-    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
-  }
-
-  const { data, error } = await client
-    .from("semesters")
-    .select("id, academic_year_id, label, start_date, end_date, order_index")
-    .eq("user_id", userId)
-    .eq("academic_year_id", academicYearId)
-    .order("order_index", { ascending: true })
-    .order("start_date", { ascending: true });
-
-  if (error) throw error;
-
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    academicYearId: row.academic_year_id ?? academicYearId,
-    label: row.label,
-    startDate: row.start_date ?? "",
-    endDate: row.end_date ?? "",
-    orderIndex: row.order_index,
-  }));
+  return mapYear(data);
 }
 
 export async function createSemester(
@@ -243,12 +275,55 @@ export async function createSemester(
 
   if (error || !data) throw error ?? new Error("فشل إنشاء الفصل الدراسي.");
 
-  return {
-    id: data.id,
-    academicYearId: data.academic_year_id ?? year.id,
-    label: data.label,
-    startDate: data.start_date ?? input.startDate,
-    endDate: data.end_date ?? input.endDate,
-    orderIndex: data.order_index,
-  };
+  return mapSemester(data, year.id);
+}
+
+export async function listAdminAcademicYears(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+): Promise<AcademicYearRecord[]> {
+  await requireAdminActor(auth, adminClient);
+  return listAcademicYears(auth);
+}
+
+export async function createAdminAcademicYear(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  input: { label: string; startDate: string; endDate: string; activate?: boolean },
+): Promise<AcademicYearRecord> {
+  await requireAdminActor(auth, adminClient);
+  return createAcademicYear(auth, input);
+}
+
+export async function activateAdminAcademicYear(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  academicYearId: string,
+): Promise<AcademicYearRecord> {
+  await requireAdminActor(auth, adminClient);
+  return activateAcademicYear(auth, academicYearId);
+}
+
+export async function listAdminSemestersForYear(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  academicYearId: string,
+): Promise<SemesterRecord[]> {
+  await requireAdminActor(auth, adminClient);
+  return listSemestersForYear(auth, academicYearId);
+}
+
+export async function createAdminSemester(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  input: {
+    academicYearId: string;
+    label: string;
+    startDate: string;
+    endDate: string;
+    orderIndex?: number;
+  },
+): Promise<SemesterRecord> {
+  await requireAdminActor(auth, adminClient);
+  return createSemester(auth, input);
 }

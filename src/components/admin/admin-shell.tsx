@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Banknote,
+  CalendarDays,
   FileSpreadsheet,
   LayoutDashboard,
   LogOut,
@@ -24,6 +25,7 @@ type AdminNavItem = {
     | "/admin/users"
     | "/admin/payments"
     | "/admin/curriculum-management"
+    | "/admin/academic-calendar"
     | "/admin/google-sheets";
   label: string;
   shortLabel: string;
@@ -36,6 +38,12 @@ const ADMIN_NAV: AdminNavItem[] = [
   { to: "/admin/users", label: "المستخدمون", shortLabel: "المستخدمون", icon: Users },
   { to: "/admin/payments", label: "الدفعات", shortLabel: "الدفعات", icon: Banknote },
   { to: "/admin/curriculum-management", label: "المناهج", shortLabel: "المناهج", icon: BookOpen },
+  {
+    to: "/admin/academic-calendar",
+    label: "التقويم الدراسي",
+    shortLabel: "التقويم",
+    icon: CalendarDays,
+  },
   {
     to: "/admin/google-sheets",
     label: "Google Sheets",

@@ -35,6 +35,7 @@ import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authenticated/subscription'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminAcademicCalendarRouteImport } from './routes/_authenticated/admin/academic-calendar'
 import { Route as AuthenticatedAdminCurriculumManagementRouteImport } from './routes/_authenticated/admin/curriculum-management'
 import { Route as AuthenticatedAdminGoogleSheetsRouteImport } from './routes/_authenticated/admin/google-sheets'
 import { Route as AuthenticatedAdminPaymentsRouteImport } from './routes/_authenticated/admin/payments'
@@ -179,6 +180,12 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedAdminAcademicCalendarRoute =
+  AuthenticatedAdminAcademicCalendarRouteImport.update({
+    id: '/academic-calendar',
+    path: '/academic-calendar',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminCurriculumManagementRoute =
   AuthenticatedAdminCurriculumManagementRouteImport.update({
     id: '/curriculum-management',
@@ -227,6 +234,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
   '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
@@ -257,6 +265,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
   '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
@@ -290,6 +299,7 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/subscription': typeof AuthenticatedSubscriptionRoute
+  '/_authenticated/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/_authenticated/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/_authenticated/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
   '/_authenticated/admin/payments': typeof AuthenticatedAdminPaymentsRoute
@@ -323,6 +333,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/admin/academic-calendar'
     | '/admin/curriculum-management'
     | '/admin/google-sheets'
     | '/admin/payments'
@@ -353,6 +364,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/admin/academic-calendar'
     | '/admin/curriculum-management'
     | '/admin/google-sheets'
     | '/admin/payments'
@@ -385,6 +397,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/subscription'
+    | '/_authenticated/admin/academic-calendar'
     | '/_authenticated/admin/curriculum-management'
     | '/_authenticated/admin/google-sheets'
     | '/_authenticated/admin/payments'
@@ -586,6 +599,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/academic-calendar': {
+      id: '/_authenticated/admin/academic-calendar'
+      path: '/academic-calendar'
+      fullPath: '/admin/academic-calendar'
+      preLoaderRoute: typeof AuthenticatedAdminAcademicCalendarRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/curriculum-management': {
       id: '/_authenticated/admin/curriculum-management'
       path: '/curriculum-management'
@@ -618,6 +638,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedAdminRouteRouteChildren {
+  AuthenticatedAdminAcademicCalendarRoute: typeof AuthenticatedAdminAcademicCalendarRoute
   AuthenticatedAdminCurriculumManagementRoute: typeof AuthenticatedAdminCurriculumManagementRoute
   AuthenticatedAdminGoogleSheetsRoute: typeof AuthenticatedAdminGoogleSheetsRoute
   AuthenticatedAdminPaymentsRoute: typeof AuthenticatedAdminPaymentsRoute
@@ -627,6 +648,8 @@ interface AuthenticatedAdminRouteRouteChildren {
 
 const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
   {
+    AuthenticatedAdminAcademicCalendarRoute:
+      AuthenticatedAdminAcademicCalendarRoute,
     AuthenticatedAdminCurriculumManagementRoute:
       AuthenticatedAdminCurriculumManagementRoute,
     AuthenticatedAdminGoogleSheetsRoute: AuthenticatedAdminGoogleSheetsRoute,

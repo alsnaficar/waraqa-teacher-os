@@ -4,6 +4,7 @@ import {
   Archive,
   Banknote,
   BookOpen,
+  CalendarDays,
   FileSpreadsheet,
   FileText,
   Loader2,
@@ -230,6 +231,12 @@ function AdminDashboardPage() {
                   <Link to="/admin/curriculum-management">
                     <BookOpen className="h-4 w-4" />
                     إدارة المناهج
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="h-11 min-h-[44px] justify-start gap-2">
+                  <Link to="/admin/academic-calendar">
+                    <CalendarDays className="h-4 w-4" />
+                    التقويم الدراسي
                   </Link>
                 </Button>
                 <Button asChild variant="outline" className="h-11 min-h-[44px] justify-start gap-2">
