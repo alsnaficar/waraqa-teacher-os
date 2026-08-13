@@ -5,6 +5,12 @@ import {
   getActiveAcademicYear,
   getCurrentAcademicTerm,
 } from "@/features/calendar/services/calendar.service";
+import { resolveSelectableVariantForWrite } from "@/features/calendar/services/calendar-variants";
+import { GENERAL_VARIANT_CODE } from "@/features/calendar/services/resolve-calendar";
+import {
+  CALENDAR_VARIANT_UNAUTHORIZED_MESSAGE,
+  shouldPersistPlanVariantChange,
+} from "@/features/calendar/services/calendar-variant-selection";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
   CONFIG_SCHEDULE_OVERRIDES_DATE,
@@ -246,6 +252,8 @@ export async function ensureSemesterPlan(
     grade: string;
     academicYearId?: string | null;
     semesterId?: string | null;
+    calendarVariantId?: string | null;
+    calendarVariantCode?: string | null;
   },
   context?: SupabaseUserContext,
 ): Promise<SemesterPlanContext> {
@@ -286,6 +294,11 @@ export async function ensureSemesterPlan(
     throw new Error(SEMESTER_PLAN_SCOPE_REQUIRED_MESSAGE);
   }
 
+  const variant = await resolveSelectableVariantForWrite(resolved.client, {
+    id: input.calendarVariantId,
+    code: input.calendarVariantCode,
+  });
+
   const { data: created, error: createError } = await resolved.client
     .from("semester_plans")
     .insert({
@@ -294,6 +307,7 @@ export async function ensureSemesterPlan(
       grade: input.grade || "",
       academic_year_id: yearId,
       semester_id: termId,
+      calendar_variant_id: variant.id,
       status: "draft",
       current_version: 1,
     })
@@ -318,6 +332,46 @@ export async function ensureSemesterPlan(
 
   await linkOrphanEntriesToPlan(resolved, subject, created.id, version.id);
   return { plan: created, version };
+}
+
+export async function updateSemesterPlanCalendarVariant(
+  planId: string,
+  calendarVariantId: string,
+  context?: SupabaseUserContext,
+): Promise<SemesterPlanRow> {
+  const resolved = await resolveUserContext(context);
+  if (!resolved) throw new Error("Unauthorized");
+
+  const plan = await getSemesterPlanById(planId, resolved);
+  if (!plan || plan.user_id !== resolved.userId) {
+    throw new Error(CALENDAR_VARIANT_UNAUTHORIZED_MESSAGE);
+  }
+
+  assertWritableDraft(plan);
+
+  const variant = await resolveSelectableVariantForWrite(resolved.client, {
+    id: calendarVariantId,
+  });
+  const general = await resolveSelectableVariantForWrite(resolved.client, {
+    code: GENERAL_VARIANT_CODE,
+  });
+
+  if (!shouldPersistPlanVariantChange(plan.calendar_variant_id, variant.id, general.id)) {
+    return plan;
+  }
+
+  const { data, error } = await resolved.client
+    .from("semester_plans")
+    .update({ calendar_variant_id: variant.id })
+    .eq("id", plan.id)
+    .eq("user_id", resolved.userId)
+    .eq("status", "draft")
+    .select("*")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error(CALENDAR_VARIANT_UNAUTHORIZED_MESSAGE);
+  return data;
 }
 
 async function linkOrphanEntriesToPlan(

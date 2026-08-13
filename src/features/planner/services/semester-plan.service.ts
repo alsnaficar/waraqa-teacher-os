@@ -278,8 +278,13 @@ export function buildSemesterPlanMeta(
 export async function generateSemesterPlan(
   subject: string,
   grade: string,
+  input?: { calendarVariantId?: string | null },
 ): Promise<LoadedSemesterPlan> {
-  const ctx = await ensureSemesterPlan({ subject, grade });
+  const ctx = await ensureSemesterPlan({
+    subject,
+    grade,
+    calendarVariantId: input?.calendarVariantId,
+  });
   assertWritableDraft(ctx.plan);
   const entries = await recalculateAndSyncPlanner(subject, grade, toScope(ctx, subject));
   return { ...ctx, entries };

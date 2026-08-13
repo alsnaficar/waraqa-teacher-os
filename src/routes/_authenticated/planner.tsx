@@ -16,6 +16,7 @@ import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { TeacherWeeklyTimetable } from "@/features/teacher-timetable/components/teacher-weekly-timetable";
+import { SemesterPlanCalendarField } from "@/features/planner/components/semester-plan-calendar-field";
 import { SemesterPlanTable } from "@/features/planner/components/semester-plan-table";
 import { SemesterPlanPrintDocument } from "@/features/planner/components/semester-plan-print";
 import { SemesterPlanPrintDialog } from "@/features/planner/components/semester-plan-print-dialog";
@@ -37,8 +38,11 @@ import {
   getPlanUiActions,
   SEMESTER_PLAN_STATUS_LABELS,
   startSemesterPlanExecution,
+  updateSemesterPlanCalendarVariant,
   type SemesterPlanRow,
 } from "@/features/planner/services/semester-plan-lifecycle";
+import { listSelectableCalendarVariants } from "@/features/calendar/services/calendar-variants";
+import type { SelectableCalendarVariant } from "@/features/calendar/services/calendar-variant-selection";
 import {
   getActiveAcademicYear,
   getCurrentAcademicTerm,
@@ -95,6 +99,7 @@ export default function PlannerPage() {
   const [busy, setBusy] = useState(false);
   const [entries, setEntries] = useState<CalculatedLessonEntry[]>([]);
   const [plan, setPlan] = useState<SemesterPlanRow | null>(null);
+  const [calendarVariants, setCalendarVariants] = useState<SelectableCalendarVariant[]>([]);
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
   const [metaBase, setMetaBase] = useState({
@@ -186,7 +191,12 @@ export default function PlannerPage() {
           }
         }
 
-        const [year, term] = await Promise.all([getActiveAcademicYear(), getCurrentAcademicTerm()]);
+        const [year, term, variants] = await Promise.all([
+          getActiveAcademicYear(),
+          getCurrentAcademicTerm(),
+          listSelectableCalendarVariants(),
+        ]);
+        setCalendarVariants(variants);
 
         setGrade(activeGrade);
         setSubject(activeSubject);
@@ -291,7 +301,9 @@ export default function PlannerPage() {
     }
     setBusy(true);
     try {
-      const next = await generateSemesterPlan(subject, grade);
+      const next = await generateSemesterPlan(subject, grade, {
+        calendarVariantId: plan?.calendar_variant_id,
+      });
       setPlan(next.plan);
       setEntries(next.entries);
       toast.success(
@@ -431,6 +443,31 @@ export default function PlannerPage() {
                 {meta.academicYearLabel || "—"} · {meta.semesterLabel || "—"} · {subject} · {grade}
               </p>
             </div>
+
+            <SemesterPlanCalendarField
+              variants={calendarVariants}
+              calendarVariantId={plan?.calendar_variant_id}
+              editable={actions.canEdit}
+              disabled={busy}
+              onSelect={(variantId) => {
+                if (!plan) return;
+                void (async () => {
+                  setBusy(true);
+                  try {
+                    const updated = await updateSemesterPlanCalendarVariant(plan.id, variantId);
+                    setPlan(updated);
+                    toast.success("تم حفظ التقويم الدراسي للخطة");
+                  } catch (error) {
+                    console.error(error);
+                    toast.error(
+                      error instanceof Error ? error.message : "تعذر حفظ التقويم الدراسي",
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+            />
 
             <div className="flex flex-wrap gap-2">
               {actions.canGenerate ? (
