@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CalendarDays, Plus } from "lucide-react";
+import { CalendarDays, Pencil, Plus } from "lucide-react";
 
 import { SectionHeader } from "@/shared/components/section-header";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -10,11 +10,22 @@ import { Label } from "@/shared/ui/label";
 import { Button } from "@/shared/ui/button";
 import { Badge } from "@/shared/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
+import { formatHijri } from "@/shared/utils/date";
+import {
   activateAdminAcademicYear,
   createAdminAcademicYear,
   createAdminSemester,
   listAdminAcademicYears,
   listAdminSemesters,
+  updateAdminAcademicYear,
+  updateAdminSemester,
 } from "@/platform/calendar/academic-calendar.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/academic-calendar")({
@@ -38,8 +49,20 @@ type SemesterRow = {
   orderIndex: number;
 };
 
-const emptyYearForm = { label: "", startDate: "", endDate: "", activate: true };
-const emptySemesterForm = { label: "", startDate: "", endDate: "" };
+const emptyYearForm = {
+  label: "",
+  startDate: "",
+  endDate: "",
+  activate: true,
+};
+const emptySemesterForm = { label: "", startDate: "", endDate: "", orderIndex: 0 };
+
+function hijriHint(iso: string): string {
+  if (!iso) return "";
+  const parsed = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return formatHijri(parsed);
+}
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -63,6 +86,20 @@ function AdminAcademicCalendarPage() {
   const [showSemesterForm, setShowSemesterForm] = useState(false);
   const [yearForm, setYearForm] = useState(emptyYearForm);
   const [semesterForm, setSemesterForm] = useState(emptySemesterForm);
+  const [editingYear, setEditingYear] = useState<YearRow | null>(null);
+  const [editingSemester, setEditingSemester] = useState<SemesterRow | null>(null);
+  const [yearEditForm, setYearEditForm] = useState({
+    label: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [semesterEditForm, setSemesterEditForm] = useState({
+    label: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [savingYearEdit, setSavingYearEdit] = useState(false);
+  const [savingSemesterEdit, setSavingSemesterEdit] = useState(false);
 
   const selectedYear = years.find((y) => y.id === selectedYearId) ?? null;
 
@@ -209,11 +246,107 @@ function AdminAcademicCalendarPage() {
     }
   };
 
+  const openYearEdit = (year: YearRow) => {
+    setEditingYear(year);
+    setYearEditForm({
+      label: year.label,
+      startDate: year.startDate,
+      endDate: year.endDate,
+    });
+  };
+
+  const openSemesterEdit = (sem: SemesterRow) => {
+    setEditingSemester(sem);
+    setSemesterEditForm({
+      label: sem.label,
+      startDate: sem.startDate,
+      endDate: sem.endDate,
+    });
+  };
+
+  const onSaveYearEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingYear) return;
+    if (!yearEditForm.label.trim() || !yearEditForm.startDate || !yearEditForm.endDate) {
+      toast.error("أدخل الاسم وتاريخ البداية والنهاية");
+      return;
+    }
+    if (yearEditForm.startDate > yearEditForm.endDate) {
+      toast.error("تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
+      return;
+    }
+    setSavingYearEdit(true);
+    try {
+      const updated = await updateAdminAcademicYear({
+        data: {
+          academicYearId: editingYear.id,
+          label: yearEditForm.label.trim(),
+          startDate: yearEditForm.startDate,
+          endDate: yearEditForm.endDate,
+        },
+      });
+      toast.success("تم حفظ تعديل السنة الدراسية");
+      setEditingYear(null);
+      await loadYears();
+      setSelectedYearId(updated.id);
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "تعذّر حفظ تعديل السنة");
+    } finally {
+      setSavingYearEdit(false);
+    }
+  };
+
+  const onSaveSemesterEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSemester) return;
+    if (
+      !semesterEditForm.label.trim() ||
+      !semesterEditForm.startDate ||
+      !semesterEditForm.endDate
+    ) {
+      toast.error("أدخل الاسم وتاريخ البداية والنهاية");
+      return;
+    }
+    if (semesterEditForm.startDate > semesterEditForm.endDate) {
+      toast.error("تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية");
+      return;
+    }
+    if (
+      selectedYear &&
+      (semesterEditForm.startDate < selectedYear.startDate ||
+        semesterEditForm.endDate > selectedYear.endDate)
+    ) {
+      toast.error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية");
+      return;
+    }
+    setSavingSemesterEdit(true);
+    try {
+      await updateAdminSemester({
+        data: {
+          semesterId: editingSemester.id,
+          academicYearId: editingSemester.academicYearId,
+          label: semesterEditForm.label.trim(),
+          startDate: semesterEditForm.startDate,
+          endDate: semesterEditForm.endDate,
+        },
+      });
+      toast.success("تم حفظ تعديل الفصل الدراسي");
+      setEditingSemester(null);
+      if (selectedYearId) await loadSemesters(selectedYearId);
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "تعذّر حفظ تعديل الفصل");
+    } finally {
+      setSavingSemesterEdit(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <SectionHeader
         title="التقويم الدراسي"
-        description="إنشاء وتفعيل السنة الدراسية الرسمية وإضافة فصولها. المعلمون لا يديرون هذا التقويم."
+        description="إنشاء وتعديل وتفعيل السنة الدراسية الرسمية وفصولها. المعلمون لا يديرون هذا التقويم. التواريخ تُحفظ بالميلادي."
       />
 
       <Card className="shadow-sm border-slate-100">
@@ -257,12 +390,12 @@ function AdminAcademicCalendarPage() {
                         className="h-11"
                         value={yearForm.label}
                         onChange={(e) => setYearForm((f) => ({ ...f, label: e.target.value }))}
-                        placeholder="مثلاً: 1447–1448"
+                        placeholder="مثلاً: العام الدراسي 1448هـ - 1449هـ"
                         required
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold">تاريخ البداية</Label>
+                      <Label className="text-xs font-bold">تاريخ البداية (ميلادي)</Label>
                       <Input
                         type="date"
                         className="h-11"
@@ -270,9 +403,14 @@ function AdminAcademicCalendarPage() {
                         onChange={(e) => setYearForm((f) => ({ ...f, startDate: e.target.value }))}
                         required
                       />
+                      {yearForm.startDate ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          الهجري: {hijriHint(yearForm.startDate)}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold">تاريخ النهاية</Label>
+                      <Label className="text-xs font-bold">تاريخ النهاية (ميلادي)</Label>
                       <Input
                         type="date"
                         className="h-11"
@@ -280,6 +418,11 @@ function AdminAcademicCalendarPage() {
                         onChange={(e) => setYearForm((f) => ({ ...f, endDate: e.target.value }))}
                         required
                       />
+                      {yearForm.endDate ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          الهجري: {hijriHint(yearForm.endDate)}
+                        </p>
+                      ) : null}
                     </div>
                     <label className="sm:col-span-2 flex items-center gap-2 text-xs font-medium text-slate-700 min-h-[44px]">
                       <input
@@ -344,20 +487,37 @@ function AdminAcademicCalendarPage() {
                               )}
                             </div>
                             <p className="text-[11px] text-muted-foreground">
-                              {year.startDate} → {year.endDate}
+                              {year.startDate || "—"} → {year.endDate || "—"}
                             </p>
+                            {year.startDate || year.endDate ? (
+                              <p className="text-[11px] text-muted-foreground">
+                                هجري: {hijriHint(year.startDate) || "—"} →{" "}
+                                {hijriHint(year.endDate) || "—"}
+                              </p>
+                            ) : null}
                           </button>
-                          {!year.isActive && (
+                          <div className="flex flex-wrap gap-2 shrink-0">
                             <Button
                               type="button"
                               variant="outline"
-                              className="h-11 min-h-[44px] text-xs font-bold shrink-0"
-                              disabled={activatingId === year.id}
-                              onClick={() => onActivateYear(year.id)}
+                              className="h-11 min-h-[44px] text-xs font-bold gap-1.5"
+                              onClick={() => openYearEdit(year)}
                             >
-                              {activatingId === year.id ? "جارٍ التفعيل…" : "تفعيل"}
+                              <Pencil className="h-3.5 w-3.5" />
+                              تعديل
                             </Button>
-                          )}
+                            {!year.isActive && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-11 min-h-[44px] text-xs font-bold"
+                                disabled={activatingId === year.id}
+                                onClick={() => onActivateYear(year.id)}
+                              >
+                                {activatingId === year.id ? "جارٍ التفعيل…" : "تفعيل"}
+                              </Button>
+                            )}
+                          </div>
                         </li>
                       );
                     })}
@@ -407,7 +567,7 @@ function AdminAcademicCalendarPage() {
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs font-bold">تاريخ البداية</Label>
+                          <Label className="text-xs font-bold">تاريخ البداية (ميلادي)</Label>
                           <Input
                             type="date"
                             className="h-11"
@@ -417,9 +577,14 @@ function AdminAcademicCalendarPage() {
                             }
                             required
                           />
+                          {semesterForm.startDate ? (
+                            <p className="text-[11px] text-muted-foreground">
+                              الهجري: {hijriHint(semesterForm.startDate)}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs font-bold">تاريخ النهاية</Label>
+                          <Label className="text-xs font-bold">تاريخ النهاية (ميلادي)</Label>
                           <Input
                             type="date"
                             className="h-11"
@@ -429,6 +594,11 @@ function AdminAcademicCalendarPage() {
                             }
                             required
                           />
+                          {semesterForm.endDate ? (
+                            <p className="text-[11px] text-muted-foreground">
+                              الهجري: {hijriHint(semesterForm.endDate)}
+                            </p>
+                          ) : null}
                         </div>
                         {selectedYear && (
                           <p className="sm:col-span-2 text-[11px] text-muted-foreground">
@@ -465,21 +635,38 @@ function AdminAcademicCalendarPage() {
                           return (
                             <li
                               key={sem.id}
-                              className="rounded-xl border border-slate-100 bg-white p-3 space-y-0.5"
+                              className="rounded-xl border border-slate-100 bg-white p-3 flex flex-col sm:flex-row sm:items-center gap-3"
                             >
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-bold text-slate-800">
-                                  {sem.label}
-                                </span>
-                                {current && (
-                                  <Badge className="text-[10px] font-bold bg-sky-100 text-sky-800 hover:bg-sky-100">
-                                    الحالي حسب التاريخ
-                                  </Badge>
-                                )}
+                              <div className="flex-1 min-w-0 space-y-0.5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-bold text-slate-800">
+                                    {sem.label}
+                                  </span>
+                                  {current && (
+                                    <Badge className="text-[10px] font-bold bg-sky-100 text-sky-800 hover:bg-sky-100">
+                                      الحالي حسب التاريخ
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground">
+                                  {sem.startDate || "—"} → {sem.endDate || "—"}
+                                </p>
+                                {sem.startDate || sem.endDate ? (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    هجري: {hijriHint(sem.startDate) || "—"} →{" "}
+                                    {hijriHint(sem.endDate) || "—"}
+                                  </p>
+                                ) : null}
                               </div>
-                              <p className="text-[11px] text-muted-foreground">
-                                {sem.startDate} → {sem.endDate}
-                              </p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-11 min-h-[44px] text-xs font-bold gap-1.5 shrink-0"
+                                onClick={() => openSemesterEdit(sem)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                تعديل
+                              </Button>
                             </li>
                           );
                         })}
@@ -492,6 +679,146 @@ function AdminAcademicCalendarPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(editingYear)} onOpenChange={(open) => !open && setEditingYear(null)}>
+        <DialogContent className="text-start">
+          <DialogHeader>
+            <DialogTitle>تعديل السنة الدراسية</DialogTitle>
+            <DialogDescription>
+              عدّل الاسم وتاريخ البداية والنهاية للصف الحالي فقط. أدخل التواريخ الرسمية الصادرة من
+              وزارة التعليم يدويًا. المعرّف لا يتغير.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={onSaveYearEdit} className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-xs font-bold">الاسم</Label>
+              <Input
+                className="h-11"
+                value={yearEditForm.label}
+                onChange={(e) => setYearEditForm((f) => ({ ...f, label: e.target.value }))}
+                placeholder="مثلاً: العام الدراسي 1448هـ - 1449هـ"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">تاريخ البداية</Label>
+              <Input
+                type="date"
+                className="h-11"
+                value={yearEditForm.startDate}
+                onChange={(e) => setYearEditForm((f) => ({ ...f, startDate: e.target.value }))}
+                required
+              />
+              {yearEditForm.startDate ? (
+                <p className="text-[11px] text-muted-foreground">
+                  الهجري: {hijriHint(yearEditForm.startDate)}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">تاريخ النهاية</Label>
+              <Input
+                type="date"
+                className="h-11"
+                value={yearEditForm.endDate}
+                onChange={(e) => setYearEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                required
+              />
+              {yearEditForm.endDate ? (
+                <p className="text-[11px] text-muted-foreground">
+                  الهجري: {hijriHint(yearEditForm.endDate)}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter className="sm:col-span-2 flex flex-wrap gap-2">
+              <Button type="submit" disabled={savingYearEdit} className="h-11 font-bold text-xs">
+                {savingYearEdit ? "جارٍ الحفظ…" : "حفظ التعديلات"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 text-xs"
+                onClick={() => setEditingYear(null)}
+              >
+                إلغاء
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editingSemester)}
+        onOpenChange={(open) => !open && setEditingSemester(null)}
+      >
+        <DialogContent className="text-start">
+          <DialogHeader>
+            <DialogTitle>تعديل الفصل الدراسي</DialogTitle>
+            <DialogDescription>
+              عدّل الاسم وتاريخ البداية والنهاية للصف الحالي فقط. أدخل التواريخ الرسمية الصادرة من
+              وزارة التعليم يدويًا. المعرّف لا يتغير.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={onSaveSemesterEdit} className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-xs font-bold">الاسم</Label>
+              <Input
+                className="h-11"
+                value={semesterEditForm.label}
+                onChange={(e) => setSemesterEditForm((f) => ({ ...f, label: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">تاريخ البداية</Label>
+              <Input
+                type="date"
+                className="h-11"
+                value={semesterEditForm.startDate}
+                onChange={(e) => setSemesterEditForm((f) => ({ ...f, startDate: e.target.value }))}
+                required
+              />
+              {semesterEditForm.startDate ? (
+                <p className="text-[11px] text-muted-foreground">
+                  الهجري: {hijriHint(semesterEditForm.startDate)}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">تاريخ النهاية</Label>
+              <Input
+                type="date"
+                className="h-11"
+                value={semesterEditForm.endDate}
+                onChange={(e) => setSemesterEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                required
+              />
+              {semesterEditForm.endDate ? (
+                <p className="text-[11px] text-muted-foreground">
+                  الهجري: {hijriHint(semesterEditForm.endDate)}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter className="sm:col-span-2 flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                disabled={savingSemesterEdit}
+                className="h-11 font-bold text-xs"
+              >
+                {savingSemesterEdit ? "جارٍ الحفظ…" : "حفظ التعديلات"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 text-xs"
+                onClick={() => setEditingSemester(null)}
+              >
+                إلغاء
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

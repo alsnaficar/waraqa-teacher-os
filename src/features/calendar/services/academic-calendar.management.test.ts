@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolveAcademicScope } from "./academic-calendar.ts";
 import {
   assertSemesterWithinAcademicYear,
+  assertSemestersDoNotOverlap,
   assertValidDateRange,
   normalizeCalendarLabel,
 } from "./academic-calendar.logic.ts";
@@ -17,7 +18,11 @@ import {
   createAdminAcademicYear,
   createAdminSemester,
   createSemester,
+  deleteAdminAcademicYear,
+  deleteAdminSemester,
   listAcademicYears,
+  updateAdminAcademicYear,
+  updateAdminSemester,
 } from "./academic-calendar.management.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -248,6 +253,17 @@ describe("academic calendar validation logic", () => {
   it("requires a non-empty label", () => {
     assert.throws(() => normalizeCalendarLabel("   "), /مطلوب/);
   });
+
+  it("rejects overlapping semester ranges", () => {
+    assert.throws(
+      () =>
+        assertSemestersDoNotOverlap(
+          [{ id: "s1", startDate: "2026-08-23", endDate: "2026-11-19" }],
+          { id: "s2", startDate: "2026-11-01", endDate: "2027-01-08" },
+        ),
+      /تتداخل/,
+    );
+  });
 });
 
 describe("admin academic year / semester management", () => {
@@ -295,6 +311,28 @@ describe("admin academic year / semester management", () => {
     assert.equal(db.academic_years.find((y) => y.id === "y1")?.is_active, false);
     assert.equal(db.academic_years.find((y) => y.id === "y2")?.is_active, true);
     assert.equal(db.academic_years.length, 2);
+  });
+
+  it("cannot activate a year without complete dates", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "العام الدراسي الحالي 1447هـ",
+          start_date: "2026-08-30",
+          end_date: null,
+          is_active: true,
+        },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        activateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), EXISTING_YEAR_ID),
+      /بدون تواريخ/,
+    );
+    assert.equal(db.academic_years[0].id, EXISTING_YEAR_ID);
+    assert.equal(db.academic_years[0].end_date, null);
   });
 
   it("only authenticated admin can write", async () => {
@@ -423,6 +461,389 @@ describe("admin academic year / semester management", () => {
     assert.equal(db.semesters.length, 1);
   });
 
+  it("admin can update year label and dates without changing id", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "العام الدراسي الحالي 1447هـ",
+          start_date: "2026-08-30",
+          end_date: null,
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الفصل الدراسي الأول",
+          start_date: "2026-08-30",
+          end_date: null,
+          order_index: 1,
+        },
+      ],
+      lesson_sessions: [
+        {
+          id: "sess-1",
+          academic_year_id: EXISTING_YEAR_ID,
+          semester_id: EXISTING_SEMESTER_ID,
+        },
+      ],
+    });
+    const updated = await updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
+      academicYearId: EXISTING_YEAR_ID,
+      label: "العام الدراسي 1448هـ - 1449هـ",
+      startDate: "2026-08-23",
+      endDate: "2027-06-24",
+    });
+    assert.equal(updated.id, EXISTING_YEAR_ID);
+    assert.equal(updated.label, "العام الدراسي 1448هـ - 1449هـ");
+    assert.equal(updated.startDate, "2026-08-23");
+    assert.equal(updated.endDate, "2027-06-24");
+    assert.equal(updated.isActive, true);
+    assert.equal(db.academic_years.length, 1);
+    assert.equal(db.academic_years[0].id, EXISTING_YEAR_ID);
+    assert.equal(db.academic_years[0].is_active, true);
+    assert.equal(db.lesson_sessions.length, 1);
+    assert.equal(db.lesson_sessions[0].academic_year_id, EXISTING_YEAR_ID);
+    assert.equal(db.lesson_sessions[0].semester_id, EXISTING_SEMESTER_ID);
+  });
+
+  it("admin can update semester dates without changing id", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "العام الدراسي 1448هـ - 1449هـ",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الفصل الدراسي الأول",
+          start_date: "2026-08-30",
+          end_date: null,
+          order_index: 1,
+        },
+      ],
+      lesson_sessions: [
+        {
+          id: "sess-1",
+          academic_year_id: EXISTING_YEAR_ID,
+          semester_id: EXISTING_SEMESTER_ID,
+        },
+      ],
+    });
+    const updated = await updateAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+      semesterId: EXISTING_SEMESTER_ID,
+      academicYearId: EXISTING_YEAR_ID,
+      label: "الفصل الدراسي الأول",
+      startDate: "2026-08-23",
+      endDate: "2026-11-19",
+    });
+    assert.equal(updated.id, EXISTING_SEMESTER_ID);
+    assert.equal(updated.startDate, "2026-08-23");
+    assert.equal(updated.endDate, "2026-11-19");
+    assert.equal(db.semesters[0].id, EXISTING_SEMESTER_ID);
+    assert.equal(db.lesson_sessions[0].semester_id, EXISTING_SEMESTER_ID);
+  });
+
+  it("rejects semester update outside academic-year dates", async () => {
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "A",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "فصل",
+          start_date: "2026-08-23",
+          end_date: "2026-11-19",
+          order_index: 1,
+        },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        updateAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+          semesterId: EXISTING_SEMESTER_ID,
+          academicYearId: EXISTING_YEAR_ID,
+          label: "فصل",
+          startDate: "2026-08-23",
+          endDate: "2027-12-31",
+        }),
+      /ضمن حدود/,
+    );
+  });
+
+  it("rejects overlapping semester update within the same year", async () => {
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "A",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الأول",
+          start_date: "2026-08-23",
+          end_date: "2026-11-19",
+          order_index: 1,
+        },
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "الثاني",
+          start_date: "2026-11-22",
+          end_date: "2027-02-12",
+          order_index: 2,
+        },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        updateAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+          semesterId: "33333333-3333-4333-8333-333333333333",
+          academicYearId: EXISTING_YEAR_ID,
+          label: "الثاني",
+          startDate: "2026-11-01",
+          endDate: "2027-02-12",
+        }),
+      /تتداخل/,
+    );
+  });
+
+  it("rejects inverted date range on year update", async () => {
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "A",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+      ],
+      semesters: [],
+    });
+    await assert.rejects(
+      () =>
+        updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
+          academicYearId: EXISTING_YEAR_ID,
+          label: "A",
+          startDate: "2027-06-24",
+          endDate: "2026-08-23",
+        }),
+      /البداية/,
+    );
+  });
+
+  it("non-admin cannot update calendar", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "A",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("teacher"), {
+          academicYearId: EXISTING_YEAR_ID,
+          label: "مخترق",
+          startDate: "2026-08-23",
+          endDate: "2027-06-24",
+        }),
+      /مديري النظام/,
+    );
+    assert.equal(db.academic_years[0].label, "A");
+  });
+
+  it("unauthenticated cannot update calendar", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "A",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        updateAdminAcademicYear({ userId: "", client: client as never }, mockAdminClient("admin"), {
+          academicYearId: EXISTING_YEAR_ID,
+          label: "مخترق",
+          startDate: "2026-08-23",
+          endDate: "2027-06-24",
+        }),
+      /Unauthorized|authenticated/i,
+    );
+    assert.equal(db.academic_years[0].label, "A");
+  });
+
+  it("updating year dates does not activate another year", async () => {
+    const otherYearId = "33333333-3333-4333-8333-333333333333";
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "نشطة",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+        {
+          id: otherYearId,
+          user_id: USER_A,
+          label: "غير نشطة",
+          start_date: "2025-08-24",
+          end_date: "2026-06-18",
+          is_active: false,
+        },
+      ],
+    });
+    const updated = await updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
+      academicYearId: otherYearId,
+      label: "غير نشطة بعد التعديل",
+      startDate: "2025-08-20",
+      endDate: "2026-06-20",
+    });
+    assert.equal(updated.id, otherYearId);
+    assert.equal(updated.isActive, false);
+    assert.equal(db.academic_years.find((y) => y.id === EXISTING_YEAR_ID)?.is_active, true);
+    assert.equal(db.academic_years.find((y) => y.id === otherYearId)?.is_active, false);
+  });
+
+  it("rejects semester that does not belong to the selected year", async () => {
+    const otherYearId = "33333333-3333-4333-8333-333333333333";
+    const { client } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "A",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+        {
+          id: otherYearId,
+          user_id: USER_A,
+          label: "B",
+          start_date: "2025-08-24",
+          end_date: "2026-06-18",
+          is_active: false,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "فصل",
+          start_date: "2026-08-23",
+          end_date: "2026-11-19",
+          order_index: 1,
+        },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        updateAdminSemester(auth(USER_A, client), mockAdminClient("admin"), {
+          semesterId: EXISTING_SEMESTER_ID,
+          academicYearId: otherYearId,
+          label: "فصل",
+          startDate: "2025-08-24",
+          endDate: "2025-11-19",
+        }),
+      /لا ينتمي/,
+    );
+  });
+
+  it("refuses delete when lesson_sessions are linked and never changes ids", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_A,
+          label: "A",
+          start_date: "2026-08-23",
+          end_date: "2027-06-24",
+          is_active: true,
+        },
+      ],
+      semesters: [
+        {
+          id: EXISTING_SEMESTER_ID,
+          user_id: USER_A,
+          academic_year_id: EXISTING_YEAR_ID,
+          label: "فصل",
+          start_date: "2026-08-23",
+          end_date: "2026-11-19",
+          order_index: 1,
+        },
+      ],
+      lesson_sessions: Array.from({ length: 14 }, (_, i) => ({
+        id: `sess-${i}`,
+        academic_year_id: EXISTING_YEAR_ID,
+        semester_id: EXISTING_SEMESTER_ID,
+      })),
+    });
+    await assert.rejects(
+      () =>
+        deleteAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), EXISTING_YEAR_ID),
+      /حصة مرتبطة/,
+    );
+    await assert.rejects(
+      () =>
+        deleteAdminSemester(auth(USER_A, client), mockAdminClient("admin"), EXISTING_SEMESTER_ID),
+      /حصة مرتبطة/,
+    );
+    assert.equal(db.academic_years.length, 1);
+    assert.equal(db.academic_years[0].id, EXISTING_YEAR_ID);
+    assert.equal(db.semesters[0].id, EXISTING_SEMESTER_ID);
+    assert.equal(db.lesson_sessions.length, 14);
+    assert.ok(db.lesson_sessions.every((s) => s.academic_year_id === EXISTING_YEAR_ID));
+    assert.ok(db.lesson_sessions.every((s) => s.semester_id === EXISTING_SEMESTER_ID));
+  });
+
   it("client cannot provide another user ID — ownership is JWT-scoped", async () => {
     const { client, db } = createMockClient({ academic_years: [], semesters: [] });
     const forgedClientPayload = { userId: USER_B, teacherId: USER_B, ownerId: USER_B };
@@ -474,6 +895,42 @@ describe("admin academic year / semester management", () => {
         }),
       /البداية/,
     );
+  });
+
+  it("cross-owner academic year update is rejected", async () => {
+    const { client, db } = createMockClient({
+      academic_years: [
+        {
+          id: EXISTING_YEAR_ID,
+          user_id: USER_B,
+          label: "العام الدراسي الحالي 1447هـ",
+          start_date: "2026-08-30",
+          end_date: null,
+          is_active: true,
+        },
+      ],
+      lesson_sessions: [
+        {
+          id: "sess-1",
+          academic_year_id: EXISTING_YEAR_ID,
+          semester_id: EXISTING_SEMESTER_ID,
+        },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        updateAdminAcademicYear(auth(USER_A, client), mockAdminClient("admin"), {
+          academicYearId: EXISTING_YEAR_ID,
+          label: "مخترق",
+          startDate: "2026-08-23",
+          endDate: "2027-06-24",
+        }),
+      /غير موجودة|غير مملوكة/,
+    );
+    assert.equal(db.academic_years[0].id, EXISTING_YEAR_ID);
+    assert.equal(db.academic_years[0].user_id, USER_B);
+    assert.equal(db.academic_years[0].label, "العام الدراسي الحالي 1447هـ");
+    assert.equal(db.lesson_sessions[0].academic_year_id, EXISTING_YEAR_ID);
   });
 
   it("cannot activate another user's academic year", async () => {
@@ -558,6 +1015,8 @@ describe("academic calendar server / UI security wiring", () => {
     assert.match(source, /export const createAdminSemester/);
     assert.match(source, /export const listAdminAcademicYears/);
     assert.match(source, /export const listAdminSemesters/);
+    assert.match(source, /export const updateAdminAcademicYear/);
+    assert.match(source, /export const updateAdminSemester/);
     assert.equal(
       /createTeacherAcademicYear|activateTeacherAcademicYear|createTeacherSemester/.test(source),
       false,
@@ -593,6 +1052,22 @@ describe("academic calendar server / UI security wiring", () => {
     assert.equal(/userId:\s*|teacherId:|ownerId:/.test(ui), false);
   });
 
+  it("AI / planner / Madrasati remain unwired to calendar writes", () => {
+    const forbidden =
+      /updateAdminAcademicYear|updateAdminSemester|createAdminAcademicYear|deleteAdminAcademicYear|updateAcademicYear|updateSemester/;
+    const scanRoots = [
+      "src/platform/integration/connectors/madrasati/madrasati-apply.server.ts",
+      "src/features/madrasati/sync/madrasati-sync.service.ts",
+      "src/features/planner/services/planner-engine.ts",
+      "src/features/lesson-sessions/services/lesson-session.service.ts",
+      "src/features/calendar/services/academic-calendar.ts",
+    ];
+    for (const rel of scanRoots) {
+      const source = readFileSync(join(ROOT, rel), "utf8");
+      assert.equal(forbidden.test(source), false, rel);
+    }
+  });
+
   it("admin page wiring exists", () => {
     const page = readFileSync(join(ROOT, ADMIN_PAGE), "utf8");
     const shell = readFileSync(join(ROOT, ADMIN_SHELL), "utf8");
@@ -604,6 +1079,14 @@ describe("academic calendar server / UI security wiring", () => {
     assert.match(page, /activateAdminAcademicYear/);
     assert.match(page, /listAdminSemesters/);
     assert.match(page, /createAdminSemester/);
+    assert.match(page, /updateAdminAcademicYear/);
+    assert.match(page, /updateAdminSemester/);
+    assert.match(page, /تعديل/);
+    assert.match(page, /حفظ التعديلات/);
+    assert.match(page, /إلغاء/);
+    assert.match(page, /formatHijri/);
+    assert.match(page, /تاريخ البداية/);
+    assert.match(page, /تاريخ النهاية/);
     assert.equal(/userId:\s*|teacherId:|ownerId:|profileId:/.test(page), false);
     assert.match(shell, /\/admin\/academic-calendar/);
     assert.match(shell, /التقويم الدراسي/);

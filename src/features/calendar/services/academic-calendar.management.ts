@@ -10,6 +10,7 @@ import { assertAdmin } from "../../../platform/auth/assert-admin.ts";
 import type { SupabaseUserContext } from "../../../platform/database/supabase/context.ts";
 import {
   assertSemesterWithinAcademicYear,
+  assertSemestersDoNotOverlap,
   assertValidDateRange,
   normalizeCalendarLabel,
 } from "./academic-calendar.logic.ts";
@@ -188,7 +189,7 @@ export async function activateAcademicYear(
 
   const { data: owned, error: ownedError } = await client
     .from("academic_years")
-    .select("id")
+    .select("id, start_date, end_date")
     .eq("id", academicYearId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -196,6 +197,9 @@ export async function activateAcademicYear(
   if (ownedError) throw ownedError;
   if (!owned) {
     throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+  }
+  if (!owned.start_date || !owned.end_date) {
+    throw new Error("لا يمكن تفعيل سنة دراسية بدون تواريخ بداية ونهاية صحيحة.");
   }
 
   const { error: clearError } = await client
@@ -255,6 +259,10 @@ export async function createSemester(
   });
 
   const existing = await listSemestersForYear(auth, input.academicYearId);
+  assertSemestersDoNotOverlap(existing, {
+    startDate: input.startDate,
+    endDate: input.endDate,
+  });
   const orderIndex =
     typeof input.orderIndex === "number" && Number.isInteger(input.orderIndex)
       ? input.orderIndex
@@ -276,6 +284,193 @@ export async function createSemester(
   if (error || !data) throw error ?? new Error("فشل إنشاء الفصل الدراسي.");
 
   return mapSemester(data, year.id);
+}
+
+export async function updateAcademicYear(
+  auth: SupabaseUserContext,
+  input: {
+    academicYearId: string;
+    label: string;
+    startDate: string;
+    endDate: string;
+  },
+): Promise<AcademicYearRecord> {
+  const { client, userId } = requireAuth(auth);
+  const label = normalizeCalendarLabel(input.label);
+  assertValidDateRange(input.startDate, input.endDate);
+
+  const { data: owned, error: ownedError } = await client
+    .from("academic_years")
+    .select("id, is_active")
+    .eq("id", input.academicYearId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (ownedError) throw ownedError;
+  if (!owned) {
+    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+  }
+
+  const semesters = await listSemestersForYear(auth, owned.id);
+  for (const semester of semesters) {
+    if (
+      semester.startDate &&
+      (semester.startDate < input.startDate || semester.startDate > input.endDate)
+    ) {
+      throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+    }
+    if (
+      semester.endDate &&
+      (semester.endDate < input.startDate || semester.endDate > input.endDate)
+    ) {
+      throw new Error("فترة الفصل يجب أن تكون ضمن حدود السنة الدراسية.");
+    }
+    if (!semester.startDate || !semester.endDate) continue;
+    assertSemesterWithinAcademicYear({
+      semesterStart: semester.startDate,
+      semesterEnd: semester.endDate,
+      yearStart: input.startDate,
+      yearEnd: input.endDate,
+    });
+  }
+
+  const { data, error } = await client
+    .from("academic_years")
+    .update({
+      label,
+      start_date: input.startDate,
+      end_date: input.endDate,
+    })
+    .eq("id", owned.id)
+    .eq("user_id", userId)
+    .select("id, label, start_date, end_date, is_active")
+    .single();
+
+  if (error || !data) throw error ?? new Error("فشل تعديل السنة الدراسية.");
+  if (data.id !== owned.id) {
+    throw new Error("تعذّر تعديل السنة دون تغيير المعرّف.");
+  }
+
+  return mapYear(data);
+}
+
+export async function updateSemester(
+  auth: SupabaseUserContext,
+  input: {
+    semesterId: string;
+    academicYearId: string;
+    label: string;
+    startDate: string;
+    endDate: string;
+    orderIndex?: number;
+  },
+): Promise<SemesterRecord> {
+  const { client, userId } = requireAuth(auth);
+  const label = normalizeCalendarLabel(input.label);
+
+  const { data: owned, error: ownedError } = await client
+    .from("semesters")
+    .select("id, academic_year_id, order_index")
+    .eq("id", input.semesterId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (ownedError) throw ownedError;
+  if (!owned?.academic_year_id) {
+    throw new Error("الفصل الدراسي غير موجود أو غير مملوك لك.");
+  }
+  if (owned.academic_year_id !== input.academicYearId) {
+    throw new Error("الفصل الدراسي لا ينتمي إلى السنة المحددة.");
+  }
+
+  const { data: year, error: yearError } = await client
+    .from("academic_years")
+    .select("id, start_date, end_date")
+    .eq("id", owned.academic_year_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (yearError) throw yearError;
+  if (!year) {
+    throw new Error("السنة الدراسية غير موجودة أو غير مملوكة لك.");
+  }
+  if (!year.start_date || !year.end_date) {
+    throw new Error("السنة الدراسية تفتقد تواريخ البداية/النهاية.");
+  }
+
+  assertSemesterWithinAcademicYear({
+    semesterStart: input.startDate,
+    semesterEnd: input.endDate,
+    yearStart: year.start_date,
+    yearEnd: year.end_date,
+  });
+
+  const siblings = await listSemestersForYear(auth, year.id);
+  assertSemestersDoNotOverlap(siblings, {
+    id: owned.id,
+    startDate: input.startDate,
+    endDate: input.endDate,
+  });
+
+  const orderIndex =
+    typeof input.orderIndex === "number" && Number.isInteger(input.orderIndex)
+      ? input.orderIndex
+      : owned.order_index;
+
+  const { data, error } = await client
+    .from("semesters")
+    .update({
+      label,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      order_index: orderIndex,
+    })
+    .eq("id", owned.id)
+    .eq("user_id", userId)
+    .select("id, academic_year_id, label, start_date, end_date, order_index")
+    .single();
+
+  if (error || !data) throw error ?? new Error("فشل تعديل الفصل الدراسي.");
+  if (data.id !== owned.id) {
+    throw new Error("تعذّر تعديل الفصل دون تغيير المعرّف.");
+  }
+
+  return mapSemester(data, year.id);
+}
+
+async function countLinkedLessonSessions(
+  auth: SupabaseUserContext,
+  column: "academic_year_id" | "semester_id",
+  id: string,
+): Promise<number> {
+  const { client } = requireAuth(auth);
+  const { data, error } = await client.from("lesson_sessions").select("id").eq(column, id);
+  if (error) throw error;
+  return (data ?? []).length;
+}
+
+export async function deleteAcademicYear(
+  auth: SupabaseUserContext,
+  academicYearId: string,
+): Promise<never> {
+  requireAuth(auth);
+  const linked = await countLinkedLessonSessions(auth, "academic_year_id", academicYearId);
+  if (linked > 0) {
+    throw new Error(`لا يمكن حذف السنة الدراسية لوجود ${linked} حصة مرتبطة بها.`);
+  }
+  throw new Error("حذف السنة الدراسية غير متاح حاليًا لحماية البيانات.");
+}
+
+export async function deleteSemester(
+  auth: SupabaseUserContext,
+  semesterId: string,
+): Promise<never> {
+  requireAuth(auth);
+  const linked = await countLinkedLessonSessions(auth, "semester_id", semesterId);
+  if (linked > 0) {
+    throw new Error(`لا يمكن حذف الفصل الدراسي لوجود ${linked} حصة مرتبطة به.`);
+  }
+  throw new Error("حذف الفصل الدراسي غير متاح حاليًا لحماية البيانات.");
 }
 
 export async function listAdminAcademicYears(
@@ -326,4 +521,52 @@ export async function createAdminSemester(
 ): Promise<SemesterRecord> {
   await requireAdminActor(auth, adminClient);
   return createSemester(auth, input);
+}
+
+export async function updateAdminAcademicYear(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  input: {
+    academicYearId: string;
+    label: string;
+    startDate: string;
+    endDate: string;
+  },
+): Promise<AcademicYearRecord> {
+  await requireAdminActor(auth, adminClient);
+  return updateAcademicYear(auth, input);
+}
+
+export async function updateAdminSemester(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  input: {
+    semesterId: string;
+    academicYearId: string;
+    label: string;
+    startDate: string;
+    endDate: string;
+    orderIndex?: number;
+  },
+): Promise<SemesterRecord> {
+  await requireAdminActor(auth, adminClient);
+  return updateSemester(auth, input);
+}
+
+export async function deleteAdminAcademicYear(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  academicYearId: string,
+): Promise<never> {
+  await requireAdminActor(auth, adminClient);
+  return deleteAcademicYear(auth, academicYearId);
+}
+
+export async function deleteAdminSemester(
+  auth: SupabaseUserContext,
+  adminClient: AdminClient,
+  semesterId: string,
+): Promise<never> {
+  await requireAdminActor(auth, adminClient);
+  return deleteSemester(auth, semesterId);
 }

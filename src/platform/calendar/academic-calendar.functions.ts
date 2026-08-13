@@ -16,8 +16,12 @@ import {
   activateAdminAcademicYear as activateAdminAcademicYearOp,
   createAdminAcademicYear as createAdminAcademicYearOp,
   createAdminSemester as createAdminSemesterOp,
+  deleteAdminAcademicYear as deleteAdminAcademicYearOp,
+  deleteAdminSemester as deleteAdminSemesterOp,
   listAdminAcademicYears as listAdminAcademicYearsOp,
   listAdminSemestersForYear as listAdminSemestersForYearOp,
+  updateAdminAcademicYear as updateAdminAcademicYearOp,
+  updateAdminSemester as updateAdminSemesterOp,
   type AcademicYearRecord,
   type SemesterRecord,
 } from "@/features/calendar/services/academic-calendar.management";
@@ -45,6 +49,30 @@ const CreateSemesterInput = z.object({
   startDate: IsoDate,
   endDate: IsoDate,
   orderIndex: z.number().int().min(0).max(20).optional(),
+});
+
+const UpdateAcademicYearInput = z.object({
+  academicYearId: z.string().uuid(),
+  label: z.string().min(1).max(120),
+  startDate: IsoDate,
+  endDate: IsoDate,
+});
+
+const UpdateSemesterInput = z.object({
+  semesterId: z.string().uuid(),
+  academicYearId: z.string().uuid(),
+  label: z.string().min(1).max(120),
+  startDate: IsoDate,
+  endDate: IsoDate,
+  orderIndex: z.number().int().min(0).max(20).optional(),
+});
+
+const DeleteAcademicYearInput = z.object({
+  academicYearId: z.string().uuid(),
+});
+
+const DeleteSemesterInput = z.object({
+  semesterId: z.string().uuid(),
 });
 
 type AdminClient = Awaited<
@@ -115,4 +143,48 @@ export const createAdminSemester = createServerFn({ method: "POST" })
       endDate: data.endDate,
       orderIndex: data.orderIndex,
     });
+  });
+
+export const updateAdminAcademicYear = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => UpdateAcademicYearInput.parse(data))
+  .handler(async ({ data, context }): Promise<AcademicYearRecord> => {
+    const { auth, adminClient } = await requireAdminCalendarContext(context);
+    return updateAdminAcademicYearOp(auth, adminClient, {
+      academicYearId: data.academicYearId,
+      label: data.label,
+      startDate: data.startDate,
+      endDate: data.endDate,
+    });
+  });
+
+export const updateAdminSemester = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => UpdateSemesterInput.parse(data))
+  .handler(async ({ data, context }): Promise<SemesterRecord> => {
+    const { auth, adminClient } = await requireAdminCalendarContext(context);
+    return updateAdminSemesterOp(auth, adminClient, {
+      semesterId: data.semesterId,
+      academicYearId: data.academicYearId,
+      label: data.label,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      orderIndex: data.orderIndex,
+    });
+  });
+
+export const deleteAdminAcademicYear = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => DeleteAcademicYearInput.parse(data))
+  .handler(async ({ data, context }): Promise<never> => {
+    const { auth, adminClient } = await requireAdminCalendarContext(context);
+    return deleteAdminAcademicYearOp(auth, adminClient, data.academicYearId);
+  });
+
+export const deleteAdminSemester = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => DeleteSemesterInput.parse(data))
+  .handler(async ({ data, context }): Promise<never> => {
+    const { auth, adminClient } = await requireAdminCalendarContext(context);
+    return deleteAdminSemesterOp(auth, adminClient, data.semesterId);
   });

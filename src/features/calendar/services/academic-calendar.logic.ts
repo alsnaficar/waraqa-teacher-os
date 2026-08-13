@@ -34,6 +34,30 @@ export function assertSemesterWithinAcademicYear(options: {
   }
 }
 
+export function dateRangesOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string,
+): boolean {
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+export function assertSemestersDoNotOverlap(
+  existing: Array<{ id?: string; startDate: string; endDate: string }>,
+  candidate: { id?: string; startDate: string; endDate: string },
+): void {
+  assertValidDateRange(candidate.startDate, candidate.endDate);
+
+  for (const row of existing) {
+    if (candidate.id && row.id && candidate.id === row.id) continue;
+    if (!row.startDate || !row.endDate) continue;
+    if (dateRangesOverlap(candidate.startDate, candidate.endDate, row.startDate, row.endDate)) {
+      throw new Error("تتداخل فترة هذا الفصل مع فصل آخر في نفس السنة.");
+    }
+  }
+}
+
 export function normalizeCalendarLabel(label: string): string {
   const trimmed = label.trim();
   if (!trimmed) {
