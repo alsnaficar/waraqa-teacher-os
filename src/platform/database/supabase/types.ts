@@ -308,6 +308,164 @@ export type Database = {
           },
         ];
       };
+      calendar_exceptions: {
+        Row: {
+          academic_year_id: string;
+          action: string;
+          created_at: string;
+          ends_at: string;
+          id: string;
+          is_remote: boolean;
+          is_teaching_day: boolean;
+          kind: string;
+          replaces_exception_id: string | null;
+          semester_id: string | null;
+          starts_at: string;
+          title: string;
+          updated_at: string;
+          variant_id: string;
+        };
+        Insert: {
+          academic_year_id: string;
+          action: string;
+          created_at?: string;
+          ends_at: string;
+          id?: string;
+          is_remote?: boolean;
+          is_teaching_day?: boolean;
+          kind: string;
+          replaces_exception_id?: string | null;
+          semester_id?: string | null;
+          starts_at: string;
+          title: string;
+          updated_at?: string;
+          variant_id: string;
+        };
+        Update: {
+          academic_year_id?: string;
+          action?: string;
+          created_at?: string;
+          ends_at?: string;
+          id?: string;
+          is_remote?: boolean;
+          is_teaching_day?: boolean;
+          kind?: string;
+          replaces_exception_id?: string | null;
+          semester_id?: string | null;
+          starts_at?: string;
+          title?: string;
+          updated_at?: string;
+          variant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_exceptions_academic_year_id_fkey";
+            columns: ["academic_year_id"];
+            isOneToOne: false;
+            referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_exceptions_replaces_exception_id_fkey";
+            columns: ["replaces_exception_id"];
+            isOneToOne: false;
+            referencedRelation: "calendar_exceptions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_exceptions_semester_id_fkey";
+            columns: ["semester_id"];
+            isOneToOne: false;
+            referencedRelation: "semesters";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_exceptions_variant_id_fkey";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "calendar_variants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      calendar_term_overrides: {
+        Row: {
+          created_at: string;
+          end_date: string | null;
+          id: string;
+          semester_id: string;
+          start_date: string | null;
+          updated_at: string;
+          variant_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          end_date?: string | null;
+          id?: string;
+          semester_id: string;
+          start_date?: string | null;
+          updated_at?: string;
+          variant_id: string;
+        };
+        Update: {
+          created_at?: string;
+          end_date?: string | null;
+          id?: string;
+          semester_id?: string;
+          start_date?: string | null;
+          updated_at?: string;
+          variant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_term_overrides_semester_id_fkey";
+            columns: ["semester_id"];
+            isOneToOne: false;
+            referencedRelation: "semesters";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_term_overrides_variant_id_fkey";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "calendar_variants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      calendar_variants: {
+        Row: {
+          code: string;
+          created_at: string;
+          id: string;
+          is_default: boolean;
+          is_selectable: boolean;
+          label: string;
+          sort_order: number;
+          updated_at: string;
+        };
+        Insert: {
+          code: string;
+          created_at?: string;
+          id?: string;
+          is_default?: boolean;
+          is_selectable?: boolean;
+          label: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          code?: string;
+          created_at?: string;
+          id?: string;
+          is_default?: boolean;
+          is_selectable?: boolean;
+          label?: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       classes: {
         Row: {
           created_at: string;
@@ -1126,6 +1284,7 @@ export type Database = {
           academic_year_id: string | null;
           approved_at: string | null;
           archived_at: string | null;
+          calendar_variant_id: string | null;
           completed_at: string | null;
           created_at: string;
           current_version: number;
@@ -1141,6 +1300,7 @@ export type Database = {
           academic_year_id?: string | null;
           approved_at?: string | null;
           archived_at?: string | null;
+          calendar_variant_id?: string | null;
           completed_at?: string | null;
           created_at?: string;
           current_version?: number;
@@ -1156,6 +1316,7 @@ export type Database = {
           academic_year_id?: string | null;
           approved_at?: string | null;
           archived_at?: string | null;
+          calendar_variant_id?: string | null;
           completed_at?: string | null;
           created_at?: string;
           current_version?: number;
@@ -1173,6 +1334,13 @@ export type Database = {
             columns: ["academic_year_id"];
             isOneToOne: false;
             referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "semester_plans_calendar_variant_id_fkey";
+            columns: ["calendar_variant_id"];
+            isOneToOne: false;
+            referencedRelation: "calendar_variants";
             referencedColumns: ["id"];
           },
           {
