@@ -35,6 +35,8 @@ import {
 } from "../services/tests-ui.logic";
 import { TestFormDialog, type TestFormMode } from "./test-form-dialog";
 import { TestQuestionBuilder } from "./test-question-builder";
+import { TestSubmissionsPanel } from "./test-submissions-panel";
+import { canViewTestSubmissions } from "../services/tests-submissions-ui.logic";
 
 export function TestsPageContent() {
   const [statusFilter, setStatusFilter] = useState<TestStatus | "all">("all");
@@ -265,11 +267,20 @@ export function TestsPageContent() {
                   </div>
 
                   {isSelected && selectedTest ? (
-                    <TestQuestionBuilder
-                      testId={selectedTest.id}
-                      testTitle={selectedTest.title}
-                      readOnly={!view.canManageQuestions}
-                    />
+                    <>
+                      <TestQuestionBuilder
+                        testId={selectedTest.id}
+                        testTitle={selectedTest.title}
+                        readOnly={!view.canManageQuestions}
+                      />
+                      {canViewTestSubmissions(selectedTest.status) ? (
+                        <TestSubmissionsPanel
+                          testId={selectedTest.id}
+                          testTitle={selectedTest.title}
+                          testStatus={selectedTest.status}
+                        />
+                      ) : null}
+                    </>
                   ) : null}
                 </CardContent>
               </Card>

@@ -165,6 +165,44 @@ export class TestSubmissionService {
     return data ? toSubmission(data) : null;
   }
 
+  /**
+   * Assignment path for TASK 22.4 — published + active student only.
+   * Forces pending; ignores any client status/score/feedback authority.
+   */
+  static async assignPending(
+    testId: string,
+    studentId: string,
+    context?: SupabaseUserContext,
+  ): Promise<TestSubmission | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const test = await assertOwnedTest(resolved, testId);
+    assertTestAcceptsSubmissions(test);
+    await assertOwnedActiveStudent(resolved, studentId);
+
+    const { data, error } = await resolved.client
+      .from("test_submissions")
+      .insert(
+        toInsertRow(resolved.userId, {
+          testId,
+          studentId,
+          status: "pending",
+        }),
+      )
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      if (isTestSubmissionUniqueViolation(error)) {
+        throw new TestSubmissionConflictError();
+      }
+      throw error;
+    }
+
+    return data ? toSubmission(data) : null;
+  }
+
   static async create(
     input: TestSubmissionCreateInput,
     context?: SupabaseUserContext,
@@ -264,10 +302,10 @@ function assertTestAcceptsSubmissions(test: TeacherTest): void {
 async function assertOwnedStudent(
   context: SupabaseUserContext,
   studentId: string,
-): Promise<void> {
+): Promise<{ id: string; active: boolean }> {
   const { data, error } = await context.client
     .from("students")
-    .select("id")
+    .select("id, active")
     .eq("id", studentId)
     .eq("teacher_id", context.userId)
     .maybeSingle();
@@ -275,5 +313,16 @@ async function assertOwnedStudent(
   if (error) throw error;
   if (!data) {
     throw new Error("الطالب غير موجود أو لا تملك صلاحية الوصول إليه.");
+  }
+  return { id: data.id as string, active: Boolean(data.active) };
+}
+
+async function assertOwnedActiveStudent(
+  context: SupabaseUserContext,
+  studentId: string,
+): Promise<void> {
+  const student = await assertOwnedStudent(context, studentId);
+  if (!student.active) {
+    throw new Error("لا يمكن إسناد الاختبار لطالب غير نشط.");
   }
 }
