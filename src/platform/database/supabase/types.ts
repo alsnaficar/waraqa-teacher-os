@@ -985,6 +985,63 @@ export type Database = {
           },
         ];
       };
+      homework_submissions: {
+        Row: {
+          created_at: string;
+          feedback: string | null;
+          graded_at: string | null;
+          homework_id: string;
+          id: string;
+          score: number | null;
+          status: string;
+          student_id: string;
+          submitted_at: string | null;
+          teacher_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          feedback?: string | null;
+          graded_at?: string | null;
+          homework_id: string;
+          id?: string;
+          score?: number | null;
+          status?: string;
+          student_id: string;
+          submitted_at?: string | null;
+          teacher_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          feedback?: string | null;
+          graded_at?: string | null;
+          homework_id?: string;
+          id?: string;
+          score?: number | null;
+          status?: string;
+          student_id?: string;
+          submitted_at?: string | null;
+          teacher_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "homework_submissions_homework_id_fkey";
+            columns: ["homework_id"];
+            isOneToOne: false;
+            referencedRelation: "homework";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "homework_submissions_student_id_fkey";
+            columns: ["student_id"];
+            isOneToOne: false;
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       lesson_sessions: {
         Row: {
           academic_year_id: string;
@@ -1600,6 +1657,57 @@ export type Database = {
             columns: ["academic_year_id"];
             isOneToOne: false;
             referencedRelation: "academic_years";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      students: {
+        Row: {
+          active: boolean;
+          class_id: string | null;
+          created_at: string;
+          full_name: string;
+          grade_id: string | null;
+          id: string;
+          student_code: string | null;
+          teacher_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          active?: boolean;
+          class_id?: string | null;
+          created_at?: string;
+          full_name: string;
+          grade_id?: string | null;
+          id?: string;
+          student_code?: string | null;
+          teacher_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          active?: boolean;
+          class_id?: string | null;
+          created_at?: string;
+          full_name?: string;
+          grade_id?: string | null;
+          id?: string;
+          student_code?: string | null;
+          teacher_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "students_class_id_fkey";
+            columns: ["class_id"];
+            isOneToOne: false;
+            referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "students_grade_id_fkey";
+            columns: ["grade_id"];
+            isOneToOne: false;
+            referencedRelation: "grades";
             referencedColumns: ["id"];
           },
         ];
