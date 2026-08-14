@@ -71,6 +71,7 @@ export function TestSubmissionsPanel({
     refresh,
     assignPending,
     remove,
+    gradeSubmission,
   } = useTestSubmissions(testId);
 
   const canAssign = canAssignTestSubmissions(testStatus);
@@ -80,6 +81,7 @@ export function TestSubmissionsPanel({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<TestSubmission | null>(null);
   const [assigning, setAssigning] = useState(false);
+  const [gradingId, setGradingId] = useState<string | null>(null);
 
   const studentById = useMemo(
     () => new Map(students.map((student) => [student.id, student])),
@@ -135,6 +137,18 @@ export function TestSubmissionsPanel({
       setSelectedIds([]);
     } finally {
       setAssigning(false);
+    }
+  }
+
+  async function handleAutoGrade(submission: TestSubmission) {
+    setGradingId(submission.id);
+    try {
+      await gradeSubmission.mutateAsync(submission.id);
+      toast.success("تم التصحيح التلقائي.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر التصحيح التلقائي.");
+    } finally {
+      setGradingId(null);
     }
   }
 
@@ -198,10 +212,11 @@ export function TestSubmissionsPanel({
                   <th className="px-3 py-3 text-start font-medium">الطالب</th>
                   <th className="px-3 py-3 text-start font-medium">الرقم</th>
                   <th className="px-3 py-3 text-start font-medium">الحالة</th>
+                  <th className="px-3 py-3 text-start font-medium">الدرجة</th>
+                  <th className="px-3 py-3 text-start font-medium">الملاحظات</th>
                   <th className="px-3 py-3 text-start font-medium">تاريخ التسليم</th>
-                  {canAssign ? (
-                    <th className="px-3 py-3 text-start font-medium">إجراءات</th>
-                  ) : null}
+                  <th className="px-3 py-3 text-start font-medium">تاريخ التصحيح</th>
+                  <th className="px-3 py-3 text-start font-medium">إجراءات</th>
                 </tr>
               </thead>
               <tbody>
@@ -216,19 +231,37 @@ export function TestSubmissionsPanel({
                       <td className="px-3 py-3">
                         <Badge variant="outline">{view.statusLabel}</Badge>
                       </td>
+                      <td className="px-3 py-3">{view.scoreLabel}</td>
+                      <td className="max-w-[10rem] truncate px-3 py-3">{view.feedbackLabel}</td>
                       <td className="px-3 py-3">{view.submittedAtLabel}</td>
-                      {canAssign ? (
-                        <td className="px-3 py-3">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="min-h-11 text-destructive"
-                            onClick={() => setDeleteTarget(submission)}
-                          >
-                            حذف
-                          </Button>
-                        </td>
-                      ) : null}
+                      <td className="px-3 py-3">{view.gradedAtLabel}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {view.canAutoGrade ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="min-h-11"
+                              disabled={gradingId === submission.id || gradeSubmission.isPending}
+                              onClick={() => void handleAutoGrade(submission)}
+                            >
+                              {gradingId === submission.id
+                                ? "جاري التصحيح…"
+                                : view.autoGradeActionLabel}
+                            </Button>
+                          ) : null}
+                          {canAssign ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="min-h-11 text-destructive"
+                              onClick={() => setDeleteTarget(submission)}
+                            >
+                              حذف
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -249,20 +282,44 @@ export function TestSubmissionsPanel({
                         <p className="text-xs text-muted-foreground">
                           التسليم: {view.submittedAtLabel}
                         </p>
+                        <p className="text-xs text-muted-foreground">
+                          التصحيح: {view.gradedAtLabel}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          الدرجة: {view.scoreLabel}
+                          {view.feedbackLabel !== "—"
+                            ? ` · ملاحظات: ${view.feedbackLabel}`
+                            : ""}
+                        </p>
                       </div>
                       <Badge variant="outline">{view.statusLabel}</Badge>
                     </div>
-                    {canAssign ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={cn("min-h-11 w-full gap-1 text-destructive")}
-                        onClick={() => setDeleteTarget(submission)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        حذف
-                      </Button>
-                    ) : null}
+                    <div className="flex flex-col gap-2">
+                      {view.canAutoGrade ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="min-h-11 w-full"
+                          disabled={gradingId === submission.id || gradeSubmission.isPending}
+                          onClick={() => void handleAutoGrade(submission)}
+                        >
+                          {gradingId === submission.id
+                            ? "جاري التصحيح…"
+                            : view.autoGradeActionLabel}
+                        </Button>
+                      ) : null}
+                      {canAssign ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn("min-h-11 w-full gap-1 text-destructive")}
+                          onClick={() => setDeleteTarget(submission)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          حذف
+                        </Button>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
               );

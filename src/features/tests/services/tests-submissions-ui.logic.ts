@@ -12,12 +12,23 @@ export const TEST_SUBMISSION_STATUS_LABELS: Record<TestSubmissionStatus, string>
   graded: "مُصحّح",
 };
 
+export function formatTestScoreLabel(
+  score: number | null,
+  maxScore?: number | null,
+): string {
+  if (score == null) return "—";
+  if (maxScore != null && Number.isFinite(maxScore)) {
+    return `${score}/${maxScore}`;
+  }
+  return String(score);
+}
+
 export const TEST_SUBMISSIONS_EMPTY_TITLE = "لا توجد تسليمات بعد";
 export const TEST_SUBMISSIONS_EMPTY_DESCRIPTION =
   "أسند الاختبار للطلاب النشطين لمتابعة حالة التسليم.";
 export const TEST_SUBMISSIONS_ERROR_TITLE = "تعذر تحميل التسليمات";
 export const TEST_SUBMISSIONS_HINT =
-  "الإسناد متاح للاختبارات المنشورة فقط. الاختبار المغلق للعرض فقط.";
+  "الإسناد متاح للاختبارات المنشورة فقط. الاختبار المغلق للعرض فقط. التصحيح التلقائي متاح للتسليمات المُسلَّمة والمُصحَّحة.";
 
 export type TestSubmissionListItemView = {
   id: string;
@@ -27,6 +38,11 @@ export type TestSubmissionListItemView = {
   status: TestSubmissionStatus;
   statusLabel: string;
   submittedAtLabel: string;
+  gradedAtLabel: string;
+  scoreLabel: string;
+  feedbackLabel: string;
+  canAutoGrade: boolean;
+  autoGradeActionLabel: string;
 };
 
 export function formatTestSubmissionDate(iso: string | null): string {
@@ -44,6 +60,14 @@ export function formatTestSubmissionDate(iso: string | null): string {
   }
 }
 
+export function canAutoGradeTestSubmission(status: TestSubmissionStatus): boolean {
+  return status === "submitted" || status === "graded";
+}
+
+export function autoGradeActionLabel(status: TestSubmissionStatus): string {
+  return status === "graded" ? "إعادة التصحيح التلقائي" : "تصحيح تلقائي";
+}
+
 export function toTestSubmissionListItemView(
   submission: TestSubmission,
   student: Student | undefined,
@@ -56,6 +80,11 @@ export function toTestSubmissionListItemView(
     status: submission.status,
     statusLabel: TEST_SUBMISSION_STATUS_LABELS[submission.status],
     submittedAtLabel: formatTestSubmissionDate(submission.submittedAt),
+    gradedAtLabel: formatTestSubmissionDate(submission.gradedAt),
+    scoreLabel: formatTestScoreLabel(submission.score, submission.maxScore),
+    feedbackLabel: submission.feedback?.trim() || "—",
+    canAutoGrade: canAutoGradeTestSubmission(submission.status),
+    autoGradeActionLabel: autoGradeActionLabel(submission.status),
   };
 }
 

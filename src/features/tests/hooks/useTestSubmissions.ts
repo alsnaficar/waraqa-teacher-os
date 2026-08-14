@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { StudentService } from "@/features/homework/services/student.service";
 import { TeacherCatalogService } from "@/features/homework/services/teacher-catalog.service";
 
+import { TestGradingService } from "../services/test-grading.service";
 import { TestSubmissionService } from "../services/test-submission.service";
 
 export function testSubmissionsQueryKey(testId: string) {
@@ -11,7 +12,7 @@ export function testSubmissionsQueryKey(testId: string) {
 
 /**
  * Submissions for one teacher-owned test + active students for assignment.
- * Mutations use assignPending only — no client teacher_id/status/score.
+ * Mutations use assignPending / gradeSubmission — no client teacher_id authority.
  */
 export function useTestSubmissions(testId: string | null) {
   const queryClient = useQueryClient();
@@ -42,6 +43,7 @@ export function useTestSubmissions(testId: string | null) {
       void queryClient.invalidateQueries({ queryKey: testSubmissionsQueryKey(testId) });
     }
     void queryClient.invalidateQueries({ queryKey: ["students"] });
+    void queryClient.invalidateQueries({ queryKey: ["test-reports"] });
   };
 
   const assignPending = useMutation({
@@ -57,6 +59,11 @@ export function useTestSubmissions(testId: string | null) {
     onSuccess: invalidate,
   });
 
+  const gradeSubmission = useMutation({
+    mutationFn: (submissionId: string) => TestGradingService.gradeSubmission(submissionId),
+    onSuccess: invalidate,
+  });
+
   return {
     submissions: submissionsQuery.data ?? [],
     students: studentsQuery.data ?? [],
@@ -66,5 +73,6 @@ export function useTestSubmissions(testId: string | null) {
     refresh: invalidate,
     assignPending,
     remove,
+    gradeSubmission,
   };
 }

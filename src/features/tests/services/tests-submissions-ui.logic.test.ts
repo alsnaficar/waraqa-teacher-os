@@ -9,9 +9,12 @@ import type { Student } from "@/features/homework/services/student.service";
 import type { TestSubmission } from "./test-submission.service.ts";
 import { assertNoClientTeacherId } from "./tests-ui.logic.ts";
 import {
+  autoGradeActionLabel,
   canAssignTestSubmissions,
+  canAutoGradeTestSubmission,
   canViewTestSubmissions,
   filterAssignableStudents,
+  formatTestScoreLabel,
   studentsWithoutTestSubmission,
   TEST_SUBMISSION_STATUS_LABELS,
   TEST_SUBMISSIONS_EMPTY_TITLE,
@@ -61,7 +64,18 @@ const submission: TestSubmission = {
   updatedAt: "2026-08-14T00:00:00Z",
 };
 
-describe("TASK 22.4 tests submissions UI logic", () => {
+const gradedSubmission: TestSubmission = {
+  ...submission,
+  id: "sub-2",
+  status: "graded",
+  score: 8,
+  maxScore: 10,
+  feedback: "ممتاز",
+  submittedAt: "2026-08-14T10:00:00Z",
+  gradedAt: "2026-08-14T12:00:00Z",
+};
+
+describe("TASK 22.4/22.6 tests submissions UI logic", () => {
   it("1. Arabic status labels", () => {
     assert.equal(TEST_SUBMISSION_STATUS_LABELS.pending, "لم يبدأ");
     assert.equal(TEST_SUBMISSION_STATUS_LABELS.submitted, "مُسلّم");
@@ -111,18 +125,38 @@ describe("TASK 22.4 tests submissions UI logic", () => {
     assert.equal(canViewTestSubmissions("closed"), true);
   });
 
-  it("5. list view maps student + status without score/feedback fields", () => {
+  it("5. list view maps student + status + score/feedback", () => {
     const view = toTestSubmissionListItemView(submission, studentA);
     assert.equal(view.studentName, "أحمد علي");
     assert.equal(view.studentCodeLabel, "A-01");
     assert.equal(view.statusLabel, "لم يبدأ");
     assert.equal(view.submittedAtLabel, "—");
-    assert.equal("scoreLabel" in view, false);
-    assert.equal("feedbackLabel" in view, false);
+    assert.equal(view.gradedAtLabel, "—");
+    assert.equal(view.scoreLabel, "—");
+    assert.equal(view.feedbackLabel, "—");
+    assert.equal(view.canAutoGrade, false);
     assertNoClientTeacherId(view);
+
+    const graded = toTestSubmissionListItemView(gradedSubmission, studentA);
+    assert.equal(graded.scoreLabel, "8/10");
+    assert.equal(graded.feedbackLabel, "ممتاز");
+    assert.equal(graded.canAutoGrade, true);
+    assert.equal(graded.autoGradeActionLabel, "إعادة التصحيح التلقائي");
+    assert.notEqual(graded.gradedAtLabel, "—");
   });
 
-  it("6. empty copy + source contract", () => {
+  it("6. auto-grade gates and score formatting", () => {
+    assert.equal(canAutoGradeTestSubmission("pending"), false);
+    assert.equal(canAutoGradeTestSubmission("submitted"), true);
+    assert.equal(canAutoGradeTestSubmission("graded"), true);
+    assert.equal(autoGradeActionLabel("submitted"), "تصحيح تلقائي");
+    assert.equal(autoGradeActionLabel("graded"), "إعادة التصحيح التلقائي");
+    assert.equal(formatTestScoreLabel(null), "—");
+    assert.equal(formatTestScoreLabel(7, 10), "7/10");
+    assert.equal(formatTestScoreLabel(7), "7");
+  });
+
+  it("7. empty copy + source contract (22.6)", () => {
     assert.match(TEST_SUBMISSIONS_EMPTY_TITLE, /لا توجد تسليمات/);
 
     const here = path.dirname(fileURLToPath(import.meta.url));
@@ -146,14 +180,15 @@ describe("TASK 22.4 tests submissions UI logic", () => {
         `${path.basename(file)} must not write tables directly`,
       );
       assert.equal(
-        /HomeworkGradeDialog|grade\.mutate|score editing|onGrade/.test(source),
+        /HomeworkGradeDialog|score editing|onGrade/.test(source),
         false,
-        `${path.basename(file)} must not expose grading UI`,
+        `${path.basename(file)} must not expose homework-style manual grade dialog`,
       );
     }
 
     const hook = readFileSync(path.join(here, "../hooks/useTestSubmissions.ts"), "utf8");
     assert.match(hook, /TestSubmissionService\.assignPending/);
+    assert.match(hook, /TestGradingService\.gradeSubmission/);
     assert.equal(/TestSubmissionService\.create\(/.test(hook), false);
 
     const panel = readFileSync(
@@ -161,6 +196,16 @@ describe("TASK 22.4 tests submissions UI logic", () => {
       "utf8",
     );
     assert.match(panel, /إسناد للطلاب/);
-    assert.equal(/الدرجة|الملاحظات|تصحيح/.test(panel), false);
+    assert.match(panel, /autoGradeActionLabel|gradeSubmission/);
+    assert.match(panel, /الدرجة/);
+    assert.match(panel, /الملاحظات/);
+    assert.match(panel, /تم التصحيح التلقائي/);
+
+    const page = readFileSync(
+      path.join(here, "../components/tests-page-content.tsx"),
+      "utf8",
+    );
+    assert.match(page, /التقارير/);
+    assert.match(page, /TestReportsPanel/);
   });
 });

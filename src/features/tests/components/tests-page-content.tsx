@@ -18,6 +18,7 @@ import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { cn } from "@/shared/utils/utils";
 
 import { useTestQuestions } from "../hooks/useTestQuestions";
@@ -35,10 +36,12 @@ import {
 } from "../services/tests-ui.logic";
 import { TestFormDialog, type TestFormMode } from "./test-form-dialog";
 import { TestQuestionBuilder } from "./test-question-builder";
+import { TestReportsPanel } from "./test-reports-panel";
 import { TestSubmissionsPanel } from "./test-submissions-panel";
 import { canViewTestSubmissions } from "../services/tests-submissions-ui.logic";
 
 export function TestsPageContent() {
+  const [tab, setTab] = useState("tests");
   const [statusFilter, setStatusFilter] = useState<TestStatus | "all">("all");
   const [titleQuery, setTitleQuery] = useState("");
   const filter = useMemo(
@@ -83,6 +86,17 @@ export function TestsPageContent() {
 
   return (
     <div className="min-w-0 space-y-4" dir="rtl">
+      <Tabs value={tab} onValueChange={setTab} className="min-w-0 space-y-4">
+        <TabsList className="flex h-auto min-h-11 w-full flex-wrap justify-start gap-1 p-1">
+          <TabsTrigger value="tests" className="min-h-11 flex-1 sm:flex-none">
+            الاختبارات
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="min-h-11 flex-1 sm:flex-none">
+            التقارير
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="tests" className="mt-0 space-y-4">
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
           <div className="flex min-w-0 items-center gap-3">
@@ -430,6 +444,12 @@ export function TestsPageContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-0 space-y-4">
+          <TestReportsPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
