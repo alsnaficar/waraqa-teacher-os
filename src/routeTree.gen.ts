@@ -28,6 +28,7 @@ import { Route as AuthenticatedCurriculumManagementRouteImport } from './routes/
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedGoogleSheetsRouteImport } from './routes/_authenticated/google-sheets'
 import { Route as AuthenticatedGradingRouteImport } from './routes/_authenticated/grading'
+import { Route as AuthenticatedHomeworkRouteImport } from './routes/_authenticated/homework'
 import { Route as AuthenticatedLessonSessionsRouteImport } from './routes/_authenticated/lesson-sessions'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPlannerRouteImport } from './routes/_authenticated/planner'
@@ -142,6 +143,11 @@ const AuthenticatedGradingRoute = AuthenticatedGradingRouteImport.update({
   path: '/grading',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedHomeworkRoute = AuthenticatedHomeworkRouteImport.update({
+  id: '/homework',
+  path: '/homework',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedLessonSessionsRoute =
   AuthenticatedLessonSessionsRouteImport.update({
     id: '/lesson-sessions',
@@ -198,11 +204,12 @@ const AuthenticatedAdminGoogleSheetsRoute =
     path: '/google-sheets',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
-const AuthenticatedAdminPaymentsRoute = AuthenticatedAdminPaymentsRouteImport.update({
-  id: '/payments',
-  path: '/payments',
-  getParentRoute: () => AuthenticatedAdminRouteRoute,
-} as any)
+const AuthenticatedAdminPaymentsRoute =
+  AuthenticatedAdminPaymentsRouteImport.update({
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -228,6 +235,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/google-sheets': typeof AuthenticatedGoogleSheetsRoute
   '/grading': typeof AuthenticatedGradingRoute
+  '/homework': typeof AuthenticatedHomeworkRoute
   '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
@@ -259,6 +267,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/google-sheets': typeof AuthenticatedGoogleSheetsRoute
   '/grading': typeof AuthenticatedGradingRoute
+  '/homework': typeof AuthenticatedHomeworkRoute
   '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
@@ -293,6 +302,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/google-sheets': typeof AuthenticatedGoogleSheetsRoute
   '/_authenticated/grading': typeof AuthenticatedGradingRoute
+  '/_authenticated/homework': typeof AuthenticatedHomeworkRoute
   '/_authenticated/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/planner': typeof AuthenticatedPlannerRoute
@@ -327,6 +337,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/google-sheets'
     | '/grading'
+    | '/homework'
     | '/lesson-sessions'
     | '/notifications'
     | '/planner'
@@ -358,6 +369,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/google-sheets'
     | '/grading'
+    | '/homework'
     | '/lesson-sessions'
     | '/notifications'
     | '/planner'
@@ -391,6 +403,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/google-sheets'
     | '/_authenticated/grading'
+    | '/_authenticated/homework'
     | '/_authenticated/lesson-sessions'
     | '/_authenticated/notifications'
     | '/_authenticated/planner'
@@ -550,6 +563,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGradingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/homework': {
+      id: '/_authenticated/homework'
+      path: '/homework'
+      fullPath: '/homework'
+      preLoaderRoute: typeof AuthenticatedHomeworkRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/lesson-sessions': {
       id: '/_authenticated/lesson-sessions'
       path: '/lesson-sessions'
@@ -676,6 +696,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGoogleSheetsRoute: typeof AuthenticatedGoogleSheetsRoute
   AuthenticatedGradingRoute: typeof AuthenticatedGradingRoute
+  AuthenticatedHomeworkRoute: typeof AuthenticatedHomeworkRoute
   AuthenticatedLessonSessionsRoute: typeof AuthenticatedLessonSessionsRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedPlannerRoute: typeof AuthenticatedPlannerRoute
@@ -698,6 +719,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGoogleSheetsRoute: AuthenticatedGoogleSheetsRoute,
   AuthenticatedGradingRoute: AuthenticatedGradingRoute,
+  AuthenticatedHomeworkRoute: AuthenticatedHomeworkRoute,
   AuthenticatedLessonSessionsRoute: AuthenticatedLessonSessionsRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedPlannerRoute: AuthenticatedPlannerRoute,

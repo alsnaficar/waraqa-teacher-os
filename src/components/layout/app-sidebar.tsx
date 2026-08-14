@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   CalendarDays,
+  ClipboardList,
   ClipboardCheck,
   CreditCard,
   Settings,
@@ -29,6 +30,7 @@ import { ar } from "@/i18n/ar";
 const items = [
   { title: ar.nav.dashboard, url: "/dashboard", icon: LayoutDashboard },
   { title: "الجدول", url: "/planner", icon: CalendarDays },
+  { title: "الواجبات", url: "/homework", icon: ClipboardList },
   { title: "التصحيح", url: "/grading", icon: ClipboardCheck },
   { title: "الاشتراك", url: "/subscription", icon: CreditCard },
   { title: ar.nav.settings, url: "/settings", icon: Settings },

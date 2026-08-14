@@ -932,6 +932,59 @@ export type Database = {
         };
         Relationships: [];
       };
+      homework: {
+        Row: {
+          class_name: string | null;
+          created_at: string;
+          due_date: string | null;
+          grade: string | null;
+          id: string;
+          instructions: string;
+          lesson_session_id: string | null;
+          status: string;
+          subject: string | null;
+          teacher_id: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          class_name?: string | null;
+          created_at?: string;
+          due_date?: string | null;
+          grade?: string | null;
+          id?: string;
+          instructions?: string;
+          lesson_session_id?: string | null;
+          status?: string;
+          subject?: string | null;
+          teacher_id: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          class_name?: string | null;
+          created_at?: string;
+          due_date?: string | null;
+          grade?: string | null;
+          id?: string;
+          instructions?: string;
+          lesson_session_id?: string | null;
+          status?: string;
+          subject?: string | null;
+          teacher_id?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "homework_lesson_session_id_fkey";
+            columns: ["lesson_session_id"];
+            isOneToOne: false;
+            referencedRelation: "lesson_sessions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       lesson_sessions: {
         Row: {
           academic_year_id: string;
