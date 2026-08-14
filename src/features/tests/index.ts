@@ -2,6 +2,8 @@ export * from "./services/test.service";
 export * from "./services/test-question.service";
 export * from "./services/test-submission.service";
 export * from "./services/test-answer.service";
+export * from "./services/test-grading.logic";
+export * from "./services/test-grading.service";
 export * from "./services/tests-ui.logic";
 export * from "./services/tests-submissions-ui.logic";
 export { useTests } from "./hooks/useTests";
