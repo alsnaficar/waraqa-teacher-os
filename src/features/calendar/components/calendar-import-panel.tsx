@@ -84,28 +84,35 @@ function readFileAsBase64(file: File): Promise<string> {
 export function CalendarImportPanel({
   years,
   selectedYearId,
+  variantCode: controlledVariantCode,
+  onVariantCodeChange,
 }: {
   years: YearOption[];
   selectedYearId: string | null;
+  /** Import context from the academic-year → variant tree. */
+  variantCode: CalendarImportVariantCode;
+  onVariantCodeChange: (code: CalendarImportVariantCode) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [variants, setVariants] = useState<VariantOption[]>([]);
   const [semesters, setSemesters] = useState<SemesterOption[]>([]);
   const [academicYearId, setAcademicYearId] = useState(selectedYearId ?? "");
   const [semesterId, setSemesterId] = useState("");
-  const [variantCode, setVariantCode] = useState<CalendarImportVariantCode>("GENERAL");
   const [extracting, setExtracting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [draft, setDraft] = useState<CalendarImportDraft | null>(null);
 
+  const variantCode = controlledVariantCode;
   const variantOptions = variants.length > 0 ? variants : FALLBACK_VARIANT_OPTIONS;
+  const selectedVariantLabel =
+    variantOptions.find((row) => row.code === variantCode)?.label ?? variantCode;
 
   const applyLoadedVariants = (rows: VariantOption[]) => {
     setVariants(rows);
-    setVariantCode((prev) =>
-      rows.length > 0 && !rows.some((row) => row.code === prev) ? rows[0].code : prev,
-    );
+    if (rows.length > 0 && !rows.some((row) => row.code === variantCode)) {
+      onVariantCodeChange(rows[0].code);
+    }
   };
 
   useEffect(() => {
@@ -166,7 +173,7 @@ export function CalendarImportPanel({
 
   const onVariantChange = (next: string) => {
     if (next === "GENERAL" || next === "WESTERN") {
-      setVariantCode(next);
+      onVariantCodeChange(next);
     }
   };
 
@@ -294,24 +301,15 @@ export function CalendarImportPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="min-w-0 w-full space-y-1.5 sm:w-auto sm:min-w-[220px]">
-          <Label className="text-xs font-bold" htmlFor="admin-page-calendar-variant">
-            التقويم الدراسي
-          </Label>
-          <select
-            id="admin-page-calendar-variant"
-            className="h-11 min-h-[44px] w-full rounded-md border border-input bg-background px-3 text-sm"
-            value={variantCode}
-            onChange={(e) => onVariantChange(e.target.value)}
-          >
-            {variantOptions.map((variant) => (
-              <option key={variant.code} value={variant.code}>
-                {variant.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          سياق الاستيراد:{" "}
+          <span className="font-bold text-slate-800" data-testid="import-variant-context">
+            {selectedVariantLabel}
+          </span>
+          {" · "}
+          اختر التقويم من داخل بطاقة السنة الدراسية.
+        </p>
         <Button
           type="button"
           variant="outline"

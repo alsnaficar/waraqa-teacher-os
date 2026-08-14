@@ -19,6 +19,8 @@ import {
 } from "@/shared/ui/dialog";
 import { formatHijri } from "@/shared/utils/date";
 import { CalendarImportPanel } from "@/features/calendar/components/calendar-import-panel";
+import type { CalendarImportVariantCode } from "@/features/calendar/services/calendar-import.logic";
+import { listAdminCalendarVariants } from "@/platform/calendar/calendar-import.functions";
 import {
   activateAdminAcademicYear,
   createAdminAcademicYear,
@@ -50,6 +52,16 @@ type SemesterRow = {
   orderIndex: number;
 };
 
+type VariantOption = {
+  code: CalendarImportVariantCode;
+  label: string;
+};
+
+const FALLBACK_VARIANTS: VariantOption[] = [
+  { code: "GENERAL", label: "جميع المناطق" },
+  { code: "WESTERN", label: "المنطقة الغربية" },
+];
+
 const emptyYearForm = {
   label: "",
   startDate: "",
@@ -78,7 +90,10 @@ function semesterCoversToday(sem: SemesterRow): boolean {
 function AdminAcademicCalendarPage() {
   const [years, setYears] = useState<YearRow[]>([]);
   const [semesters, setSemesters] = useState<SemesterRow[]>([]);
+  const [variants, setVariants] = useState<VariantOption[]>([]);
   const [selectedYearId, setSelectedYearId] = useState<string | null>(null);
+  const [selectedVariantCode, setSelectedVariantCode] =
+    useState<CalendarImportVariantCode>("GENERAL");
   const [loading, setLoading] = useState(true);
   const [savingYear, setSavingYear] = useState(false);
   const [savingSemester, setSavingSemester] = useState(false);
@@ -105,6 +120,7 @@ function AdminAcademicCalendarPage() {
   const [savingSemesterEdit, setSavingSemesterEdit] = useState(false);
 
   const selectedYear = years.find((y) => y.id === selectedYearId) ?? null;
+  const variantOptions = variants.length > 0 ? variants : FALLBACK_VARIANTS;
 
   const loadYears = useCallback(async () => {
     const rows = await listAdminAcademicYears();
@@ -121,11 +137,20 @@ function AdminAcademicCalendarPage() {
     setSemesters(rows);
   }, []);
 
+  const loadVariants = useCallback(async () => {
+    const rows = await listAdminCalendarVariants();
+    const mapped = rows.map((row) => ({ code: row.code, label: row.label }));
+    setVariants(mapped);
+    setSelectedVariantCode((prev) =>
+      mapped.some((row) => row.code === prev) ? prev : (mapped[0]?.code ?? "GENERAL"),
+    );
+  }, []);
+
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        await loadYears();
+        await Promise.all([loadYears(), loadVariants()]);
       } catch (err) {
         console.error(err);
         if (active) toast.error("تعذّر تحميل السنوات الدراسية");
@@ -136,7 +161,7 @@ function AdminAcademicCalendarPage() {
     return () => {
       active = false;
     };
-  }, [loadYears]);
+  }, [loadYears, loadVariants]);
 
   useEffect(() => {
     if (!selectedYearId) {
@@ -378,7 +403,12 @@ function AdminAcademicCalendarPage() {
         description="إنشاء وتعديل وتفعيل السنة الدراسية الرسمية وفصولها. استيراد الإجازات من PDF أو صورة يحتاج مراجعة قبل الحفظ. المعلمون لا يديرون هذا التقويم."
       />
 
-      <CalendarImportPanel years={years} selectedYearId={selectedYearId} />
+      <CalendarImportPanel
+        years={years}
+        selectedYearId={selectedYearId}
+        variantCode={selectedVariantCode}
+        onVariantCodeChange={setSelectedVariantCode}
+      />
 
       <Card className="shadow-sm border-slate-100">
         <CardContent className="p-4 sm:p-6 space-y-6">
@@ -388,7 +418,8 @@ function AdminAcademicCalendarPage() {
               السنوات الدراسية
             </h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              فعّل سنة واحدة فقط لتكون السنة الحالية. التواريخ تُحفظ بالميلادي.
+              كل سنة دراسية تحتوي تقويمات المناطق المتاحة. الفصول مشتركة بين التقويمات؛ فروقات
+              المنطقة الغربية تظهر عبر الاستثناءات عند توفرها.
             </p>
           </div>
 
@@ -465,11 +496,7 @@ function AdminAcademicCalendarPage() {
                       تفعيل هذه السنة بعد الإنشاء
                     </label>
                     <div className="sm:col-span-2 flex flex-wrap gap-2">
-                      <Button
-                        type="submit"
-                        disabled={savingYear}
-                        className="h-11 font-bold text-xs"
-                      >
+                      <Button type="submit" disabled={savingYear} className="h-11 font-bold text-xs">
                         {savingYear ? "جارٍ الحفظ…" : "حفظ السنة"}
                       </Button>
                       <Button
@@ -492,219 +519,268 @@ function AdminAcademicCalendarPage() {
                     </p>
                   </div>
                 ) : (
-                  <ul className="max-h-[min(24rem,70vh)] space-y-2 overflow-y-auto overscroll-contain">
+                  <ul className="max-h-[min(40rem,80vh)] space-y-3 overflow-y-auto overscroll-contain">
                     {years.map((year) => {
                       const selected = year.id === selectedYearId;
                       return (
                         <li
                           key={year.id}
-                          className={`rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center gap-3 ${
+                          className={`rounded-xl border p-3 space-y-3 ${
                             selected
                               ? "border-primary/30 bg-primary/5"
                               : "border-slate-100 bg-white"
                           }`}
+                          data-academic-year-id={year.id}
                         >
-                          <button
-                            type="button"
-                            className="flex-1 text-start min-h-[44px] space-y-0.5"
-                            onClick={() => setSelectedYearId(year.id)}
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-bold text-slate-800">{year.label}</span>
-                              {year.isActive && (
-                                <Badge className="text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                                  نشطة
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-muted-foreground">
-                              {year.startDate || "—"} → {year.endDate || "—"}
-                            </p>
-                            {year.startDate || year.endDate ? (
-                              <p className="text-[11px] text-muted-foreground">
-                                هجري: {hijriHint(year.startDate) || "—"} →{" "}
-                                {hijriHint(year.endDate) || "—"}
-                              </p>
-                            ) : null}
-                          </button>
-                          <div className="flex flex-wrap gap-2 shrink-0">
-                            <Button
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                            <button
                               type="button"
-                              variant="outline"
-                              className="h-11 min-h-[44px] text-xs font-bold gap-1.5"
-                              onClick={() => openYearEdit(year)}
+                              className="flex-1 text-start min-h-[44px] space-y-0.5"
+                              onClick={() => setSelectedYearId(year.id)}
                             >
-                              <Pencil className="h-3.5 w-3.5" />
-                              تعديل
-                            </Button>
-                            {!year.isActive && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="h-11 min-h-[44px] text-xs font-bold"
-                                disabled={activatingId === year.id}
-                                onClick={() => onActivateYear(year.id)}
-                              >
-                                {activatingId === year.id ? "جارٍ التفعيل…" : "تفعيل"}
-                              </Button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-
-              <div className="space-y-3 border-t border-slate-100 pt-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-xs font-bold text-slate-700">الفصول الدراسية</h3>
-                  {selectedYearId && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11 min-h-[44px] text-xs font-bold gap-1.5"
-                      onClick={() => setShowSemesterForm((v) => !v)}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      إضافة فصل
-                    </Button>
-                  )}
-                </div>
-
-                {!selectedYearId ? (
-                  <div className="border border-dashed border-slate-200 rounded-xl p-6 text-center bg-slate-50/50">
-                    <p className="text-xs text-slate-500 font-bold">
-                      أضف سنة دراسية أولاً لإضافة الفصول الدراسية.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {showSemesterForm && (
-                      <form
-                        onSubmit={onCreateSemester}
-                        className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 grid gap-3 sm:grid-cols-2"
-                      >
-                        <div className="sm:col-span-2 space-y-1.5">
-                          <Label className="text-xs font-bold">الاسم</Label>
-                          <Input
-                            className="h-11"
-                            value={semesterForm.label}
-                            onChange={(e) =>
-                              setSemesterForm((f) => ({ ...f, label: e.target.value }))
-                            }
-                            placeholder="مثلاً: الفصل الأول"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold">تاريخ البداية (ميلادي)</Label>
-                          <Input
-                            type="date"
-                            className="h-11"
-                            value={semesterForm.startDate}
-                            onChange={(e) =>
-                              setSemesterForm((f) => ({ ...f, startDate: e.target.value }))
-                            }
-                            required
-                          />
-                          {semesterForm.startDate ? (
-                            <p className="text-[11px] text-muted-foreground">
-                              الهجري: {hijriHint(semesterForm.startDate)}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold">تاريخ النهاية (ميلادي)</Label>
-                          <Input
-                            type="date"
-                            className="h-11"
-                            value={semesterForm.endDate}
-                            onChange={(e) =>
-                              setSemesterForm((f) => ({ ...f, endDate: e.target.value }))
-                            }
-                            required
-                          />
-                          {semesterForm.endDate ? (
-                            <p className="text-[11px] text-muted-foreground">
-                              الهجري: {hijriHint(semesterForm.endDate)}
-                            </p>
-                          ) : null}
-                        </div>
-                        {selectedYear && (
-                          <p className="sm:col-span-2 text-[11px] text-muted-foreground">
-                            ضمن سنة {selectedYear.label}: {selectedYear.startDate} →{" "}
-                            {selectedYear.endDate}
-                          </p>
-                        )}
-                        <div className="sm:col-span-2 flex flex-wrap gap-2">
-                          <Button
-                            type="submit"
-                            disabled={savingSemester}
-                            className="h-11 font-bold text-xs"
-                          >
-                            {savingSemester ? "جارٍ الحفظ…" : "حفظ الفصل"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className="h-11 text-xs"
-                            onClick={() => setShowSemesterForm(false)}
-                          >
-                            إلغاء
-                          </Button>
-                        </div>
-                      </form>
-                    )}
-
-                    {semesters.length === 0 ? (
-                      <p className="text-xs text-slate-500">لا توجد فصول لهذه السنة بعد.</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {semesters.map((sem) => {
-                          const current = semesterCoversToday(sem);
-                          return (
-                            <li
-                              key={sem.id}
-                              className="rounded-xl border border-slate-100 bg-white p-3 flex flex-col sm:flex-row sm:items-center gap-3"
-                            >
-                              <div className="flex-1 min-w-0 space-y-0.5">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="text-sm font-bold text-slate-800">
-                                    {sem.label}
-                                  </span>
-                                  {current && (
-                                    <Badge className="text-[10px] font-bold bg-sky-100 text-sky-800 hover:bg-sky-100">
-                                      الحالي حسب التاريخ
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground">
-                                  {sem.startDate || "—"} → {sem.endDate || "—"} · الترتيب:{" "}
-                                  {sem.orderIndex}
-                                </p>
-                                {sem.startDate || sem.endDate ? (
-                                  <p className="text-[11px] text-muted-foreground">
-                                    هجري: {hijriHint(sem.startDate) || "—"} →{" "}
-                                    {hijriHint(sem.endDate) || "—"}
-                                  </p>
-                                ) : null}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold text-slate-800">{year.label}</span>
+                                {year.isActive && (
+                                  <Badge className="text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                                    نشطة
+                                  </Badge>
+                                )}
                               </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                {year.startDate || "—"} → {year.endDate || "—"}
+                              </p>
+                              {year.startDate || year.endDate ? (
+                                <p className="text-[11px] text-muted-foreground">
+                                  هجري: {hijriHint(year.startDate) || "—"} →{" "}
+                                  {hijriHint(year.endDate) || "—"}
+                                </p>
+                              ) : null}
+                            </button>
+                            <div className="flex flex-wrap gap-2 shrink-0">
                               <Button
                                 type="button"
                                 variant="outline"
-                                className="h-11 min-h-[44px] text-xs font-bold gap-1.5 shrink-0"
-                                onClick={() => openSemesterEdit(sem)}
+                                className="h-11 min-h-[44px] text-xs font-bold gap-1.5"
+                                onClick={() => openYearEdit(year)}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                                 تعديل
                               </Button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </>
+                              {!year.isActive && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-11 min-h-[44px] text-xs font-bold"
+                                  disabled={activatingId === year.id}
+                                  onClick={() => onActivateYear(year.id)}
+                                >
+                                  {activatingId === year.id ? "جارٍ التفعيل…" : "تفعيل"}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+
+                          {selected ? (
+                            <div className="space-y-3 border-t border-slate-100/80 pt-3">
+                              <p className="text-[11px] font-bold text-slate-600">
+                                التقويمات داخل هذه السنة
+                              </p>
+                              <ul className="space-y-3" data-testid="year-variant-tree">
+                                {variantOptions.map((variant) => {
+                                  const activeVariant = selectedVariantCode === variant.code;
+                                  return (
+                                    <li
+                                      key={variant.code}
+                                      className={`rounded-xl border p-3 space-y-2 ${
+                                        activeVariant
+                                          ? "border-amber-200 bg-amber-50/50"
+                                          : "border-slate-100 bg-white"
+                                      }`}
+                                      data-calendar-variant={variant.code}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="flex w-full flex-wrap items-center justify-between gap-2 min-h-[44px] text-start"
+                                        onClick={() => setSelectedVariantCode(variant.code)}
+                                        aria-pressed={activeVariant}
+                                      >
+                                        <span className="text-sm font-bold text-slate-800">
+                                          {variant.label}
+                                        </span>
+                                        {activeVariant ? (
+                                          <Badge className="text-[10px] font-bold bg-amber-100 text-amber-900 hover:bg-amber-100">
+                                            سياق الاستيراد
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-[11px] text-muted-foreground">
+                                            اختر للإستيراد
+                                          </span>
+                                        )}
+                                      </button>
+
+                                      <div className="space-y-2 border-s-2 border-slate-200 ps-3">
+                                        <p className="text-[11px] font-bold text-slate-600">
+                                          الفصول الدراسية
+                                        </p>
+                                        {semesters.length === 0 ? (
+                                          <p className="text-xs text-slate-500">
+                                            لا توجد فصول لهذه السنة بعد.
+                                          </p>
+                                        ) : (
+                                          <ul className="space-y-2">
+                                            {semesters.map((sem) => {
+                                              const current = semesterCoversToday(sem);
+                                              return (
+                                                <li
+                                                  key={`${variant.code}-${sem.id}`}
+                                                  className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5 flex flex-col sm:flex-row sm:items-center gap-2"
+                                                >
+                                                  <div className="flex-1 min-w-0 space-y-0.5">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                      <span className="text-xs font-bold text-slate-800">
+                                                        {sem.label}
+                                                      </span>
+                                                      {current && (
+                                                        <Badge className="text-[10px] font-bold bg-sky-100 text-sky-800 hover:bg-sky-100">
+                                                          الحالي حسب التاريخ
+                                                        </Badge>
+                                                      )}
+                                                    </div>
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                      {sem.startDate || "—"} → {sem.endDate || "—"}
+                                                    </p>
+                                                    {sem.startDate || sem.endDate ? (
+                                                      <p className="text-[11px] text-muted-foreground">
+                                                        هجري: {hijriHint(sem.startDate) || "—"} →{" "}
+                                                        {hijriHint(sem.endDate) || "—"}
+                                                      </p>
+                                                    ) : null}
+                                                  </div>
+                                                  {activeVariant ? (
+                                                    <Button
+                                                      type="button"
+                                                      variant="outline"
+                                                      className="h-11 min-h-[44px] text-xs font-bold gap-1.5 shrink-0"
+                                                      onClick={() => openSemesterEdit(sem)}
+                                                    >
+                                                      <Pencil className="h-3.5 w-3.5" />
+                                                      تعديل
+                                                    </Button>
+                                                  ) : null}
+                                                </li>
+                                              );
+                                            })}
+                                          </ul>
+                                        )}
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+
+                              <div className="space-y-3 border-t border-slate-100 pt-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <h3 className="text-xs font-bold text-slate-700">
+                                    إدارة الفصول (مشتركة)
+                                  </h3>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-11 min-h-[44px] text-xs font-bold gap-1.5"
+                                    onClick={() => setShowSemesterForm((v) => !v)}
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    إضافة فصل
+                                  </Button>
+                                </div>
+
+                                {showSemesterForm && (
+                                  <form
+                                    onSubmit={onCreateSemester}
+                                    className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 grid gap-3 sm:grid-cols-2"
+                                  >
+                                    <div className="sm:col-span-2 space-y-1.5">
+                                      <Label className="text-xs font-bold">الاسم</Label>
+                                      <Input
+                                        className="h-11"
+                                        value={semesterForm.label}
+                                        onChange={(e) =>
+                                          setSemesterForm((f) => ({ ...f, label: e.target.value }))
+                                        }
+                                        placeholder="مثلاً: الفصل الأول"
+                                        required
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <Label className="text-xs font-bold">
+                                        تاريخ البداية (ميلادي)
+                                      </Label>
+                                      <Input
+                                        type="date"
+                                        className="h-11"
+                                        value={semesterForm.startDate}
+                                        onChange={(e) =>
+                                          setSemesterForm((f) => ({
+                                            ...f,
+                                            startDate: e.target.value,
+                                          }))
+                                        }
+                                        required
+                                      />
+                                      {semesterForm.startDate ? (
+                                        <p className="text-[11px] text-muted-foreground">
+                                          الهجري: {hijriHint(semesterForm.startDate)}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <Label className="text-xs font-bold">
+                                        تاريخ النهاية (ميلادي)
+                                      </Label>
+                                      <Input
+                                        type="date"
+                                        className="h-11"
+                                        value={semesterForm.endDate}
+                                        onChange={(e) =>
+                                          setSemesterForm((f) => ({
+                                            ...f,
+                                            endDate: e.target.value,
+                                          }))
+                                        }
+                                        required
+                                      />
+                                      {semesterForm.endDate ? (
+                                        <p className="text-[11px] text-muted-foreground">
+                                          الهجري: {hijriHint(semesterForm.endDate)}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <div className="sm:col-span-2 flex flex-wrap gap-2">
+                                      <Button
+                                        type="submit"
+                                        disabled={savingSemester}
+                                        className="h-11 font-bold text-xs"
+                                      >
+                                        {savingSemester ? "جارٍ الحفظ…" : "حفظ الفصل"}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="h-11 text-xs"
+                                        onClick={() => setShowSemesterForm(false)}
+                                      >
+                                        إلغاء
+                                      </Button>
+                                    </div>
+                                  </form>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </div>
             </>

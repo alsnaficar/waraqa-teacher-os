@@ -1790,6 +1790,12 @@ describe("academic calendar server / UI security wiring", () => {
     assert.match(page, /activate:\s*yearForm\.activate/);
     assert.match(page, /overflow-y-auto/);
     assert.match(page, /years\.map/);
+    assert.match(page, /year-variant-tree/);
+    assert.match(page, /data-calendar-variant/);
+    assert.match(page, /listAdminCalendarVariants/);
+    assert.match(page, /selectedVariantCode/);
+    assert.match(page, /التقويمات داخل هذه السنة/);
+    assert.match(page, /إدارة الفصول \(مشتركة\)/);
     assert.equal(/slice\(0,\s*4\)/.test(page), false);
     assert.equal(/userId:\s*|teacherId:|ownerId:|profileId:/.test(page), false);
     assert.match(shell, /\/admin\/academic-calendar/);

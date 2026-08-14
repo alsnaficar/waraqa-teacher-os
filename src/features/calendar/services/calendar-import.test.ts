@@ -794,17 +794,22 @@ describe("calendar import source guards", () => {
     assert.equal(/service_role/.test(functions), false);
   });
 
-  it("exposes a page-level GENERAL/WESTERN selector synced with the import dialog", () => {
+  it("exposes year-tree-driven GENERAL/WESTERN import context synced with the dialog", () => {
     const panel = readFileSync(join(ROOT, PANEL_FILE), "utf8");
-    assert.match(panel, /admin-page-calendar-variant/);
+    assert.equal(/admin-page-calendar-variant/.test(panel), false);
     assert.match(panel, /admin-import-calendar-variant/);
     assert.match(panel, /listAdminCalendarVariants/);
-    assert.match(panel, /useState<CalendarImportVariantCode>\("GENERAL"\)/);
+    assert.match(panel, /onVariantCodeChange/);
+    assert.match(panel, /variantCode: controlledVariantCode/);
     assert.match(panel, /جميع المناطق/);
     assert.match(panel, /المنطقة الغربية/);
     assert.equal(/calendar_variant_id/.test(panel), false);
     assert.equal(/from\("academic_years"\)\.update/.test(panel), false);
     const admin = readFileSync(join(ROOT, ADMIN_PAGE), "utf8");
+    assert.match(admin, /year-variant-tree/);
+    assert.match(admin, /data-calendar-variant/);
+    assert.match(admin, /selectedVariantCode/);
+    assert.match(admin, /listAdminCalendarVariants/);
     assert.equal(/calendar_variant_id/.test(admin), false);
   });
 });
