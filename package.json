@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "start": "node .output/server/index.mjs",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "NODE_ENV=test tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
@@ -89,6 +91,7 @@
     "nitro": "3.0.260603-beta",
     "prettier": "^3.7.3",
     "supabase": "^2.111.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.0.16"
