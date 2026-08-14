@@ -14,7 +14,7 @@ import {
   createEmptyTestsDb,
 } from "./tests-mock.ts";
 
-async function seedGradableSubmission() {
+async function seedPendingGradable() {
   const db = createEmptyTestsDb();
   const test = await TestService.create({ title: "اختبار التصحيح" }, authFor(db));
   assert.ok(test);
@@ -60,8 +60,7 @@ async function seedGradableSubmission() {
     {
       testId: test.id,
       studentId: STUDENT_A,
-      status: "submitted",
-      submittedAt: "2026-08-15T10:00:00Z",
+      status: "pending",
     },
     authFor(db),
   );
@@ -70,28 +69,42 @@ async function seedGradableSubmission() {
   return { db, test, mcq, tf, submission };
 }
 
+async function saveAnswersAndSubmit(
+  db: ReturnType<typeof createEmptyTestsDb>,
+  submissionId: string,
+  answers: Array<{
+    questionId: string;
+    selectedOptionId?: string | null;
+    booleanAnswer?: boolean | null;
+  }>,
+) {
+  for (const answer of answers) {
+    await TestAnswerService.upsertAnswer(
+      {
+        submissionId,
+        questionId: answer.questionId,
+        selectedOptionId: answer.selectedOptionId,
+        booleanAnswer: answer.booleanAnswer,
+      },
+      authFor(db),
+    );
+  }
+  const submitted = await TestSubmissionService.markSubmitted(submissionId, authFor(db));
+  assert.ok(submitted);
+  assert.equal(submitted.status, "submitted");
+  return submitted;
+}
+
 describe("TASK 22.5 TestGradingService", () => {
   it("1. auto-grades a submitted submission with score and maxScore", async () => {
-    const { db, mcq, tf, submission } = await seedGradableSubmission();
+    const { db, mcq, tf, submission } = await seedPendingGradable();
     const correct = mcq.options.find((o) => o.isCorrect);
     assert.ok(correct);
 
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: mcq.id,
-        selectedOptionId: correct.id,
-      },
-      authFor(db),
-    );
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: tf.id,
-        booleanAnswer: true,
-      },
-      authFor(db),
-    );
+    await saveAnswersAndSubmit(db, submission.id, [
+      { questionId: mcq.id, selectedOptionId: correct.id },
+      { questionId: tf.id, booleanAnswer: true },
+    ]);
 
     const result = await TestGradingService.gradeSubmission(submission.id, authFor(db));
     assert.ok(result);
@@ -103,8 +116,7 @@ describe("TASK 22.5 TestGradingService", () => {
   });
 
   it("2. rejects pending submissions", async () => {
-    const { db, submission } = await seedGradableSubmission();
-    await TestSubmissionService.update(submission.id, { status: "pending" }, authFor(db));
+    const { db, submission } = await seedPendingGradable();
 
     await assert.rejects(
       () => TestGradingService.gradeSubmission(submission.id, authFor(db)),
@@ -113,7 +125,13 @@ describe("TASK 22.5 TestGradingService", () => {
   });
 
   it("3. rejects foreign teacher ownership", async () => {
-    const { db, submission } = await seedGradableSubmission();
+    const { db, mcq, submission } = await seedPendingGradable();
+    const correct = mcq.options.find((o) => o.isCorrect);
+    assert.ok(correct);
+    await saveAnswersAndSubmit(db, submission.id, [
+      { questionId: mcq.id, selectedOptionId: correct.id },
+    ]);
+
     await assert.rejects(
       () => TestGradingService.gradeSubmission(submission.id, authFor(db, TEACHER_B)),
       /التسليم غير موجود/,
@@ -121,26 +139,14 @@ describe("TASK 22.5 TestGradingService", () => {
   });
 
   it("4. writes is_correct and points_awarded on each answer", async () => {
-    const { db, mcq, tf, submission } = await seedGradableSubmission();
+    const { db, mcq, tf, submission } = await seedPendingGradable();
     const wrong = mcq.options.find((o) => !o.isCorrect);
     assert.ok(wrong);
 
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: mcq.id,
-        selectedOptionId: wrong.id,
-      },
-      authFor(db),
-    );
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: tf.id,
-        booleanAnswer: true,
-      },
-      authFor(db),
-    );
+    await saveAnswersAndSubmit(db, submission.id, [
+      { questionId: mcq.id, selectedOptionId: wrong.id },
+      { questionId: tf.id, booleanAnswer: true },
+    ]);
 
     const result = await TestGradingService.gradeSubmission(submission.id, authFor(db));
     assert.ok(result);
@@ -156,18 +162,13 @@ describe("TASK 22.5 TestGradingService", () => {
   });
 
   it("5. treats unanswered questions as zero and still grades", async () => {
-    const { db, mcq, submission } = await seedGradableSubmission();
+    const { db, mcq, submission } = await seedPendingGradable();
     const correct = mcq.options.find((o) => o.isCorrect);
     assert.ok(correct);
 
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: mcq.id,
-        selectedOptionId: correct.id,
-      },
-      authFor(db),
-    );
+    await saveAnswersAndSubmit(db, submission.id, [
+      { questionId: mcq.id, selectedOptionId: correct.id },
+    ]);
 
     const result = await TestGradingService.gradeSubmission(submission.id, authFor(db));
     assert.ok(result);
@@ -180,48 +181,31 @@ describe("TASK 22.5 TestGradingService", () => {
     assert.equal(blank.pointsAwarded, 0);
   });
 
-  it("6. allows re-grading an already graded submission", async () => {
-    const { db, mcq, tf, submission } = await seedGradableSubmission();
+  it("6. allows re-grading an already graded submission (answers read-only)", async () => {
+    const { db, mcq, tf, submission } = await seedPendingGradable();
     const correct = mcq.options.find((o) => o.isCorrect);
-    const wrong = mcq.options.find((o) => !o.isCorrect);
-    assert.ok(correct && wrong);
+    assert.ok(correct);
 
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: mcq.id,
-        selectedOptionId: wrong.id,
-      },
-      authFor(db),
-    );
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: tf.id,
-        booleanAnswer: false,
-      },
-      authFor(db),
-    );
+    await saveAnswersAndSubmit(db, submission.id, [
+      { questionId: mcq.id, selectedOptionId: correct.id },
+      { questionId: tf.id, booleanAnswer: true },
+    ]);
 
     const first = await TestGradingService.gradeSubmission(submission.id, authFor(db));
     assert.ok(first);
-    assert.equal(first.submission.score, 0);
+    assert.equal(first.submission.score, 5);
 
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: mcq.id,
-        selectedOptionId: correct.id,
-      },
-      authFor(db),
-    );
-    await TestAnswerService.upsertAnswer(
-      {
-        submissionId: submission.id,
-        questionId: tf.id,
-        booleanAnswer: true,
-      },
-      authFor(db),
+    await assert.rejects(
+      () =>
+        TestAnswerService.upsertAnswer(
+          {
+            submissionId: submission.id,
+            questionId: mcq.id,
+            selectedOptionId: correct.id,
+          },
+          authFor(db),
+        ),
+      /لم يبدأ/,
     );
 
     const second = await TestGradingService.gradeSubmission(submission.id, authFor(db));

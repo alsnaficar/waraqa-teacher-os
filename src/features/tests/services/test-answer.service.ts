@@ -1,6 +1,7 @@
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import type { Database } from "@/platform/database/supabase/types";
 
+import { assertOwnedTest } from "./test.service";
 import { TestSubmissionService } from "./test-submission.service";
 
 type AnswerRow = Database["public"]["Tables"]["test_answers"]["Row"];
@@ -74,6 +75,18 @@ export class TestAnswerService {
     const submission = await TestSubmissionService.getById(input.submissionId, resolved);
     if (!submission) {
       throw new Error("التسليم غير موجود أو لا تملك صلاحية الوصول إليه.");
+    }
+
+    if (submission.status !== "pending") {
+      throw new Error("لا يمكن تعديل إجابات إلا لتسليم بحالة «لم يبدأ».");
+    }
+
+    const test = await assertOwnedTest(resolved, submission.testId);
+    if (test.status === "draft") {
+      throw new Error("لا يمكن تسجيل إجابات لاختبار ما زال مسودة.");
+    }
+    if (test.status === "closed") {
+      throw new Error("لا يمكن تسجيل إجابات لاختبار مغلق.");
     }
 
     await assertQuestionOnTest(resolved, input.questionId, submission.testId);

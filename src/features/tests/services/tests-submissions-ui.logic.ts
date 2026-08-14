@@ -1,6 +1,8 @@
 import type { Student } from "@/features/homework/services/student.service";
 
 import type { TestStatus } from "./test.service";
+import type { TestQuestion } from "./test-question.service";
+import type { TestAnswer } from "./test-answer.service";
 import type {
   TestSubmission,
   TestSubmissionStatus,
@@ -28,7 +30,7 @@ export const TEST_SUBMISSIONS_EMPTY_DESCRIPTION =
   "أسند الاختبار للطلاب النشطين لمتابعة حالة التسليم.";
 export const TEST_SUBMISSIONS_ERROR_TITLE = "تعذر تحميل التسليمات";
 export const TEST_SUBMISSIONS_HINT =
-  "الإسناد متاح للاختبارات المنشورة فقط. الاختبار المغلق للعرض فقط. التصحيح التلقائي متاح للتسليمات المُسلَّمة والمُصحَّحة.";
+  "الإسناد متاح للاختبارات المنشورة فقط. سجّل إجابات الطلاب المعلّقين ثم علّمها كمُسلّمة قبل التصحيح التلقائي.";
 
 export type TestSubmissionListItemView = {
   id: string;
@@ -43,7 +45,17 @@ export type TestSubmissionListItemView = {
   feedbackLabel: string;
   canAutoGrade: boolean;
   autoGradeActionLabel: string;
+  canEnterAnswers: boolean;
+  answerEntryActionLabel: string;
 };
+
+export type AnswerDraftMap = Record<
+  string,
+  {
+    selectedOptionId: string | null;
+    booleanAnswer: boolean | null;
+  }
+>;
 
 export function formatTestSubmissionDate(iso: string | null): string {
   if (!iso) return "—";
@@ -68,9 +80,27 @@ export function autoGradeActionLabel(status: TestSubmissionStatus): string {
   return status === "graded" ? "إعادة التصحيح التلقائي" : "تصحيح تلقائي";
 }
 
+export function canEnterTestAnswers(
+  status: TestSubmissionStatus,
+  testStatus: TestStatus,
+): boolean {
+  return testStatus === "published" && status === "pending";
+}
+
+export function isTestAnswerEntryReadOnly(status: TestSubmissionStatus): boolean {
+  return status === "submitted" || status === "graded";
+}
+
+export function answerEntryActionLabel(status: TestSubmissionStatus): string {
+  if (status === "pending") return "تسجيل الإجابات";
+  if (status === "submitted") return "عرض الإجابات";
+  return "عرض الإجابات";
+}
+
 export function toTestSubmissionListItemView(
   submission: TestSubmission,
   student: Student | undefined,
+  testStatus: TestStatus,
 ): TestSubmissionListItemView {
   return {
     id: submission.id,
@@ -85,7 +115,82 @@ export function toTestSubmissionListItemView(
     feedbackLabel: submission.feedback?.trim() || "—",
     canAutoGrade: canAutoGradeTestSubmission(submission.status),
     autoGradeActionLabel: autoGradeActionLabel(submission.status),
+    canEnterAnswers: canEnterTestAnswers(submission.status, testStatus),
+    answerEntryActionLabel: answerEntryActionLabel(submission.status),
   };
+}
+
+export function answersToDraftMap(answers: TestAnswer[]): AnswerDraftMap {
+  const draft: AnswerDraftMap = {};
+  for (const answer of answers) {
+    draft[answer.questionId] = {
+      selectedOptionId: answer.selectedOptionId,
+      booleanAnswer: answer.booleanAnswer,
+    };
+  }
+  return draft;
+}
+
+export function setMcqDraft(
+  draft: AnswerDraftMap,
+  questionId: string,
+  selectedOptionId: string,
+): AnswerDraftMap {
+  return {
+    ...draft,
+    [questionId]: {
+      selectedOptionId,
+      booleanAnswer: null,
+    },
+  };
+}
+
+export function setTrueFalseDraft(
+  draft: AnswerDraftMap,
+  questionId: string,
+  booleanAnswer: boolean,
+): AnswerDraftMap {
+  return {
+    ...draft,
+    [questionId]: {
+      selectedOptionId: null,
+      booleanAnswer,
+    },
+  };
+}
+
+export function draftToUpsertInputs(
+  submissionId: string,
+  questions: TestQuestion[],
+  draft: AnswerDraftMap,
+): Array<{
+  submissionId: string;
+  questionId: string;
+  selectedOptionId: string | null;
+  booleanAnswer: boolean | null;
+}> {
+  return questions
+    .map((question) => {
+      const row = draft[question.id];
+      if (!row) return null;
+      if (question.type === "multiple_choice") {
+        if (!row.selectedOptionId) return null;
+        return {
+          submissionId,
+          questionId: question.id,
+          selectedOptionId: row.selectedOptionId,
+          booleanAnswer: null,
+        };
+      }
+      if (row.booleanAnswer === null || row.booleanAnswer === undefined) return null;
+      return {
+        submissionId,
+        questionId: question.id,
+        selectedOptionId: null,
+        booleanAnswer: row.booleanAnswer,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
 }
 
 export function canAssignTestSubmissions(testStatus: TestStatus): boolean {

@@ -9,12 +9,18 @@ import type { Student } from "@/features/homework/services/student.service";
 import type { TestSubmission } from "./test-submission.service.ts";
 import { assertNoClientTeacherId } from "./tests-ui.logic.ts";
 import {
+  answerEntryActionLabel,
   autoGradeActionLabel,
   canAssignTestSubmissions,
   canAutoGradeTestSubmission,
+  canEnterTestAnswers,
   canViewTestSubmissions,
+  draftToUpsertInputs,
   filterAssignableStudents,
   formatTestScoreLabel,
+  isTestAnswerEntryReadOnly,
+  setMcqDraft,
+  setTrueFalseDraft,
   studentsWithoutTestSubmission,
   TEST_SUBMISSION_STATUS_LABELS,
   TEST_SUBMISSIONS_EMPTY_TITLE,
@@ -75,7 +81,7 @@ const gradedSubmission: TestSubmission = {
   gradedAt: "2026-08-14T12:00:00Z",
 };
 
-describe("TASK 22.4/22.6 tests submissions UI logic", () => {
+describe("TASK 22.4/22.6/22.7 tests submissions UI logic", () => {
   it("1. Arabic status labels", () => {
     assert.equal(TEST_SUBMISSION_STATUS_LABELS.pending, "لم يبدأ");
     assert.equal(TEST_SUBMISSION_STATUS_LABELS.submitted, "مُسلّم");
@@ -125,8 +131,8 @@ describe("TASK 22.4/22.6 tests submissions UI logic", () => {
     assert.equal(canViewTestSubmissions("closed"), true);
   });
 
-  it("5. list view maps student + status + score/feedback", () => {
-    const view = toTestSubmissionListItemView(submission, studentA);
+  it("5. list view maps student + status + score/feedback + answer entry", () => {
+    const view = toTestSubmissionListItemView(submission, studentA, "published");
     assert.equal(view.studentName, "أحمد علي");
     assert.equal(view.studentCodeLabel, "A-01");
     assert.equal(view.statusLabel, "لم يبدأ");
@@ -135,17 +141,20 @@ describe("TASK 22.4/22.6 tests submissions UI logic", () => {
     assert.equal(view.scoreLabel, "—");
     assert.equal(view.feedbackLabel, "—");
     assert.equal(view.canAutoGrade, false);
+    assert.equal(view.canEnterAnswers, true);
+    assert.equal(view.answerEntryActionLabel, "تسجيل الإجابات");
     assertNoClientTeacherId(view);
 
-    const graded = toTestSubmissionListItemView(gradedSubmission, studentA);
+    const graded = toTestSubmissionListItemView(gradedSubmission, studentA, "published");
     assert.equal(graded.scoreLabel, "8/10");
     assert.equal(graded.feedbackLabel, "ممتاز");
     assert.equal(graded.canAutoGrade, true);
+    assert.equal(graded.canEnterAnswers, false);
     assert.equal(graded.autoGradeActionLabel, "إعادة التصحيح التلقائي");
     assert.notEqual(graded.gradedAtLabel, "—");
   });
 
-  it("6. auto-grade gates and score formatting", () => {
+  it("6. auto-grade / answer-entry gates and draft helpers", () => {
     assert.equal(canAutoGradeTestSubmission("pending"), false);
     assert.equal(canAutoGradeTestSubmission("submitted"), true);
     assert.equal(canAutoGradeTestSubmission("graded"), true);
@@ -154,9 +163,50 @@ describe("TASK 22.4/22.6 tests submissions UI logic", () => {
     assert.equal(formatTestScoreLabel(null), "—");
     assert.equal(formatTestScoreLabel(7, 10), "7/10");
     assert.equal(formatTestScoreLabel(7), "7");
+
+    assert.equal(canEnterTestAnswers("pending", "published"), true);
+    assert.equal(canEnterTestAnswers("pending", "closed"), false);
+    assert.equal(canEnterTestAnswers("submitted", "published"), false);
+    assert.equal(canEnterTestAnswers("graded", "published"), false);
+    assert.equal(isTestAnswerEntryReadOnly("pending"), false);
+    assert.equal(isTestAnswerEntryReadOnly("submitted"), true);
+    assert.equal(isTestAnswerEntryReadOnly("graded"), true);
+    assert.equal(answerEntryActionLabel("pending"), "تسجيل الإجابات");
+
+    const questions = [
+      {
+        id: "q1",
+        testId: "t1",
+        position: 0,
+        type: "multiple_choice" as const,
+        prompt: "MCQ",
+        points: 1,
+        createdAt: "",
+        updatedAt: "",
+        options: [],
+      },
+      {
+        id: "q2",
+        testId: "t1",
+        position: 1,
+        type: "true_false" as const,
+        prompt: "TF",
+        points: 1,
+        createdAt: "",
+        updatedAt: "",
+        options: [],
+      },
+    ];
+    let draft = {};
+    draft = setMcqDraft(draft, "q1", "opt-1");
+    draft = setTrueFalseDraft(draft, "q2", true);
+    const inputs = draftToUpsertInputs("sub-1", questions, draft);
+    assert.equal(inputs.length, 2);
+    assert.equal(inputs[0]?.selectedOptionId, "opt-1");
+    assert.equal(inputs[1]?.booleanAnswer, true);
   });
 
-  it("7. empty copy + source contract (22.6)", () => {
+  it("7. empty copy + source contract (22.7)", () => {
     assert.match(TEST_SUBMISSIONS_EMPTY_TITLE, /لا توجد تسليمات/);
 
     const here = path.dirname(fileURLToPath(import.meta.url));
@@ -165,6 +215,7 @@ describe("TASK 22.4/22.6 tests submissions UI logic", () => {
       path.join(here, "../hooks/useTestSubmissions.ts"),
       path.join(here, "../components/test-submissions-panel.tsx"),
       path.join(here, "../components/tests-page-content.tsx"),
+      path.join(here, "../components/test-answer-entry-dialog.tsx"),
     ];
 
     for (const file of files) {
@@ -175,7 +226,9 @@ describe("TASK 22.4/22.6 tests submissions UI logic", () => {
         `${path.basename(file)} must not set/pass teacher_id`,
       );
       assert.equal(
-        /from\(["']test_submissions["']\)|from\(["']students["']\)/.test(source),
+        /from\(["']test_submissions["']\)|from\(["']students["']\)|from\(["']test_answers["']\)/.test(
+          source,
+        ),
         false,
         `${path.basename(file)} must not write tables directly`,
       );
@@ -188,6 +241,8 @@ describe("TASK 22.4/22.6 tests submissions UI logic", () => {
 
     const hook = readFileSync(path.join(here, "../hooks/useTestSubmissions.ts"), "utf8");
     assert.match(hook, /TestSubmissionService\.assignPending/);
+    assert.match(hook, /TestSubmissionService\.markSubmitted/);
+    assert.match(hook, /TestAnswerService\.upsertAnswer/);
     assert.match(hook, /TestGradingService\.gradeSubmission/);
     assert.equal(/TestSubmissionService\.create\(/.test(hook), false);
 
@@ -196,16 +251,14 @@ describe("TASK 22.4/22.6 tests submissions UI logic", () => {
       "utf8",
     );
     assert.match(panel, /إسناد للطلاب/);
-    assert.match(panel, /autoGradeActionLabel|gradeSubmission/);
+    assert.match(panel, /TestAnswerEntryDialog/);
     assert.match(panel, /الدرجة/);
-    assert.match(panel, /الملاحظات/);
-    assert.match(panel, /تم التصحيح التلقائي/);
 
-    const page = readFileSync(
-      path.join(here, "../components/tests-page-content.tsx"),
+    const dialog = readFileSync(
+      path.join(here, "../components/test-answer-entry-dialog.tsx"),
       "utf8",
     );
-    assert.match(page, /التقارير/);
-    assert.match(page, /TestReportsPanel/);
+    assert.match(dialog, /تسليم وتصحيح تلقائي/);
+    assert.match(dialog, /تعليم كمُسلّم/);
   });
 });

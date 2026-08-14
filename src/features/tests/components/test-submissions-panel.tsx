@@ -50,6 +50,7 @@ import {
   toggleStudentSelection,
   toTestSubmissionListItemView,
 } from "../services/tests-submissions-ui.logic";
+import { TestAnswerEntryDialog } from "./test-answer-entry-dialog";
 
 const ALL_CLASSES = "all";
 
@@ -66,12 +67,16 @@ export function TestSubmissionsPanel({
     submissions,
     students,
     classes,
+    questions,
+    questionsLoading,
     loading,
     error,
     refresh,
     assignPending,
     remove,
     gradeSubmission,
+    saveAnswersAndSubmit,
+    saveAnswersSubmitAndGrade,
   } = useTestSubmissions(testId);
 
   const canAssign = canAssignTestSubmissions(testStatus);
@@ -80,6 +85,7 @@ export function TestSubmissionsPanel({
   const [classFilter, setClassFilter] = useState<string>(ALL_CLASSES);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<TestSubmission | null>(null);
+  const [answerTarget, setAnswerTarget] = useState<TestSubmission | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [gradingId, setGradingId] = useState<string | null>(null);
 
@@ -99,8 +105,11 @@ export function TestSubmissionsPanel({
   );
 
   const views = submissions.map((row) =>
-    toTestSubmissionListItemView(row, studentById.get(row.studentId)),
+    toTestSubmissionListItemView(row, studentById.get(row.studentId), testStatus),
   );
+
+  const answerBusy =
+    saveAnswersAndSubmit.isPending || saveAnswersSubmitAndGrade.isPending;
 
   function openAssign() {
     setSearch("");
@@ -237,6 +246,16 @@ export function TestSubmissionsPanel({
                       <td className="px-3 py-3">{view.gradedAtLabel}</td>
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
+                          {view.canEnterAnswers || view.status !== "pending" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="min-h-11"
+                              onClick={() => setAnswerTarget(submission)}
+                            >
+                              {view.answerEntryActionLabel}
+                            </Button>
+                          ) : null}
                           {view.canAutoGrade ? (
                             <Button
                               type="button"
@@ -295,6 +314,16 @@ export function TestSubmissionsPanel({
                       <Badge variant="outline">{view.statusLabel}</Badge>
                     </div>
                     <div className="flex flex-col gap-2">
+                      {view.canEnterAnswers || view.status !== "pending" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="min-h-11 w-full"
+                          onClick={() => setAnswerTarget(submission)}
+                        >
+                          {view.answerEntryActionLabel}
+                        </Button>
+                      ) : null}
                       {view.canAutoGrade ? (
                         <Button
                           type="button"
@@ -424,6 +453,36 @@ export function TestSubmissionsPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TestAnswerEntryDialog
+        open={Boolean(answerTarget)}
+        submission={answerTarget}
+        studentName={
+          answerTarget
+            ? studentById.get(answerTarget.studentId)?.fullName ?? "طالب غير معروف"
+            : ""
+        }
+        questions={questions}
+        questionsLoading={questionsLoading}
+        busy={answerBusy}
+        onOpenChange={(open) => {
+          if (!open) setAnswerTarget(null);
+        }}
+        onSaveAndSubmit={async (draft) => {
+          if (!answerTarget) return;
+          await saveAnswersAndSubmit.mutateAsync({
+            submissionId: answerTarget.id,
+            draft,
+          });
+        }}
+        onSaveSubmitAndGrade={async (draft) => {
+          if (!answerTarget) return;
+          await saveAnswersSubmitAndGrade.mutateAsync({
+            submissionId: answerTarget.id,
+            draft,
+          });
+        }}
+      />
 
       <AlertDialog
         open={Boolean(deleteTarget)}

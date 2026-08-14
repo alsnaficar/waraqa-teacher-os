@@ -163,4 +163,49 @@ describe("TASK 22.2 TestAnswerService", () => {
     assert.equal(updated?.selectedOptionId, second.id);
     assert.equal(db.test_answers.length, 1);
   });
+
+  it("TASK 22.7 saves true/false answer", async () => {
+    const { db, test, submission } = await seedAnswerContext();
+    const tf = await TestQuestionService.create(
+      {
+        testId: test.id,
+        type: "true_false",
+        prompt: "صواب؟",
+        position: 1,
+        correctBoolean: false,
+      },
+      authFor(db),
+    );
+    assert.ok(tf);
+
+    const answer = await TestAnswerService.upsertAnswer(
+      {
+        submissionId: submission.id,
+        questionId: tf.id,
+        booleanAnswer: false,
+      },
+      authFor(db),
+    );
+    assert.ok(answer);
+    assert.equal(answer.booleanAnswer, false);
+  });
+
+  it("TASK 22.7 rejects upsert when submission is submitted", async () => {
+    const { db, question, submission } = await seedAnswerContext();
+    await TestSubmissionService.markSubmitted(submission.id, authFor(db));
+    const correct = question.options.find((o) => o.isCorrect);
+    assert.ok(correct);
+    await assert.rejects(
+      () =>
+        TestAnswerService.upsertAnswer(
+          {
+            submissionId: submission.id,
+            questionId: question.id,
+            selectedOptionId: correct.id,
+          },
+          authFor(db),
+        ),
+      /لم يبدأ/,
+    );
+  });
 });

@@ -19,7 +19,10 @@ export {
 export type { TestSummaryItem } from "./services/test-reports-ui.logic";
 export { useTests } from "./hooks/useTests";
 export { useTestQuestions } from "./hooks/useTestQuestions";
-export { useTestSubmissions } from "./hooks/useTestSubmissions";
+export {
+  useTestSubmissions,
+  useTestSubmissionAnswers,
+} from "./hooks/useTestSubmissions";
 export {
   useTestPeriodReport,
   useTestDetailReport,

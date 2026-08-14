@@ -288,6 +288,51 @@ export class TestSubmissionService {
     if (error) throw error;
     return Boolean(data);
   }
+
+  /**
+   * TASK 22.7 — Mark a pending submission as submitted.
+   * Does not change score / max_score / feedback / graded_at / answers.
+   */
+  static async markSubmitted(
+    submissionId: string,
+    context?: SupabaseUserContext,
+  ): Promise<TestSubmission | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const existing = await this.getById(submissionId, resolved);
+    if (!existing) {
+      throw new Error("التسليم غير موجود أو لا تملك صلاحية الوصول إليه.");
+    }
+
+    const test = await assertOwnedTest(resolved, existing.testId);
+    assertTestAllowsAnswerEntry(test);
+
+    if (existing.status === "graded") {
+      throw new Error("لا يمكن تعليم تسليم مُصحَّح كمُسلّم.");
+    }
+    if (existing.status === "submitted") {
+      throw new Error("التسليم مُعلَّم كمُسلّم مسبقاً.");
+    }
+    if (existing.status !== "pending") {
+      throw new Error("لا يمكن تعليم التسليم كمُسلّم إلا إذا كانت حالته «لم يبدأ».");
+    }
+
+    const submittedAt = new Date().toISOString();
+    const { data, error } = await resolved.client
+      .from("test_submissions")
+      .update({
+        status: "submitted",
+        submitted_at: submittedAt,
+      })
+      .eq("id", submissionId)
+      .eq("teacher_id", resolved.userId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? toSubmission(data) : null;
+  }
 }
 
 function assertTestAcceptsSubmissions(test: TeacherTest): void {
@@ -296,6 +341,15 @@ function assertTestAcceptsSubmissions(test: TeacherTest): void {
   }
   if (test.status === "closed") {
     throw new Error("لا يمكن إنشاء تسليم لاختبار مغلق.");
+  }
+}
+
+function assertTestAllowsAnswerEntry(test: TeacherTest): void {
+  if (test.status === "draft") {
+    throw new Error("لا يمكن تسليم إجابات لاختبار ما زال مسودة.");
+  }
+  if (test.status === "closed") {
+    throw new Error("لا يمكن تسليم إجابات لاختبار مغلق.");
   }
 }
 

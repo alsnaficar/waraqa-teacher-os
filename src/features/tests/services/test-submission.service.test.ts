@@ -325,3 +325,109 @@ describe("TASK 22.4 TestSubmissionService.assignPending", () => {
     assert.equal(answers.length, 0);
   });
 });
+
+describe("TASK 22.7 TestSubmissionService.markSubmitted", () => {
+  it("1-7. pending → submitted; timestamps and grading fields unchanged", async () => {
+    const { db, test } = await seedPublished();
+    const submission = await TestSubmissionService.assignPending(
+      test.id,
+      STUDENT_A,
+      authFor(db),
+    );
+    assert.ok(submission);
+    assert.equal(submission.status, "pending");
+
+    const beforeAnswers = db.test_answers.length;
+    const marked = await TestSubmissionService.markSubmitted(submission.id, authFor(db));
+    assert.ok(marked);
+    assert.equal(marked.status, "submitted");
+    assert.ok(marked.submittedAt);
+    assert.equal(marked.score, null);
+    assert.equal(marked.maxScore, null);
+    assert.equal(marked.feedback, null);
+    assert.equal(marked.gradedAt, null);
+    assert.equal(db.test_answers.length, beforeAnswers);
+
+    const again = await TestSubmissionService.getById(submission.id, authFor(db));
+    assert.equal(again?.status, "submitted");
+    assert.equal(again?.score, null);
+    assert.equal(again?.maxScore, null);
+    assert.equal(again?.feedback, null);
+    assert.equal(again?.gradedAt, null);
+  });
+
+  it("8. rejects already submitted", async () => {
+    const { db, test } = await seedPublished();
+    const submission = await TestSubmissionService.assignPending(
+      test.id,
+      STUDENT_A,
+      authFor(db),
+    );
+    assert.ok(submission);
+    await TestSubmissionService.markSubmitted(submission.id, authFor(db));
+    await assert.rejects(
+      () => TestSubmissionService.markSubmitted(submission.id, authFor(db)),
+      /مُعلَّم كمُسلّم مسبقاً/,
+    );
+  });
+
+  it("9. rejects graded", async () => {
+    const { db, test } = await seedPublished();
+    const submission = await TestSubmissionService.create(
+      {
+        testId: test.id,
+        studentId: STUDENT_A,
+        status: "graded",
+        score: 5,
+        gradedAt: "2026-08-15T12:00:00Z",
+      },
+      authFor(db),
+    );
+    assert.ok(submission);
+    await assert.rejects(
+      () => TestSubmissionService.markSubmitted(submission.id, authFor(db)),
+      /مُصحَّح/,
+    );
+  });
+
+  it("10. rejects foreign teacher", async () => {
+    const { db, test } = await seedPublished();
+    const submission = await TestSubmissionService.assignPending(
+      test.id,
+      STUDENT_A,
+      authFor(db),
+    );
+    assert.ok(submission);
+    await assert.rejects(
+      () => TestSubmissionService.markSubmitted(submission.id, authFor(db, TEACHER_B)),
+      /التسليم غير موجود/,
+    );
+  });
+
+  it("11. rejects nonexistent submission", async () => {
+    const { db } = await seedPublished();
+    await assert.rejects(
+      () =>
+        TestSubmissionService.markSubmitted(
+          "99999999-9999-4999-8999-999999999999",
+          authFor(db),
+        ),
+      /التسليم غير موجود/,
+    );
+  });
+
+  it("12. rejects closed test", async () => {
+    const { db, test } = await seedPublished();
+    const submission = await TestSubmissionService.assignPending(
+      test.id,
+      STUDENT_A,
+      authFor(db),
+    );
+    assert.ok(submission);
+    await TestService.close(test.id, authFor(db));
+    await assert.rejects(
+      () => TestSubmissionService.markSubmitted(submission.id, authFor(db)),
+      /مغلق/,
+    );
+  });
+});
