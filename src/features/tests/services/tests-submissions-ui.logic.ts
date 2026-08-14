@@ -47,6 +47,8 @@ export type TestSubmissionListItemView = {
   autoGradeActionLabel: string;
   canEnterAnswers: boolean;
   answerEntryActionLabel: string;
+  canEditFeedback: boolean;
+  feedbackActionLabel: string;
 };
 
 export type AnswerDraftMap = Record<
@@ -97,6 +99,12 @@ export function answerEntryActionLabel(status: TestSubmissionStatus): string {
   return "عرض الإجابات";
 }
 
+export const TEST_FEEDBACK_ACTION_LABEL = "ملاحظات المعلم";
+
+export function canEditTestFeedback(status: TestSubmissionStatus): boolean {
+  return status === "graded";
+}
+
 export function toTestSubmissionListItemView(
   submission: TestSubmission,
   student: Student | undefined,
@@ -117,6 +125,8 @@ export function toTestSubmissionListItemView(
     autoGradeActionLabel: autoGradeActionLabel(submission.status),
     canEnterAnswers: canEnterTestAnswers(submission.status, testStatus),
     answerEntryActionLabel: answerEntryActionLabel(submission.status),
+    canEditFeedback: canEditTestFeedback(submission.status),
+    feedbackActionLabel: TEST_FEEDBACK_ACTION_LABEL,
   };
 }
 

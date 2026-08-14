@@ -333,6 +333,52 @@ export class TestSubmissionService {
     if (error) throw error;
     return data ? toSubmission(data) : null;
   }
+
+  /**
+   * TASK 22.9 — Teacher feedback on a graded submission only.
+   * Updates feedback; never touches score, max_score, status, graded_at, or answers.
+   */
+  static async setFeedback(
+    submissionId: string,
+    feedback: string | null | undefined,
+    context?: SupabaseUserContext,
+  ): Promise<TestSubmission | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) {
+      throw new Error("يجب تسجيل الدخول لحفظ الملاحظة.");
+    }
+
+    const existing = await this.getById(submissionId, resolved);
+    if (!existing) {
+      throw new Error("التسليم غير موجود أو لا تملك صلاحية الوصول إليه.");
+    }
+
+    if (existing.status === "pending") {
+      throw new Error("لا يمكن إضافة ملاحظات لتسليم لم يبدأ بعد.");
+    }
+    if (existing.status === "submitted") {
+      throw new Error("لا يمكن إضافة ملاحظات قبل التصحيح. صحّح التسليم أولاً.");
+    }
+    if (existing.status !== "graded") {
+      throw new Error("الملاحظات متاحة للتسليمات المُصحَّحة فقط.");
+    }
+
+    const nextFeedback =
+      typeof feedback === "string" && feedback.trim() ? feedback.trim() : null;
+
+    const { data, error } = await resolved.client
+      .from("test_submissions")
+      .update({
+        feedback: nextFeedback,
+      })
+      .eq("id", submissionId)
+      .eq("teacher_id", resolved.userId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? toSubmission(data) : null;
+  }
 }
 
 function assertTestAcceptsSubmissions(test: TeacherTest): void {

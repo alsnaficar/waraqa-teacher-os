@@ -51,6 +51,7 @@ import {
   toTestSubmissionListItemView,
 } from "../services/tests-submissions-ui.logic";
 import { TestAnswerEntryDialog } from "./test-answer-entry-dialog";
+import { TestFeedbackDialog } from "./test-feedback-dialog";
 
 const ALL_CLASSES = "all";
 
@@ -77,6 +78,7 @@ export function TestSubmissionsPanel({
     gradeSubmission,
     saveAnswersAndSubmit,
     saveAnswersSubmitAndGrade,
+    setFeedback,
   } = useTestSubmissions(testId);
 
   const canAssign = canAssignTestSubmissions(testStatus);
@@ -86,6 +88,7 @@ export function TestSubmissionsPanel({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<TestSubmission | null>(null);
   const [answerTarget, setAnswerTarget] = useState<TestSubmission | null>(null);
+  const [feedbackTarget, setFeedbackTarget] = useState<TestSubmission | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [gradingId, setGradingId] = useState<string | null>(null);
 
@@ -269,6 +272,16 @@ export function TestSubmissionsPanel({
                                 : view.autoGradeActionLabel}
                             </Button>
                           ) : null}
+                          {view.canEditFeedback ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="min-h-11"
+                              onClick={() => setFeedbackTarget(submission)}
+                            >
+                              {view.feedbackActionLabel}
+                            </Button>
+                          ) : null}
                           {canAssign ? (
                             <Button
                               type="button"
@@ -335,6 +348,16 @@ export function TestSubmissionsPanel({
                           {gradingId === submission.id
                             ? "جاري التصحيح…"
                             : view.autoGradeActionLabel}
+                        </Button>
+                      ) : null}
+                      {view.canEditFeedback ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="min-h-11 w-full"
+                          onClick={() => setFeedbackTarget(submission)}
+                        >
+                          {view.feedbackActionLabel}
                         </Button>
                       ) : null}
                       {canAssign ? (
@@ -480,6 +503,32 @@ export function TestSubmissionsPanel({
           await saveAnswersSubmitAndGrade.mutateAsync({
             submissionId: answerTarget.id,
             draft,
+          });
+        }}
+      />
+
+      <TestFeedbackDialog
+        open={Boolean(feedbackTarget)}
+        submission={
+          feedbackTarget
+            ? (submissions.find((row) => row.id === feedbackTarget.id) ?? feedbackTarget)
+            : null
+        }
+        studentName={
+          feedbackTarget
+            ? studentById.get(feedbackTarget.studentId)?.fullName ?? "طالب غير معروف"
+            : ""
+        }
+        testTitle={testTitle}
+        busy={setFeedback.isPending}
+        onOpenChange={(open) => {
+          if (!open) setFeedbackTarget(null);
+        }}
+        onSubmit={async (feedback) => {
+          if (!feedbackTarget) return;
+          await setFeedback.mutateAsync({
+            submissionId: feedbackTarget.id,
+            feedback,
           });
         }}
       />

@@ -135,6 +135,17 @@ export function useTestSubmissions(testId: string | null) {
     onSuccess: invalidate,
   });
 
+  const setFeedback = useMutation({
+    mutationFn: ({
+      submissionId,
+      feedback,
+    }: {
+      submissionId: string;
+      feedback: string;
+    }) => TestSubmissionService.setFeedback(submissionId, feedback),
+    onSuccess: invalidate,
+  });
+
   return {
     submissions: submissionsQuery.data ?? [],
     students: studentsQuery.data ?? [],
@@ -151,6 +162,7 @@ export function useTestSubmissions(testId: string | null) {
     saveAnswers,
     saveAnswersAndSubmit,
     saveAnswersSubmitAndGrade,
+    setFeedback,
   };
 }
 
