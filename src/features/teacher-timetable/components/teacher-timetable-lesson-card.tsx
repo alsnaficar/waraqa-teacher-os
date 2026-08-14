@@ -1,4 +1,7 @@
+import { Pencil, Plus, Trash2 } from "lucide-react";
+
 import { PERIOD_TIMES } from "@/features/planner/components/types";
+import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils/utils";
 
 import type { TeacherTimetableEntry } from "../types";
@@ -49,12 +52,18 @@ export interface TeacherTimetableLessonCardProps {
     id: string;
     lessonLocked: boolean;
   };
+  onAdd?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 export function TeacherTimetableLessonCard({
   period,
   entry,
   lessonSession,
+  onAdd,
+  onEdit,
+  onDelete,
 }: TeacherTimetableLessonCardProps) {
   const periodTime = formatPeriodTime(entry, period);
   const isEmpty = !entry;
@@ -90,7 +99,21 @@ export function TeacherTimetableLessonCard({
       </div>
 
       {isEmpty ? (
-        <p className="px-3 py-2.5 text-center text-sm text-muted-foreground">لا توجد حصة</p>
+        <div className="flex flex-col items-center gap-2 px-3 py-2.5">
+          <p className="text-center text-sm text-muted-foreground">لا توجد حصة</p>
+          {onAdd ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-11 w-full gap-1"
+              onClick={onAdd}
+            >
+              <Plus className="h-4 w-4" />
+              إضافة حصة
+            </Button>
+          ) : null}
+        </div>
       ) : (
         <>
           {/* السطر الثاني: الصف/الفصل · قائمة الدرس */}
@@ -108,6 +131,33 @@ export function TeacherTimetableLessonCard({
                 hideLabel
                 className="min-w-0 flex-1"
               />
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap gap-2 border-t border-border/50 px-3 py-2">
+            {onEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 flex-1 gap-1"
+                onClick={onEdit}
+              >
+                <Pencil className="h-4 w-4" />
+                تعديل
+              </Button>
+            ) : null}
+            {onDelete ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-11 flex-1 gap-1 text-destructive"
+                onClick={onDelete}
+              >
+                <Trash2 className="h-4 w-4" />
+                حذف
+              </Button>
             ) : null}
           </div>
 

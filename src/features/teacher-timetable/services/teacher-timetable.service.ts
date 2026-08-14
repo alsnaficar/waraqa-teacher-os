@@ -4,6 +4,30 @@ import type { TeacherTimetableEntry } from "../types";
 
 type TimetableRow = Database["public"]["Tables"]["teacher_timetable"]["Row"];
 type TimetableInsert = Database["public"]["Tables"]["teacher_timetable"]["Insert"];
+type TimetableUpdate = Database["public"]["Tables"]["teacher_timetable"]["Update"];
+
+export type TeacherTimetableSlotInput = Omit<
+  TeacherTimetableEntry,
+  "id" | "teacherId" | "createdAt" | "updatedAt"
+>;
+
+export type TeacherTimetableSlotPatch = Partial<TeacherTimetableSlotInput>;
+
+/** Raised when (teacher_id, day_of_week, period) already exists. */
+export class TimetableSlotConflictError extends Error {
+  constructor(message = "يوجد حصة أخرى في نفس اليوم ونفس رقم الحصة.") {
+    super(message);
+    this.name = "TimetableSlotConflictError";
+  }
+}
+
+export function isTimetableUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  if (code === "23505") return true;
+  const message = "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
+  return /unique|duplicate|idx_teacher_timetable_unique_slot/i.test(message);
+}
 
 function toEntry(row: TimetableRow): TeacherTimetableEntry {
   return {
@@ -21,6 +45,40 @@ function toEntry(row: TimetableRow): TeacherTimetableEntry {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function toInsertRow(
+  teacherId: string,
+  entry: TeacherTimetableSlotInput,
+): TimetableInsert {
+  return {
+    teacher_id: teacherId,
+    day_of_week: entry.dayOfWeek,
+    period: entry.period,
+    subject: entry.subject.trim(),
+    grade: entry.grade.trim(),
+    class_name: entry.className.trim(),
+    classroom: entry.classroom?.trim() ? entry.classroom.trim() : null,
+    starts_at: entry.startsAt ?? null,
+    ends_at: entry.endsAt ?? null,
+    active: entry.active,
+  };
+}
+
+function toUpdatePatch(patch: TeacherTimetableSlotPatch): TimetableUpdate {
+  const row: TimetableUpdate = {};
+  if (patch.dayOfWeek !== undefined) row.day_of_week = patch.dayOfWeek;
+  if (patch.period !== undefined) row.period = patch.period;
+  if (patch.subject !== undefined) row.subject = patch.subject.trim();
+  if (patch.grade !== undefined) row.grade = patch.grade.trim();
+  if (patch.className !== undefined) row.class_name = patch.className.trim();
+  if (patch.classroom !== undefined) {
+    row.classroom = patch.classroom.trim() ? patch.classroom.trim() : null;
+  }
+  if (patch.startsAt !== undefined) row.starts_at = patch.startsAt ?? null;
+  if (patch.endsAt !== undefined) row.ends_at = patch.endsAt ?? null;
+  if (patch.active !== undefined) row.active = patch.active;
+  return row;
 }
 
 /**
@@ -83,22 +141,110 @@ export class TeacherTimetableService {
 
     if (entries.length === 0) return;
 
-    const rows: TimetableInsert[] = entries.map((entry) => ({
-      teacher_id: resolved.userId,
-      day_of_week: entry.dayOfWeek,
-      period: entry.period,
-      subject: entry.subject,
-      grade: entry.grade,
-      class_name: entry.className,
-      classroom: entry.classroom ?? null,
-      starts_at: entry.startsAt ?? null,
-      ends_at: entry.endsAt ?? null,
-      active: entry.active,
-    }));
+    const rows: TimetableInsert[] = entries.map((entry) => toInsertRow(resolved.userId, entry));
 
     const { error } = await resolved.client.from("teacher_timetable").insert(rows);
 
     if (error) throw error;
+  }
+
+  /**
+   * Inserts one slot for the authenticated teacher.
+   * Does not mutate lesson_sessions.
+   */
+  static async addSlot(
+    entry: TeacherTimetableSlotInput,
+    context?: SupabaseUserContext,
+  ): Promise<TeacherTimetableEntry | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const { data, error } = await resolved.client
+      .from("teacher_timetable")
+      .insert(toInsertRow(resolved.userId, entry))
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      if (isTimetableUniqueViolation(error)) throw new TimetableSlotConflictError();
+      throw error;
+    }
+
+    return data ? toEntry(data) : null;
+  }
+
+  /**
+   * Updates one owned slot by id + teacher_id.
+   * Does not mutate lesson_sessions.
+   */
+  static async updateSlot(
+    id: string,
+    patch: TeacherTimetableSlotPatch,
+    context?: SupabaseUserContext,
+  ): Promise<TeacherTimetableEntry | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const row = toUpdatePatch(patch);
+    if (Object.keys(row).length === 0) {
+      const existing = await this.getSlotById(id, resolved);
+      return existing;
+    }
+
+    const { data, error } = await resolved.client
+      .from("teacher_timetable")
+      .update(row)
+      .eq("id", id)
+      .eq("teacher_id", resolved.userId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      if (isTimetableUniqueViolation(error)) throw new TimetableSlotConflictError();
+      throw error;
+    }
+
+    return data ? toEntry(data) : null;
+  }
+
+  /**
+   * Deletes one owned slot by id + teacher_id.
+   * Does not mutate lesson_sessions.
+   */
+  static async deleteSlot(id: string, context?: SupabaseUserContext): Promise<boolean> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return false;
+
+    const { data, error } = await resolved.client
+      .from("teacher_timetable")
+      .delete()
+      .eq("id", id)
+      .eq("teacher_id", resolved.userId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return Boolean(data);
+  }
+
+  static async getSlotById(
+    id: string,
+    context?: SupabaseUserContext,
+  ): Promise<TeacherTimetableEntry | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const { data, error } = await resolved.client
+      .from("teacher_timetable")
+      .select("*")
+      .eq("id", id)
+      .eq("teacher_id", resolved.userId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return data ? toEntry(data) : null;
   }
 
   static async hasTimetable(context?: SupabaseUserContext): Promise<boolean> {

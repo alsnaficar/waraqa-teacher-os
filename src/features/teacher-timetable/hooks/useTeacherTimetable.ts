@@ -8,7 +8,6 @@ export function useTeacherTimetable() {
   const [error, setError] = useState<Error | null>(null);
 
   async function refresh() {
-    setLoading(true);
     setError(null);
 
     try {
