@@ -5,6 +5,9 @@ import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-managem
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import type { Database } from "@/platform/database/supabase/types";
 import {
+  assertCurriculumLessonAuthorized,
+} from "./lesson-curriculum-authorization";
+import {
   LessonSessionLockedError,
   LessonSessionPreparingError,
   type LessonSession,
@@ -502,7 +505,19 @@ export class LessonSessionService {
       throw new LessonSessionLockedError();
     }
 
-    return this.applyUpdate(sessionId, { curriculum_lesson_id: curriculumLessonId }, context);
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const view = await this.getSessionViewById(sessionId, resolved);
+    if (!view) return null;
+
+    await assertCurriculumLessonAuthorized(resolved, {
+      grade: view.grade,
+      subject: view.subject,
+      curriculumLessonId,
+    });
+
+    return this.applyUpdate(sessionId, { curriculum_lesson_id: curriculumLessonId }, resolved);
   }
 
   private static async applyUpdate(

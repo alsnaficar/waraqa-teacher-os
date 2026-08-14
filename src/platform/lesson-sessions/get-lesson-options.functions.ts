@@ -1,6 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import {
+  listPublishedCurriculumLessons,
+  resolvePublishedCurriculumFileId,
+} from "@/features/lesson-sessions/services/lesson-curriculum-authorization";
 import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
 import { requireOwnedLessonSession } from "@/features/lesson-sessions/services/require-owned-lesson-session";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
@@ -26,18 +30,7 @@ export const getLessonOptions = createServerFn({ method: "POST" })
       throw new Error("تعذر تحميل بيانات حصة الدرس.");
     }
 
-    const { data: files, error: fileError } = await context.supabase
-      .from("curriculum_files")
-      .select("id")
-      .eq("grade", view.grade)
-      .eq("subject", view.subject)
-      .eq("status", "published")
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (fileError) throw fileError;
-
-    const fileId = files?.[0]?.id;
+    const fileId = await resolvePublishedCurriculumFileId(auth, view.grade, view.subject);
 
     if (!fileId) {
       return {
@@ -46,16 +39,10 @@ export const getLessonOptions = createServerFn({ method: "POST" })
       };
     }
 
-    const { data: lessons, error: lessonsError } = await context.supabase
-      .from("curriculum_lessons")
-      .select("id, title, objectives, notes, order_index")
-      .eq("curriculum_file_id", fileId)
-      .order("order_index", { ascending: true });
-
-    if (lessonsError) throw lessonsError;
+    const lessons = await listPublishedCurriculumLessons(auth, fileId);
 
     return {
-      lessons: lessons ?? [],
+      lessons,
       selectedLessonId: session.curriculumLessonId,
     };
   });
