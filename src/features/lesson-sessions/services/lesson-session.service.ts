@@ -324,18 +324,57 @@ export class LessonSessionService {
 
   /**
    * Returns the sessions for a date, generating them first when none exist yet.
+   * When sessions already exist, runs P2 stale-plan refresh before returning so
+   * unlocked plan-sourced sessions track the current canonical plan. Missing
+   * periods are not created on that path (generation only when none exist).
    */
   static async ensureSessionsForDate(
     date: string,
     context?: SupabaseUserContext,
+    testOptions?: { planEntries?: CalculatedLessonEntry[] },
   ): Promise<LessonSessionGenerationResult> {
     const existing = await this.getSessionViewsByDate(date, context);
 
     if (existing.length > 0) {
-      return { sessions: existing, created: 0, skipped: null };
+      await this.refreshUnlockedSessionsForDate(date, context, testOptions);
+      const sessions = await this.getSessionViewsByDate(date, context);
+      return { sessions, created: 0, skipped: null };
     }
 
-    return this.generateSessionsForDate(date, context);
+    return this.generateSessionsForDate(date, context, testOptions);
+  }
+
+  /**
+   * Loads timetable + plan context and runs P2 refresh when possible.
+   * No-op when unauthenticated, no slots, or no curriculum plan entries.
+   * Reuses refreshUnlockedSessionCurriculum (no duplicate matching).
+   */
+  private static async refreshUnlockedSessionsForDate(
+    date: string,
+    context?: SupabaseUserContext,
+    testOptions?: { planEntries?: CalculatedLessonEntry[] },
+  ): Promise<void> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return;
+
+    const dayOfWeek = dayOfWeekFor(date);
+    const slots = await TeacherTimetableService.getTimetableForDay(dayOfWeek, resolved);
+    if (slots.length === 0) return;
+
+    const schedule =
+      process.env.NODE_ENV === "test" && testOptions?.planEntries
+        ? testOptions.planEntries
+        : await getPlanEntriesForDate(date);
+    const plannedForDate = schedule.filter((entry) => entry.lessonId);
+    if (plannedForDate.length === 0) return;
+
+    await this.refreshUnlockedSessionCurriculum(
+      date,
+      dayOfWeek,
+      slots,
+      plannedForDate,
+      resolved,
+    );
   }
 
   /**

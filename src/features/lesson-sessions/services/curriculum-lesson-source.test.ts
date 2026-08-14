@@ -177,7 +177,12 @@ function matchesEq(row: Row, filters: Record<string, unknown>): boolean {
   return Object.entries(filters).every(([column, value]) => row[column] === value);
 }
 
-function createMockClient(db: Record<string, Row[]>): SupabaseUserContext["client"] {
+type UpdateCounters = { lessonSessionUpdates: number };
+
+function createMockClient(
+  db: Record<string, Row[]>,
+  counters?: UpdateCounters,
+): SupabaseUserContext["client"] {
   const client = {
     from(table: string) {
       const state: {
@@ -275,6 +280,9 @@ function createMockClient(db: Record<string, Row[]>): SupabaseUserContext["clien
             const rows = (db[table] ?? []).filter((row) => matchesEq(row, state.filters));
             const target = rows[0];
             if (!target) return { data: null, error: null };
+            if (table === "lesson_sessions" && counters) {
+              counters.lessonSessionUpdates += 1;
+            }
             Object.assign(target, state.patch, { updated_at: "2026-08-09T12:00:00Z" });
             return { data: { ...target }, error: null };
           }
@@ -331,8 +339,8 @@ function createMockClient(db: Record<string, Row[]>): SupabaseUserContext["clien
   return client as never;
 }
 
-function authFor(db: Record<string, Row[]>): SupabaseUserContext {
-  return { client: createMockClient(db), userId: TEACHER_ID };
+function authFor(db: Record<string, Row[]>, counters?: UpdateCounters): SupabaseUserContext {
+  return { client: createMockClient(db, counters), userId: TEACHER_ID };
 }
 
 function planEntriesForTest(
@@ -608,5 +616,200 @@ describe("TASK 8D curriculum_lesson_source", () => {
       }).length,
       0,
     );
+  });
+});
+
+const FOREIGN_FILE = "99999999-9999-4999-8999-999999999999";
+const FOREIGN_LESSON = "f0f0f0f0-f0f0-4f0f-8f0f-f0f0f0f0f0f0";
+
+describe("TASK 11 ensureSessionsForDate P2 refresh", () => {
+  beforeEach(() => {
+    assert.equal(process.env.NODE_ENV, "test");
+  });
+
+  it("TEST 1 — ENSURE_REFRESHES_STALE_PLAN", async () => {
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-p1",
+        period_number: 1,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+      }),
+    ]);
+    const auth = authFor(db);
+
+    const result = await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([planEntry({ lessonId: LESSON_B, period: 1 })]),
+    );
+
+    assert.equal(result.sessions.length, 1);
+    assert.equal(result.sessions[0]?.id, "session-p1");
+    assert.equal(result.sessions[0]?.curriculumLessonId, LESSON_B);
+    assert.equal(result.sessions[0]?.curriculumLessonSource, "plan");
+    assert.equal(db.lesson_sessions[0]?.id, "session-p1");
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, LESSON_B);
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_source, "plan");
+  });
+
+  it("TEST 2 — ENSURE_PROTECTS_MANUAL", async () => {
+    const counters: UpdateCounters = { lessonSessionUpdates: 0 };
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-manual",
+        period_number: 1,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "manual",
+      }),
+    ]);
+    const auth = authFor(db, counters);
+
+    await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([planEntry({ lessonId: LESSON_B, period: 1 })]),
+    );
+
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, LESSON_A);
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_source, "manual");
+    assert.equal(counters.lessonSessionUpdates, 0);
+  });
+
+  it("TEST 3 — ENSURE_PROTECTS_LOCKED", async () => {
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-locked",
+        period_number: 1,
+        status: "prepared",
+        lesson_locked: true,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+      }),
+    ]);
+    const auth = authFor(db);
+
+    await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([planEntry({ lessonId: LESSON_B, period: 1 })]),
+    );
+
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, LESSON_A);
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_source, "plan");
+  });
+
+  it("TEST 4 — ENSURE_PROTECTS_PREPARING", async () => {
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-prep",
+        period_number: 1,
+        status: "preparing",
+        lesson_locked: false,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+      }),
+    ]);
+    const auth = authFor(db);
+
+    await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([planEntry({ lessonId: LESSON_B, period: 1 })]),
+    );
+
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, LESSON_A);
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_source, "plan");
+  });
+
+  it("TEST 5 — ENSURE_AMBIGUOUS_MATCH", async () => {
+    const counters: UpdateCounters = { lessonSessionUpdates: 0 };
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-p1",
+        period_number: 1,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+      }),
+    ]);
+    const auth = authFor(db, counters);
+
+    await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([
+        planEntry({ lessonId: LESSON_B, period: 1 }),
+        planEntry({ lessonId: LESSON_C, period: 1 }),
+      ]),
+    );
+
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, LESSON_A);
+    assert.equal(counters.lessonSessionUpdates, 0);
+  });
+
+  it("TEST 6 — ENSURE_UNAUTHORIZED_REFRESH", async () => {
+    const counters: UpdateCounters = { lessonSessionUpdates: 0 };
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-p1",
+        period_number: 1,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+      }),
+    ]);
+    db.curriculum_files.push({
+      id: FOREIGN_FILE,
+      user_id: TEACHER_ID,
+      subject: SUBJECT,
+      grade: GRADE,
+      status: "draft",
+      created_at: "2026-08-11T00:00:00Z",
+    });
+    db.curriculum_lessons.push({
+      id: FOREIGN_LESSON,
+      title: "Foreign Lesson",
+      objectives: null,
+      notes: null,
+      curriculum_file_id: FOREIGN_FILE,
+      order_index: 99,
+    });
+    const auth = authFor(db, counters);
+
+    await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([planEntry({ lessonId: FOREIGN_LESSON, period: 1 })]),
+    );
+
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, LESSON_A);
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_source, "plan");
+    assert.equal(counters.lessonSessionUpdates, 0);
+  });
+
+  it("TEST 7 — ENSURE_IDEMPOTENT", async () => {
+    const counters: UpdateCounters = { lessonSessionUpdates: 0 };
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-p1",
+        period_number: 1,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+      }),
+    ]);
+    const auth = authFor(db, counters);
+    const testPlan = planEntriesForTest([planEntry({ lessonId: LESSON_B, period: 1 })]);
+
+    const first = await LessonSessionService.ensureSessionsForDate(SUNDAY_ISO, auth, testPlan);
+    assert.equal(first.sessions[0]?.id, "session-p1");
+    assert.equal(first.sessions[0]?.curriculumLessonId, LESSON_B);
+    assert.equal(counters.lessonSessionUpdates, 1);
+    assert.equal(db.lesson_sessions.length, 1);
+
+    const second = await LessonSessionService.ensureSessionsForDate(SUNDAY_ISO, auth, testPlan);
+    assert.equal(second.sessions[0]?.id, "session-p1");
+    assert.equal(second.sessions[0]?.curriculumLessonId, LESSON_B);
+    assert.equal(second.sessions[0]?.curriculumLessonSource, "plan");
+    assert.equal(counters.lessonSessionUpdates, 1);
+    assert.equal(db.lesson_sessions.length, 1);
   });
 });
