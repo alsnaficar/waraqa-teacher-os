@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { BookOpen, CheckCircle2, FileText, FlaskConical, Lightbulb, RotateCcw } from "lucide-react";
+import { BookOpen, CheckCircle2, FileText, FlaskConical, Lightbulb, RotateCcw, Trash2 } from "lucide-react";
 
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -13,9 +13,13 @@ function stageFor(grade: string): "primary" | "intermediate" | "secondary" {
   return "primary";
 }
 
+export const DELETE_PREPARATION_LABEL = "حذف التحضير";
+export const CANCEL_PREPARING_LABEL = "إلغاء التحضير";
+
 export interface LessonSessionCardProps {
   session: LessonSessionView;
   onPrepare: (id: string) => void;
+  /** Prepared: request confirmed delete. Preparing: cancel in-progress prepare. */
   onResetPreparation: (id: string) => void;
   onComplete: (id: string) => void;
   busy?: boolean;
@@ -41,9 +45,10 @@ export function LessonSessionCard({
 
   const isCompleted = session.status === "completed";
   const isPreparing = session.status === "preparing";
+  const isPrepared = session.status === "prepared" && session.lessonLocked;
   const canPrepare = session.status === "scheduled" && !session.lessonLocked;
-  const canReset =
-    (session.status === "prepared" && session.lessonLocked) || session.status === "preparing";
+  const canDeletePreparation = isPrepared;
+  const canCancelPreparing = isPreparing;
 
   return (
     <Card>
@@ -116,24 +121,40 @@ export function LessonSessionCard({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {canReset ? (
+          {canDeletePreparation ? (
             <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-11 min-h-11 flex-1 min-w-[132px] gap-1.5 text-destructive"
+              disabled={busy}
+              onClick={() => onResetPreparation(session.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>{DELETE_PREPARATION_LABEL}</span>
+            </Button>
+          ) : null}
+
+          {canCancelPreparing ? (
+            <Button
+              type="button"
               variant="ghost"
               size="sm"
-              className="h-11 flex-1 min-w-[132px] gap-1.5"
+              className="h-11 min-h-11 flex-1 min-w-[132px] gap-1.5"
               disabled={busy}
               onClick={() => onResetPreparation(session.id)}
             >
               <RotateCcw className="h-4 w-4" />
-              <span>{isPreparing ? "إلغاء التحضير" : "إعادة التحضير"}</span>
+              <span>{CANCEL_PREPARING_LABEL}</span>
             </Button>
           ) : null}
 
           {canPrepare ? (
             <Button
+              type="button"
               variant="secondary"
               size="sm"
-              className="h-11 flex-1 min-w-[132px] gap-1.5"
+              className="h-11 min-h-11 flex-1 min-w-[132px] gap-1.5"
               disabled={busy}
               onClick={() => onPrepare(session.id)}
             >
@@ -144,9 +165,10 @@ export function LessonSessionCard({
 
           {isPreparing ? (
             <Button
+              type="button"
               variant="secondary"
               size="sm"
-              className="h-11 flex-1 min-w-[132px] gap-1.5"
+              className="h-11 min-h-11 flex-1 min-w-[132px] gap-1.5"
               disabled
             >
               <span>جاري التحضير</span>
@@ -155,9 +177,10 @@ export function LessonSessionCard({
 
           {!isCompleted && !isPreparing ? (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
-              className="h-11 flex-1 min-w-[132px] gap-1.5"
+              className="h-11 min-h-11 flex-1 min-w-[132px] gap-1.5"
               disabled={busy}
               onClick={() => onComplete(session.id)}
             >

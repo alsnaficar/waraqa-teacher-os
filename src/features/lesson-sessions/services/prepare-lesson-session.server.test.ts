@@ -559,6 +559,46 @@ describe("P3 Step 4 preparing-state claim", () => {
     assert.equal(result.completedAt, null);
   });
 
+  it("21.2-B reset preserves session identity curriculum and does not invent deletes", async () => {
+    const row = makeSessionRow({
+      status: "prepared",
+      lesson_locked: true,
+      prepared_at: "2026-08-08T10:00:00Z",
+      curriculum_lesson_id: CURRICULUM_LESSON,
+      curriculum_lesson_source: "manual",
+    });
+    const { auth, sessionState, deletedGenerations } = mockAuth({
+      userId: TEACHER_A,
+      sessionRow: row,
+      generations: [
+        {
+          id: "gen-keep",
+          kind: "lesson_plan",
+          status: "completed",
+          created_at: "2026-08-08T09:00:00Z",
+          lesson_session_id: SESSION_A,
+          output: { content: { kept: true } },
+        },
+      ],
+    });
+
+    const beforeId = sessionState.current?.id;
+    const result = await LessonSessionService.resetPreparation(SESSION_A, auth);
+    assert.ok(result);
+    assert.equal(result.id, beforeId);
+    assert.equal(result.curriculumLessonId, CURRICULUM_LESSON);
+    assert.equal(result.curriculumLessonSource, "manual");
+    assert.equal(sessionState.current?.id, SESSION_A);
+    assert.equal(deletedGenerations.count, 0);
+    assert.equal(
+      await getCurrentLessonPlanPreparation(
+        { id: SESSION_A, status: "scheduled" },
+        auth,
+      ),
+      null,
+    );
+  });
+
   it("J. reset preserves historical generations", async () => {
     const historical = {
       id: "88888888-8888-4888-8888-888888888888",

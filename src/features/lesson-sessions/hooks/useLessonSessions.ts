@@ -29,6 +29,14 @@ export function useLessonSessions(date: string = todayIso()) {
     return queryClient.invalidateQueries({ queryKey: lessonSessionsQueryKey(date) });
   }, [queryClient, date]);
 
+  /** After reset: refresh all session dates (dashboard today) + reports status aggregates. */
+  const invalidateAfterReset = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["lesson-sessions"] }),
+      queryClient.invalidateQueries({ queryKey: ["reports", "lesson-sessions"] }),
+    ]);
+  }, [queryClient]);
+
   const regenerate = useMutation({
     mutationFn: () => LessonSessionService.generateSessionsForDate(date),
     onSuccess: invalidate,
@@ -41,7 +49,7 @@ export function useLessonSessions(date: string = todayIso()) {
 
   const resetPreparation = useMutation({
     mutationFn: (id: string) => LessonSessionService.resetPreparation(id),
-    onSuccess: invalidate,
+    onSuccess: invalidateAfterReset,
   });
 
   const complete = useMutation({
