@@ -35,6 +35,7 @@ import { Route as AuthenticatedPlannerRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authenticated/subscription'
+import { Route as AuthenticatedTestsRouteImport } from './routes/_authenticated/tests'
 import { Route as AuthenticatedWeeklyPreparationRouteImport } from './routes/_authenticated/weekly-preparation'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminAcademicCalendarRouteImport } from './routes/_authenticated/admin/academic-calendar'
@@ -182,6 +183,11 @@ const AuthenticatedSubscriptionRoute =
     path: '/subscription',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTestsRoute = AuthenticatedTestsRouteImport.update({
+  id: '/tests',
+  path: '/tests',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedWeeklyPreparationRoute =
   AuthenticatedWeeklyPreparationRouteImport.update({
     id: '/weekly-preparation',
@@ -249,6 +255,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/tests': typeof AuthenticatedTestsRoute
   '/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
   '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
@@ -282,6 +289,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/tests': typeof AuthenticatedTestsRoute
   '/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
   '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
@@ -318,6 +326,7 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/subscription': typeof AuthenticatedSubscriptionRoute
+  '/_authenticated/tests': typeof AuthenticatedTestsRoute
   '/_authenticated/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
   '/_authenticated/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/_authenticated/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
@@ -354,6 +363,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/tests'
     | '/weekly-preparation'
     | '/admin/academic-calendar'
     | '/admin/curriculum-management'
@@ -387,6 +397,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/tests'
     | '/weekly-preparation'
     | '/admin/academic-calendar'
     | '/admin/curriculum-management'
@@ -422,6 +433,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/subscription'
+    | '/_authenticated/tests'
     | '/_authenticated/weekly-preparation'
     | '/_authenticated/admin/academic-calendar'
     | '/_authenticated/admin/curriculum-management'
@@ -625,6 +637,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSubscriptionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/tests': {
+      id: '/_authenticated/tests'
+      path: '/tests'
+      fullPath: '/tests'
+      preLoaderRoute: typeof AuthenticatedTestsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/weekly-preparation': {
       id: '/_authenticated/weekly-preparation'
       path: '/weekly-preparation'
@@ -723,6 +742,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSubscriptionRoute: typeof AuthenticatedSubscriptionRoute
+  AuthenticatedTestsRoute: typeof AuthenticatedTestsRoute
   AuthenticatedWeeklyPreparationRoute: typeof AuthenticatedWeeklyPreparationRoute
 }
 
@@ -747,6 +767,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSubscriptionRoute: AuthenticatedSubscriptionRoute,
+  AuthenticatedTestsRoute: AuthenticatedTestsRoute,
   AuthenticatedWeeklyPreparationRoute: AuthenticatedWeeklyPreparationRoute,
 }
 

@@ -1952,6 +1952,266 @@ export type Database = {
         };
         Relationships: [];
       };
+      test_answers: {
+        Row: {
+          boolean_answer: boolean | null;
+          created_at: string;
+          id: string;
+          is_correct: boolean | null;
+          points_awarded: number | null;
+          question_id: string;
+          selected_option_id: string | null;
+          submission_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          boolean_answer?: boolean | null;
+          created_at?: string;
+          id?: string;
+          is_correct?: boolean | null;
+          points_awarded?: number | null;
+          question_id: string;
+          selected_option_id?: string | null;
+          submission_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          boolean_answer?: boolean | null;
+          created_at?: string;
+          id?: string;
+          is_correct?: boolean | null;
+          points_awarded?: number | null;
+          question_id?: string;
+          selected_option_id?: string | null;
+          submission_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "test_answers_question_id_fkey";
+            columns: ["question_id"];
+            isOneToOne: false;
+            referencedRelation: "test_questions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "test_answers_selected_option_id_fkey";
+            columns: ["selected_option_id"];
+            isOneToOne: false;
+            referencedRelation: "test_options";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "test_answers_submission_id_fkey";
+            columns: ["submission_id"];
+            isOneToOne: false;
+            referencedRelation: "test_submissions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      test_options: {
+        Row: {
+          created_at: string;
+          id: string;
+          is_correct: boolean;
+          label: string;
+          position: number;
+          question_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          is_correct?: boolean;
+          label: string;
+          position: number;
+          question_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          is_correct?: boolean;
+          label?: string;
+          position?: number;
+          question_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "test_options_question_id_fkey";
+            columns: ["question_id"];
+            isOneToOne: false;
+            referencedRelation: "test_questions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      test_questions: {
+        Row: {
+          created_at: string;
+          id: string;
+          points: number;
+          position: number;
+          prompt: string;
+          test_id: string;
+          type: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          points?: number;
+          position: number;
+          prompt: string;
+          test_id: string;
+          type: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          points?: number;
+          position?: number;
+          prompt?: string;
+          test_id?: string;
+          type?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "test_questions_test_id_fkey";
+            columns: ["test_id"];
+            isOneToOne: false;
+            referencedRelation: "tests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      test_submissions: {
+        Row: {
+          created_at: string;
+          feedback: string | null;
+          graded_at: string | null;
+          id: string;
+          max_score: number | null;
+          score: number | null;
+          status: string;
+          student_id: string;
+          submitted_at: string | null;
+          teacher_id: string;
+          test_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          feedback?: string | null;
+          graded_at?: string | null;
+          id?: string;
+          max_score?: number | null;
+          score?: number | null;
+          status?: string;
+          student_id: string;
+          submitted_at?: string | null;
+          teacher_id: string;
+          test_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          feedback?: string | null;
+          graded_at?: string | null;
+          id?: string;
+          max_score?: number | null;
+          score?: number | null;
+          status?: string;
+          student_id?: string;
+          submitted_at?: string | null;
+          teacher_id?: string;
+          test_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "test_submissions_student_id_fkey";
+            columns: ["student_id"];
+            isOneToOne: false;
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "test_submissions_test_id_fkey";
+            columns: ["test_id"];
+            isOneToOne: false;
+            referencedRelation: "tests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      tests: {
+        Row: {
+          class_name: string | null;
+          created_at: string;
+          due_date: string | null;
+          grade: string | null;
+          id: string;
+          instructions: string;
+          lesson_session_id: string | null;
+          source_ai_generation_id: string | null;
+          status: string;
+          subject: string | null;
+          teacher_id: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          class_name?: string | null;
+          created_at?: string;
+          due_date?: string | null;
+          grade?: string | null;
+          id?: string;
+          instructions?: string;
+          lesson_session_id?: string | null;
+          source_ai_generation_id?: string | null;
+          status?: string;
+          subject?: string | null;
+          teacher_id: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          class_name?: string | null;
+          created_at?: string;
+          due_date?: string | null;
+          grade?: string | null;
+          id?: string;
+          instructions?: string;
+          lesson_session_id?: string | null;
+          source_ai_generation_id?: string | null;
+          status?: string;
+          subject?: string | null;
+          teacher_id?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "tests_lesson_session_id_fkey";
+            columns: ["lesson_session_id"];
+            isOneToOne: false;
+            referencedRelation: "lesson_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "tests_source_ai_generation_id_fkey";
+            columns: ["source_ai_generation_id"];
+            isOneToOne: false;
+            referencedRelation: "ai_generations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       user_roles: {
         Row: {
           created_at: string;
