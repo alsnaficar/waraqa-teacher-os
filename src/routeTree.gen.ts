@@ -35,6 +35,7 @@ import { Route as AuthenticatedPlannerRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authenticated/subscription'
+import { Route as AuthenticatedWeeklyPreparationRouteImport } from './routes/_authenticated/weekly-preparation'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedAdminAcademicCalendarRouteImport } from './routes/_authenticated/admin/academic-calendar'
 import { Route as AuthenticatedAdminCurriculumManagementRouteImport } from './routes/_authenticated/admin/curriculum-management'
@@ -181,6 +182,12 @@ const AuthenticatedSubscriptionRoute =
     path: '/subscription',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedWeeklyPreparationRoute =
+  AuthenticatedWeeklyPreparationRouteImport.update({
+    id: '/weekly-preparation',
+    path: '/weekly-preparation',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -242,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
   '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
@@ -274,6 +282,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
   '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
@@ -309,6 +318,7 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/subscription': typeof AuthenticatedSubscriptionRoute
+  '/_authenticated/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
   '/_authenticated/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
   '/_authenticated/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
   '/_authenticated/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
@@ -344,6 +354,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/weekly-preparation'
     | '/admin/academic-calendar'
     | '/admin/curriculum-management'
     | '/admin/google-sheets'
@@ -376,6 +387,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/weekly-preparation'
     | '/admin/academic-calendar'
     | '/admin/curriculum-management'
     | '/admin/google-sheets'
@@ -410,6 +422,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/subscription'
+    | '/_authenticated/weekly-preparation'
     | '/_authenticated/admin/academic-calendar'
     | '/_authenticated/admin/curriculum-management'
     | '/_authenticated/admin/google-sheets'
@@ -612,6 +625,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSubscriptionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/weekly-preparation': {
+      id: '/_authenticated/weekly-preparation'
+      path: '/weekly-preparation'
+      fullPath: '/weekly-preparation'
+      preLoaderRoute: typeof AuthenticatedWeeklyPreparationRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/': {
       id: '/_authenticated/admin/'
       path: '/'
@@ -703,6 +723,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSubscriptionRoute: typeof AuthenticatedSubscriptionRoute
+  AuthenticatedWeeklyPreparationRoute: typeof AuthenticatedWeeklyPreparationRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -726,6 +747,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSubscriptionRoute: AuthenticatedSubscriptionRoute,
+  AuthenticatedWeeklyPreparationRoute: AuthenticatedWeeklyPreparationRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

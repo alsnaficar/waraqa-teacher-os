@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
@@ -10,6 +11,8 @@ export interface LessonSessionsToolbarProps {
   onOffsetChange: (delta: number) => void;
   onToday: () => void;
   onRefresh: () => void;
+  /** Optional discoverability action (e.g. link to weekly preparation). */
+  weekLink?: ReactNode;
 }
 
 export function LessonSessionsToolbar({
@@ -19,6 +22,7 @@ export function LessonSessionsToolbar({
   onOffsetChange,
   onToday,
   onRefresh,
+  weekLink,
 }: LessonSessionsToolbarProps) {
   const hijri = formatHijriFull(new Date(`${date}T00:00:00`));
 
@@ -63,6 +67,8 @@ export function LessonSessionsToolbar({
             اليوم
           </Button>
         ) : null}
+
+        {weekLink}
 
         <Button
           variant="outline"

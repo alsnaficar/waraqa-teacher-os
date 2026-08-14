@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { CalendarRange } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import { isEntitlementDeniedError } from "@/features/billing/billing.logic";
 
 import { PageShell } from "@/components/layout/page-shell";
+import {
+  DeletePreparationDialog,
+  DELETE_PREPARATION_SUCCESS_TOAST,
+} from "@/features/lesson-sessions/components/delete-preparation-dialog";
 import { LessonSessionCard } from "@/features/lesson-sessions/components/lesson-session-card";
 import { LessonSessionsToolbar } from "@/features/lesson-sessions/components/lesson-sessions-toolbar";
 import { useLessonSessions } from "@/features/lesson-sessions/hooks/useLessonSessions";
@@ -16,16 +20,6 @@ import {
 } from "@/features/lesson-sessions/types";
 import { EmptyState } from "@/shared/components/empty-state";
 import { SectionHeader } from "@/shared/components/section-header";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -35,12 +29,12 @@ export const Route = createFileRoute("/_authenticated/lesson-sessions")({
   component: LessonSessionsPage,
 });
 
-export const DELETE_PREPARATION_DIALOG_TITLE = "حذف التحضير؟";
-export const DELETE_PREPARATION_DIALOG_DESCRIPTION =
-  "سيتم حذف التحضير الحالي وإعادة الحصة إلى حالة «مجدولة». لن يتم حذف سجل الحصة أو التحضيرات السابقة أو الجدول أو المنهج أو الواجب المرتبط.";
-export const DELETE_PREPARATION_CONFIRM_LABEL = "حذف التحضير";
-export const DELETE_PREPARATION_SUCCESS_TOAST =
-  "تم حذف التحضير وإعادة الحصة إلى الحالة المجدولة.";
+export {
+  DELETE_PREPARATION_CONFIRM_LABEL,
+  DELETE_PREPARATION_DIALOG_DESCRIPTION,
+  DELETE_PREPARATION_DIALOG_TITLE,
+  DELETE_PREPARATION_SUCCESS_TOAST,
+} from "@/features/lesson-sessions/components/delete-preparation-dialog";
 
 function toIso(date: Date): string {
   const offset = date.getTimezoneOffset();
@@ -147,6 +141,11 @@ function LessonSessionsPage() {
           onOffsetChange={(delta) => setDayOffset((current) => current + delta)}
           onToday={() => setDayOffset(0)}
           onRefresh={() => void refresh()}
+          weekLink={
+            <Button variant="outline" size="sm" className="h-11 min-h-11 flex-1 sm:flex-none" asChild>
+              <Link to="/weekly-preparation">تحضير الأسبوع</Link>
+            </Button>
+          }
         />
 
         {sessions.length > 0 ? (
@@ -197,37 +196,14 @@ function LessonSessionsPage() {
         )}
       </div>
 
-      <AlertDialog
+      <DeletePreparationDialog
         open={Boolean(deleteTarget)}
+        pending={resetPreparation.isPending}
         onOpenChange={(open) => {
           if (!open && !resetPreparation.isPending) setDeleteTarget(null);
         }}
-      >
-        <AlertDialogContent dir="rtl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{DELETE_PREPARATION_DIALOG_TITLE}</AlertDialogTitle>
-            <AlertDialogDescription>{DELETE_PREPARATION_DIALOG_DESCRIPTION}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
-            <AlertDialogAction
-              className="min-h-11 w-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={resetPreparation.isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                handleConfirmDelete();
-              }}
-            >
-              {resetPreparation.isPending ? "جاري الحذف…" : DELETE_PREPARATION_CONFIRM_LABEL}
-            </AlertDialogAction>
-            <AlertDialogCancel
-              className="min-h-11 w-full"
-              disabled={resetPreparation.isPending}
-            >
-              إلغاء
-            </AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={handleConfirmDelete}
+      />
     </PageShell>
   );
 }

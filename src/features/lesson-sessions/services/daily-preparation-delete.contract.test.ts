@@ -13,6 +13,7 @@ function readSrc(relativeFromThisFile: string): string {
 describe("TASK 21.2-B daily preparation delete UI contract", () => {
   const card = readSrc("../components/lesson-session-card.tsx");
   const page = readSrc("../../../routes/_authenticated/lesson-sessions.tsx");
+  const dialog = readSrc("../components/delete-preparation-dialog.tsx");
   const hook = readSrc("../hooks/useLessonSessions.ts");
 
   it("1. prepared session action displays حذف التحضير", () => {
@@ -22,21 +23,26 @@ describe("TASK 21.2-B daily preparation delete UI contract", () => {
   });
 
   it("2. delete requires confirmation (AlertDialog gate)", () => {
-    assert.match(page, /AlertDialog/);
+    assert.match(page, /DeletePreparationDialog/);
     assert.match(page, /setDeleteTarget/);
-    assert.match(page, /DELETE_PREPARATION_DIALOG_TITLE\s*=\s*"حذف التحضير؟"/);
-    assert.match(page, /سيتم حذف التحضير الحالي وإعادة الحصة إلى حالة «مجدولة»/);
-    assert.match(page, /التحضيرات السابقة/);
-    assert.match(page, /الجدول/);
-    assert.match(page, /المنهج/);
-    assert.match(page, /الواجب المرتبط/);
+    assert.match(dialog, /DELETE_PREPARATION_DIALOG_TITLE\s*=\s*"حذف التحضير؟"/);
+    assert.match(dialog, /AlertDialog/);
+    assert.match(dialog, /سيتم حذف التحضير الحالي فقط/);
+    assert.match(dialog, /مجدولة/);
+    assert.match(dialog, /الجدول/);
+    assert.match(dialog, /المنهج/);
+    assert.match(dialog, /الواجب المرتبط/);
+    assert.match(dialog, /الذكاء الاصطناعي محفوظ/);
     assert.match(page, /status === "prepared"/);
   });
 
   it("3. confirm invokes resetPreparation (not a bypass API)", () => {
     assert.match(page, /handleConfirmDelete/);
     assert.match(page, /resetPreparation\.mutate/);
-    assert.match(page, /DELETE_PREPARATION_CONFIRM_LABEL\s*=\s*"حذف التحضير"/);
+    assert.match(dialog, /DELETE_PREPARATION_CONFIRM_LABEL\s*=\s*"حذف التحضير"/);
+    assert.match(dialog, /onConfirm/);
+    assert.doesNotMatch(dialog, /LessonSessionService/);
+    assert.doesNotMatch(dialog, /\.from\(/);
     assert.match(hook, /LessonSessionService\.resetPreparation/);
     assert.doesNotMatch(page, /\.from\(\s*["']lesson_sessions["']\s*\)/);
   });
