@@ -1,5 +1,6 @@
 import { resolveAcademicScope } from "@/features/calendar/services/academic-calendar";
 import { getPlanEntriesForDate } from "@/features/planner/services/semester-plan.service";
+import type { CalculatedLessonEntry } from "@/features/planner/services/planner-engine";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
@@ -7,6 +8,7 @@ import type { Database } from "@/platform/database/supabase/types";
 import {
   assertCurriculumLessonAuthorized,
 } from "./lesson-curriculum-authorization";
+import { buildSessionInsertsForTimetableSlots } from "./session-generation.logic";
 import {
   LessonSessionLockedError,
   LessonSessionPreparingError,
@@ -231,6 +233,7 @@ export class LessonSessionService {
   static async generateSessionsForDate(
     date: string,
     context?: SupabaseUserContext,
+    testOptions?: { planEntries?: CalculatedLessonEntry[] },
   ): Promise<LessonSessionGenerationResult> {
     const resolved = await resolveUserContext(context);
 
@@ -257,7 +260,10 @@ export class LessonSessionService {
       };
     }
 
-    const schedule = await getPlanEntriesForDate(date);
+    const schedule =
+      process.env.NODE_ENV === "test" && testOptions?.planEntries
+        ? testOptions.planEntries
+        : await getPlanEntriesForDate(date);
     const plannedForDate = schedule.filter((entry) => entry.lessonId);
 
     if (plannedForDate.length === 0) {
@@ -273,31 +279,18 @@ export class LessonSessionService {
 
     const { gradeIdByName, classIdByName } = await this.loadGradeAndClassIds(resolved);
 
-    const rows: SessionInsert[] = [];
-
-    for (const slot of slots) {
-      if (takenPeriods.has(slot.period)) continue;
-
-      const planned = plannedForDate.find(
-        (entry) => entry.period === slot.period && entry.dayOfWeek === dayOfWeek,
-      );
-
-      if (!planned?.lessonId) continue;
-
-      rows.push({
-        teacher_id: resolved.userId,
-        academic_year_id: scope.academicYearId,
-        semester_id: scope.semesterId,
-        grade_id: gradeIdByName.get(slot.grade) ?? null,
-        class_id: classIdByName.get(slot.className) ?? null,
-        curriculum_lesson_id: planned.lessonId,
-        session_date: date,
-        day_of_week: dayOfWeek,
-        period_number: slot.period,
-        lesson_locked: false,
-        status: "scheduled",
-      });
-    }
+    const rows = buildSessionInsertsForTimetableSlots({
+      slots,
+      plannedForDate,
+      dayOfWeek,
+      sessionDate: date,
+      teacherId: resolved.userId,
+      academicYearId: scope.academicYearId,
+      semesterId: scope.semesterId,
+      takenPeriods,
+      gradeIdByName,
+      classIdByName,
+    });
 
     if (rows.length > 0) {
       const { error } = await resolved.client.from("lesson_sessions").upsert(rows, {
