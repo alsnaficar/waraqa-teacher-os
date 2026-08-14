@@ -52,6 +52,7 @@ export function buildSessionInsertsForTimetableSlots(
       grade_id: input.gradeIdByName.get(slot.grade) ?? null,
       class_id: input.classIdByName.get(slot.className) ?? null,
       curriculum_lesson_id: planned.lessonId,
+      curriculum_lesson_source: "plan",
       session_date: input.sessionDate,
       day_of_week: input.dayOfWeek,
       period_number: slot.period,

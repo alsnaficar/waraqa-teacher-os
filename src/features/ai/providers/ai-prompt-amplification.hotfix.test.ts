@@ -54,6 +54,7 @@ function makeContext(
       gradeId: null,
       classId: null,
       curriculumLessonId: CURRICULUM_ID,
+      curriculumLessonSource: "plan",
       sessionDate: "2026-08-08",
       dayOfWeek: 5,
       periodNumber: 1,

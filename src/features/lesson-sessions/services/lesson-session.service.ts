@@ -7,11 +7,14 @@ import { resolveUserContext, type SupabaseUserContext } from "@/platform/databas
 import type { Database } from "@/platform/database/supabase/types";
 import {
   assertCurriculumLessonAuthorized,
+  LessonCurriculumAuthorizationError,
 } from "./lesson-curriculum-authorization";
 import { buildSessionInsertsForTimetableSlots } from "./session-generation.logic";
+import { collectUnlockedSessionCurriculumRefreshMatches } from "./session-curriculum-refresh.logic";
 import {
   LessonSessionLockedError,
   LessonSessionPreparingError,
+  toCurriculumLessonSource,
   type LessonSession,
   type LessonSessionGenerationResult,
   type LessonSessionStatus,
@@ -45,6 +48,7 @@ function toSession(row: SessionRow): LessonSession {
     gradeId: row.grade_id,
     classId: row.class_id,
     curriculumLessonId: row.curriculum_lesson_id,
+    curriculumLessonSource: toCurriculumLessonSource(row.curriculum_lesson_source),
     sessionDate: row.session_date,
     dayOfWeek: row.day_of_week,
     periodNumber: row.period_number,
@@ -301,6 +305,14 @@ export class LessonSessionService {
       if (error) throw error;
     }
 
+    await this.refreshUnlockedSessionCurriculum(
+      date,
+      dayOfWeek,
+      slots,
+      plannedForDate,
+      resolved,
+    );
+
     const sessions = await this.getSessionViewsByDate(date, resolved);
 
     return {
@@ -510,7 +522,57 @@ export class LessonSessionService {
       curriculumLessonId,
     });
 
-    return this.applyUpdate(sessionId, { curriculum_lesson_id: curriculumLessonId }, resolved);
+    return this.applyUpdate(
+      sessionId,
+      {
+        curriculum_lesson_id: curriculumLessonId,
+        curriculum_lesson_source: "manual",
+      },
+      resolved,
+    );
+  }
+
+  /**
+   * P2 stale-plan refresh: update curriculum_lesson_id for scheduled/unlocked
+   * sessions whose source is still `plan`. Manual overrides are never overwritten.
+   * Zero/ambiguous DI-02 matches and SEC-02 denials leave the session unchanged.
+   */
+  private static async refreshUnlockedSessionCurriculum(
+    date: string,
+    dayOfWeek: number,
+    slots: Awaited<ReturnType<typeof TeacherTimetableService.getTimetableForDay>>,
+    plannedForDate: CalculatedLessonEntry[],
+    context: SupabaseUserContext,
+  ): Promise<void> {
+    const existing = await this.getSessionsByDate(date, context);
+    const matches = collectUnlockedSessionCurriculumRefreshMatches({
+      sessions: existing,
+      slots,
+      plannedForDate,
+      dayOfWeek,
+    });
+
+    for (const match of matches) {
+      try {
+        await assertCurriculumLessonAuthorized(context, {
+          grade: match.grade,
+          subject: match.subject,
+          curriculumLessonId: match.curriculumLessonId,
+        });
+      } catch (error) {
+        if (error instanceof LessonCurriculumAuthorizationError) continue;
+        throw error;
+      }
+
+      await this.applyUpdate(
+        match.sessionId,
+        {
+          curriculum_lesson_id: match.curriculumLessonId,
+          curriculum_lesson_source: "plan",
+        },
+        context,
+      );
+    }
   }
 
   private static async applyUpdate(

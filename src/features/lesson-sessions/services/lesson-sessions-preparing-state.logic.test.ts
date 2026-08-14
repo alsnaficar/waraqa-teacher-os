@@ -17,6 +17,7 @@ type SessionRow = {
   grade_id: string | null;
   class_id: string | null;
   curriculum_lesson_id: string;
+  curriculum_lesson_source: "plan" | "manual";
   session_date: string;
   day_of_week: number;
   period_number: number;
@@ -37,6 +38,7 @@ function identityFrozen(oldRow: SessionRow, newRow: SessionRow): boolean {
     newRow.grade_id !== oldRow.grade_id ||
     newRow.class_id !== oldRow.class_id ||
     newRow.curriculum_lesson_id !== oldRow.curriculum_lesson_id ||
+    newRow.curriculum_lesson_source !== oldRow.curriculum_lesson_source ||
     newRow.session_date !== oldRow.session_date ||
     newRow.day_of_week !== oldRow.day_of_week ||
     newRow.period_number !== oldRow.period_number ||
@@ -77,6 +79,7 @@ function basePreparing(overrides: Partial<SessionRow> = {}): SessionRow {
     grade_id: null,
     class_id: null,
     curriculum_lesson_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    curriculum_lesson_source: "plan",
     session_date: "2026-08-08",
     day_of_week: 5,
     period_number: 1,
@@ -137,6 +140,17 @@ describe("P3 Step 4 preparing-state DB contract (logic mirror)", () => {
       enforcePreparingUpdate(oldRow, {
         ...oldRow,
         curriculum_lesson_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      }),
+      "identity/context immutable",
+    );
+  });
+
+  it("E2. preparing → curriculum_lesson_source change denied", () => {
+    const oldRow = basePreparing();
+    assert.equal(
+      enforcePreparingUpdate(oldRow, {
+        ...oldRow,
+        curriculum_lesson_source: "manual",
       }),
       "identity/context immutable",
     );

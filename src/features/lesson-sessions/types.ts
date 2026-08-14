@@ -2,6 +2,22 @@ export type LessonSessionStatus =
   "scheduled" | "preparing" | "prepared" | "completed" | "cancelled";
 
 /**
+ * Provenance of `curriculumLessonId`.
+ * `plan` = DI-02 planner/timetable match; `manual` = teacher changeLesson override.
+ */
+export type CurriculumLessonSource = "plan" | "manual";
+
+const CURRICULUM_LESSON_SOURCES: readonly CurriculumLessonSource[] = ["plan", "manual"];
+
+/** Strict parser — invalid DB values must not silently default. */
+export function toCurriculumLessonSource(value: string): CurriculumLessonSource {
+  if ((CURRICULUM_LESSON_SOURCES as readonly string[]).includes(value)) {
+    return value as CurriculumLessonSource;
+  }
+  throw new Error(`Invalid curriculum_lesson_source: ${value}`);
+}
+
+/**
  * One scheduled lesson for one teacher — the central entity of Waraqa.
  * Mirrors a `public.lesson_sessions` row in camelCase.
  */
@@ -19,6 +35,8 @@ export interface LessonSession {
   classId: string | null;
 
   curriculumLessonId: string;
+
+  curriculumLessonSource: CurriculumLessonSource;
 
   sessionDate: string;
 

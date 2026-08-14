@@ -43,6 +43,7 @@ function makeSessionRow(overrides: Partial<Row> = {}): Row {
     grade_id: null,
     class_id: null,
     curriculum_lesson_id: VALID_LESSON,
+    curriculum_lesson_source: "plan",
     session_date: "2026-08-08",
     day_of_week: 5,
     period_number: 1,
@@ -288,7 +289,9 @@ describe("changeLesson curriculum authorization (SEC-02)", () => {
 
     assert.ok(result);
     assert.equal(result.curriculumLessonId, VALID_LESSON);
+    assert.equal(result.curriculumLessonSource, "manual");
     assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, VALID_LESSON);
+    assert.equal(db.lesson_sessions[0]?.curriculum_lesson_source, "manual");
   });
 
   it("2. Existing lesson from another teacher's draft curriculum → REJECT", async () => {

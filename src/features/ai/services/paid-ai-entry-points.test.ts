@@ -66,6 +66,7 @@ function makeSessionRow() {
     grade_id: null,
     class_id: null,
     curriculum_lesson_id: CURRICULUM_LESSON,
+    curriculum_lesson_source: "plan",
     session_date: "2026-08-08",
     day_of_week: 5,
     period_number: 1,

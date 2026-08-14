@@ -939,6 +939,7 @@ export type Database = {
           completed_at: string | null;
           created_at: string;
           curriculum_lesson_id: string;
+          curriculum_lesson_source: "plan" | "manual";
           day_of_week: number;
           grade_id: string | null;
           id: string;
@@ -957,6 +958,7 @@ export type Database = {
           completed_at?: string | null;
           created_at?: string;
           curriculum_lesson_id: string;
+          curriculum_lesson_source?: "plan" | "manual";
           day_of_week: number;
           grade_id?: string | null;
           id?: string;
@@ -975,6 +977,7 @@ export type Database = {
           completed_at?: string | null;
           created_at?: string;
           curriculum_lesson_id?: string;
+          curriculum_lesson_source?: "plan" | "manual";
           day_of_week?: number;
           grade_id?: string | null;
           id?: string;
