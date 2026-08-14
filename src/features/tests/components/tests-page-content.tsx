@@ -1,5 +1,5 @@
 import { Eye, FlaskConical, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/shared/components/empty-state";
@@ -40,7 +40,7 @@ import { TestReportsPanel } from "./test-reports-panel";
 import { TestSubmissionsPanel } from "./test-submissions-panel";
 import { canViewTestSubmissions } from "../services/tests-submissions-ui.logic";
 
-export function TestsPageContent() {
+export function TestsPageContent({ initialTestId }: { initialTestId?: string } = {}) {
   const [tab, setTab] = useState("tests");
   const [statusFilter, setStatusFilter] = useState<TestStatus | "all">("all");
   const [titleQuery, setTitleQuery] = useState("");
@@ -57,7 +57,13 @@ export function TestsPageContent() {
   const [deleteTarget, setDeleteTarget] = useState<TeacherTest | null>(null);
   const [publishTarget, setPublishTarget] = useState<TeacherTest | null>(null);
   const [closeTarget, setCloseTarget] = useState<TeacherTest | null>(null);
-  const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
+  const [selectedTestId, setSelectedTestId] = useState<string | null>(initialTestId ?? null);
+
+  useEffect(() => {
+    if (initialTestId) {
+      setSelectedTestId(initialTestId);
+    }
+  }, [initialTestId]);
 
   const filtered = useMemo(
     () => filterTestsByTitle(items, titleQuery),

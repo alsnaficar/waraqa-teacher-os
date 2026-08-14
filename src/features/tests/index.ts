@@ -5,6 +5,8 @@ export * from "./services/test-answer.service";
 export * from "./services/test-grading.logic";
 export * from "./services/test-grading.service";
 export * from "./services/test-reports.service";
+export * from "./services/test-ai-import.logic";
+export * from "./services/test-ai-import.service";
 export * from "./services/tests-ui.logic";
 export * from "./services/tests-submissions-ui.logic";
 export {
@@ -27,3 +29,4 @@ export {
   useTestPeriodReport,
   useTestDetailReport,
 } from "./hooks/useTestReports";
+export { useTestAiImport } from "./hooks/useTestAiImport";

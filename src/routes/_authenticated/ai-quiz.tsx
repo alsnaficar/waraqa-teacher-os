@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { getLessonContext } from "@/features/lesson-context/services/context-engine";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { toast } from "sonner";
 import {
   ArrowRight,
   Copy,
@@ -19,6 +20,7 @@ import {
   GraduationCap,
   Eye,
   Check,
+  FlaskConical,
 } from "lucide-react";
 
 import { PageShell } from "@/components/layout/page-shell";
@@ -43,6 +45,7 @@ import {
   type CurriculumSelectorErrors,
 } from "@/features/ai/components/curriculum-selector";
 import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
+import { useTestAiImport } from "@/features/tests/hooks/useTestAiImport";
 
 const SearchSchema = z.object({
   lessonSessionId: z.string().uuid().optional(),
@@ -94,6 +97,8 @@ function QuizPage() {
   const generate = useServerFn(generateQuizAndAssignment);
   const search = Route.useSearch();
   const lessonSessionId = search.lessonSessionId;
+  const navigate = useNavigate();
+  const { createDraftFromQuizGeneration } = useTestAiImport();
 
   const [curriculum, setCurriculum] = useState<CurriculumSelection>({
     stage: search.stage ?? "",
@@ -263,6 +268,33 @@ function QuizPage() {
   }
 
   const generatedData = mutation.data?.content as StructuredQuizAndAssignmentData | undefined;
+  const generationId = mutation.data?.id as string | undefined;
+  const importPending = createDraftFromQuizGeneration.isPending;
+
+  async function handleCreateDraftTest() {
+    if (!generationId) {
+      toast.error("لا يوجد توليد جاهز لاستيراد الاختبار.");
+      return;
+    }
+    try {
+      const result = await createDraftFromQuizGeneration.mutateAsync(generationId);
+      if (result.reusedExisting) {
+        toast.success("تم فتح المسودة المستوردة مسبقاً من هذا التوليد.");
+      } else {
+        const skippedNote =
+          result.skippedShortAnswerCount > 0
+            ? ` (تم تخطي ${result.skippedShortAnswerCount} سؤال مقالي قصير)`
+            : "";
+        toast.success(`تم إنشاء مسودة الاختبار${skippedNote}.`);
+      }
+      await navigate({
+        to: "/tests",
+        search: { testId: result.test.id },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر إنشاء مسودة الاختبار.");
+    }
+  }
 
   if (!lessonSessionId) {
     return <SessionBindingRequiredGate toolLabel="الاختبار والواجب" />;
@@ -432,7 +464,21 @@ function QuizPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" onClick={handleCopy} className="h-9">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => void handleCreateDraftTest()}
+                        disabled={!generationId || importPending}
+                        className="min-h-11 h-11 bg-emerald-700 hover:bg-emerald-700/95 text-white"
+                      >
+                        {importPending ? (
+                          <Loader2 className="ml-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <FlaskConical className="ml-1.5 h-3.5 w-3.5" />
+                        )}
+                        إنشاء اختبار مسودة
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleCopy} className="min-h-11 h-11">
                         <Copy className="ml-1.5 h-3.5 w-3.5" />
                         نسخ النص
                       </Button>
@@ -440,13 +486,18 @@ function QuizPage() {
                         variant="default"
                         size="sm"
                         onClick={handleDownload}
-                        className="h-9 bg-primary hover:bg-primary/95 text-white"
+                        className="min-h-11 h-11 bg-primary hover:bg-primary/95 text-white"
                       >
                         <Download className="ml-1.5 h-3.5 w-3.5" />
                         تصدير Word (نسختين)
                       </Button>
                     </div>
                   </div>
+
+                  <p className="mt-3 text-xs text-slate-500 leading-relaxed">
+                    الاستيراد ينشئ مسودة قابلة للتعديل في صفحة الاختبارات من أسئلة الاختيار من
+                    متعدد والصواب/خطأ فقط. الأسئلة المقالية القصيرة لا تُستورد في الإصدار الحالي.
+                  </p>
 
                   {/* High Craft Tab Selector */}
                   <div className="flex mt-4 p-1 bg-slate-100 rounded-lg max-w-md">
