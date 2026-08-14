@@ -6,6 +6,7 @@ import { Mail, ArrowLeft, CheckCircle2, Lock, User, Chrome } from "lucide-react"
 
 import { Button } from "@/shared/ui/button";
 import { supabase, isSupabaseConfigured } from "@/platform/database/supabase/client";
+import { resolvePostLoginPath } from "@/platform/auth/admin-access.functions";
 import { ar } from "@/i18n/ar";
 import { BrandLogo } from "@/components/layout/brand-logo";
 
@@ -103,7 +104,15 @@ export function AuthForm({
         if (onSuccess) {
           onSuccess();
         }
-        navigate({ to: "/dashboard" });
+        // Role-based home: admin → /admin, otherwise → /dashboard (server-resolved).
+        let destination: "/admin" | "/dashboard" = "/dashboard";
+        try {
+          const home = await resolvePostLoginPath();
+          destination = home.path;
+        } catch (resolveErr) {
+          console.error("[auth] post-login path resolve failed:", resolveErr);
+        }
+        navigate({ to: destination });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "حدث خطأ");
@@ -313,6 +322,7 @@ export function AuthForm({
           <div className="flex justify-end">
             <button
               type="button"
+              onClick={() => navigate({ to: "/forgot-password" })}
               className="text-xs font-medium text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors hover:underline underline-offset-4"
             >
               نسيت كلمة المرور؟

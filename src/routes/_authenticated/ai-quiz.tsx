@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getLessonContext } from "@/features/lesson-context/services/context-engine";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -28,6 +29,7 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { generateQuizAndAssignment } from "@/platform/ai/functions/ai-quiz-generator.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import {
   copyToClipboard,
   downloadStructuredQuizAndAssignmentDocx,
@@ -40,8 +42,10 @@ import {
   type CurriculumSelection,
   type CurriculumSelectorErrors,
 } from "@/features/ai/components/curriculum-selector";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 
 const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
   grade: z.string().optional(),
   subject: z.string().optional(),
@@ -89,6 +93,7 @@ const DIFFICULTY_LABEL: Record<"easy" | "medium" | "hard", string> = {
 function QuizPage() {
   const generate = useServerFn(generateQuizAndAssignment);
   const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
 
   const [curriculum, setCurriculum] = useState<CurriculumSelection>({
     stage: search.stage ?? "",
@@ -106,8 +111,40 @@ function QuizPage() {
   const subject = curriculum.subject;
 
   const mutation = useMutation({
-    mutationFn: (input: z.infer<typeof FormSchema>) => generate({ data: input }),
+    mutationFn: (input: z.infer<typeof FormSchema>) => {
+      if (!lessonSessionId) {
+        throw new Error("lessonSessionId مطلوب — افتح الأداة من حصة درس.");
+      }
+      return generate({ data: { ...input, lessonSessionId } });
+    },
   });
+
+  useEffect(() => {
+    if (search.title) return;
+
+    async function loadContext() {
+      const context = await getLessonContext();
+
+      if (!context) return;
+
+      const stage = context.grade.includes("متوسط")
+        ? "intermediate"
+        : context.grade.includes("ثانوي")
+          ? "secondary"
+          : "primary";
+
+      setCurriculum({
+        stage,
+        grade: context.grade,
+        subject: context.subject,
+        semester: "",
+      });
+
+      setTitle(context.title);
+    }
+
+    void loadContext();
+  }, [search.title]);
 
   function validateAndRun() {
     const curriculumErrors = validateCurriculum(curriculum) ?? {};
@@ -227,6 +264,10 @@ function QuizPage() {
 
   const generatedData = mutation.data?.content as StructuredQuizAndAssignmentData | undefined;
 
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="الاختبار والواجب" />;
+  }
+
   return (
     <PageShell>
       <div className="mb-2">
@@ -343,8 +384,11 @@ function QuizPage() {
               </Button>
 
               {mutation.isError ? (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600 leading-normal">
-                  {(mutation.error as Error).message}
+                <div className="space-y-3">
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600 leading-normal">
+                    {(mutation.error as Error).message}
+                  </div>
+                  <EntitlementDeniedCta error={mutation.error} />
                 </div>
               ) : null}
             </CardContent>
@@ -723,6 +767,7 @@ function QuizPage() {
                   <RefreshCw className="ml-1.5 h-3.5 w-3.5" />
                   إعادة المحاولة
                 </Button>
+                <EntitlementDeniedCta error={mutation.error} />
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400 space-y-4">

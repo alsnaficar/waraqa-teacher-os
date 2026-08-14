@@ -85,28 +85,33 @@ export class AIOrchestrator {
     let curriculumPrefix = "";
     let curriculumContextUsed = false;
 
-    // Safely attempt to build curriculum context if fields are present
-    const inputObj = validatedInput as {
-      stage?: "primary" | "intermediate" | "secondary";
-      semester?: string;
-      grade: string;
-      subject: string;
-      title: string;
-    };
+    if (options.skipAutoCurriculum) {
+      curriculumPrefix = options.curriculumPrefix || "";
+      curriculumContextUsed = Boolean(curriculumPrefix);
+    } else {
+      // Safely attempt to build curriculum context if fields are present
+      const inputObj = validatedInput as {
+        stage?: "primary" | "intermediate" | "secondary";
+        semester?: string;
+        grade: string;
+        subject: string;
+        title: string;
+      };
 
-    if (inputObj.grade && inputObj.subject && inputObj.title) {
-      try {
-        const { promptPrefix, used } = await buildCurriculumContext({
-          stage: inputObj.stage,
-          semester: inputObj.semester,
-          grade: inputObj.grade,
-          subject: inputObj.subject,
-          lessonTitle: inputObj.title,
-        });
-        curriculumPrefix = promptPrefix || "";
-        curriculumContextUsed = used;
-      } catch (err) {
-        console.warn(`[AIOrchestrator] Failed to fetch curriculum context for ${type}:`, err);
+      if (inputObj.grade && inputObj.subject && inputObj.title) {
+        try {
+          const { promptPrefix, used } = await buildCurriculumContext({
+            stage: inputObj.stage,
+            semester: inputObj.semester,
+            grade: inputObj.grade,
+            subject: inputObj.subject,
+            lessonTitle: inputObj.title,
+          });
+          curriculumPrefix = promptPrefix || "";
+          curriculumContextUsed = used;
+        } catch (err) {
+          console.warn(`[AIOrchestrator] Failed to fetch curriculum context for ${type}:`, err);
+        }
       }
     }
 

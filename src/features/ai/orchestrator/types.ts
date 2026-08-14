@@ -15,6 +15,12 @@ export interface OrchestratorOptions {
   model?: string;
   retries?: number;
   provider?: AIProvider;
+  /**
+   * When set with skipAutoCurriculum, inject this prefix instead of
+   * free-text grade/subject/title curriculum lookup (P3 Step 3 session binding).
+   */
+  curriculumPrefix?: string;
+  skipAutoCurriculum?: boolean;
 }
 
 export interface AIOrchestratorLog {

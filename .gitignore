@@ -16,6 +16,14 @@ dist-ssr
 .nitro
 *.local
 
+# Environment files - contain live credentials, never commit
+.env
+.env.local
+.env.production
+
+# Supabase CLI local link metadata
+supabase/.temp/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
@@ -32,3 +40,4 @@ dist-ssr
 *.sw?
 AA
 AA.save
+dashboard.tar.gz

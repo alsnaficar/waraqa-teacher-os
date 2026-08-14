@@ -9,6 +9,8 @@ export async function saveAiGeneration(
     kind: AiGenerationKind;
     prompt: string;
     output: Record<string, unknown>;
+    /** Required for new product generations (P3 Step 2 Session Binding). */
+    lessonSessionId: string;
   },
 ): Promise<{ id: string; createdAt: string }> {
   const { data, error } = await supabase
@@ -19,6 +21,7 @@ export async function saveAiGeneration(
       prompt: params.prompt,
       output: params.output,
       status: "completed",
+      lesson_session_id: params.lessonSessionId,
     })
     .select("id, created_at")
     .single();

@@ -1,15 +1,16 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  BookOpen,
   CalendarDays,
-  Sparkles,
-  Bell,
+  ClipboardList,
+  ClipboardCheck,
+  CreditCard,
+  FlaskConical,
   Settings,
   ShieldCheck,
   FileSpreadsheet,
-  CreditCard,
 } from "lucide-react";
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/platform/database/supabase/client";
 import { BrandLogo } from "./brand-logo";
@@ -29,11 +30,11 @@ import { ar } from "@/i18n/ar";
 
 const items = [
   { title: ar.nav.dashboard, url: "/dashboard", icon: LayoutDashboard },
-  { title: ar.nav.curriculum, url: "/curriculum", icon: BookOpen },
-  { title: ar.nav.planner, url: "/planner", icon: CalendarDays },
-  { title: ar.nav.ai, url: "/ai", icon: Sparkles },
-  { title: ar.nav.notifications, url: "/notifications", icon: Bell },
-  { title: ar.nav.subscription, url: "/subscription", icon: CreditCard },
+  { title: "الجدول", url: "/planner", icon: CalendarDays },
+  { title: "الواجبات", url: "/homework", icon: ClipboardList },
+  { title: "الاختبارات", url: "/tests", icon: FlaskConical },
+  { title: "التصحيح", url: "/grading", icon: ClipboardCheck },
+  { title: "الاشتراك", url: "/subscription", icon: CreditCard },
   { title: ar.nav.settings, url: "/settings", icon: Settings },
 ] as const;
 
@@ -48,10 +49,6 @@ export function AppSidebar() {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user) return;
-        if (user.email === "coonan89@gmail.com") {
-          setIsAdmin(true);
-          return;
-        }
         const { data } = await supabase
           .from("user_roles")
           .select("role")
@@ -95,14 +92,14 @@ export function AppSidebar() {
 
               {isAdmin && (
                 <>
-                  <SidebarMenuItem key="/curriculum-management">
+                  <SidebarMenuItem key="/admin/curriculum-management">
                     <SidebarMenuButton
                       asChild
-                      isActive={pathname === "/curriculum-management"}
+                      isActive={pathname === "/admin/curriculum-management"}
                       tooltip="إدارة المناهج"
                     >
                       <Link
-                        to="/curriculum-management"
+                        to="/admin/curriculum-management"
                         className="flex items-center gap-2 text-primary font-medium"
                       >
                         <ShieldCheck className="h-4 w-4" />
@@ -110,14 +107,14 @@ export function AppSidebar() {
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem key="/google-sheets">
+                  <SidebarMenuItem key="/admin/google-sheets">
                     <SidebarMenuButton
                       asChild
-                      isActive={pathname === "/google-sheets"}
+                      isActive={pathname === "/admin/google-sheets"}
                       tooltip="تكامل Google Sheets"
                     >
                       <Link
-                        to="/google-sheets"
+                        to="/admin/google-sheets"
                         className="flex items-center gap-2 text-emerald-600 font-medium hover:text-emerald-700"
                       >
                         <FileSpreadsheet className="h-4 w-4" />

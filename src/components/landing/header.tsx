@@ -17,15 +17,21 @@ export function LandingHeader({ authenticated, onSignIn, onPricing }: HeaderProp
         </Link>
 
         <nav className="hidden md:flex items-center gap-10 text-sm font-medium">
-          <a href="#product" className="hover:text-teal-600 transition">
+          <a href="#features" className="hover:text-teal-600 transition">
             المنتج
           </a>
 
-          <a href="#pricing" className="hover:text-teal-600 transition">
-            الأسعار
-          </a>
+          {authenticated ? (
+            <Link to="/subscription" className="hover:text-teal-600 transition">
+              الأسعار
+            </Link>
+          ) : (
+            <button type="button" onClick={onPricing} className="hover:text-teal-600 transition">
+              الأسعار
+            </button>
+          )}
 
-          <a href="#faq" className="hover:text-teal-600 transition">
+          <a href="#features" className="hover:text-teal-600 transition">
             الأسئلة
           </a>
         </nav>

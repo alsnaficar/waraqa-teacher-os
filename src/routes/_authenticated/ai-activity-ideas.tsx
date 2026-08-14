@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getLessonContext } from "@/features/lesson-context/services/context-engine";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -13,6 +14,7 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { generateActivityIdeas } from "@/platform/ai/functions/ai.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import { copyToClipboard, downloadArabicDocx } from "@/platform/ai/docx";
 import {
   CurriculumSelector,
@@ -21,8 +23,18 @@ import {
   type CurriculumSelection,
   type CurriculumSelectorErrors,
 } from "@/features/ai/components/curriculum-selector";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
+
+const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
+  stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
+  grade: z.string().optional(),
+  subject: z.string().optional(),
+  title: z.string().optional(),
+});
 
 export const Route = createFileRoute("/_authenticated/ai-activity-ideas")({
+  validateSearch: (s) => SearchSchema.parse(s),
   head: () => ({
     meta: [
       { title: "مولّد أفكار الأنشطة — Waraqa" },
@@ -69,8 +81,16 @@ const GROUP_LABEL: Record<"individual" | "pairs" | "group" | "whole_class", stri
 
 function ActivityIdeasPage() {
   const generate = useServerFn(generateActivityIdeas);
-  const [curriculum, setCurriculum] = useState<CurriculumSelection>(EMPTY_CURRICULUM);
-  const [title, setTitle] = useState("");
+  const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
+
+  const [curriculum, setCurriculum] = useState<CurriculumSelection>({
+    stage: search.stage ?? "",
+    grade: search.grade ?? "",
+    subject: search.subject ?? "",
+    semester: "",
+  });
+  const [title, setTitle] = useState(search.title ?? "");
   const [count, setCount] = useState("5");
   const [duration, setDuration] = useState<"short" | "medium" | "long">("medium");
   const [groupType, setGroupType] = useState<"individual" | "pairs" | "group" | "whole_class">(
@@ -82,8 +102,39 @@ function ActivityIdeasPage() {
   const subject = curriculum.subject;
 
   const mutation = useMutation({
-    mutationFn: (input: z.infer<typeof FormSchema>) => generate({ data: input }),
+    mutationFn: (input: z.infer<typeof FormSchema>) => {
+      if (!lessonSessionId) {
+        throw new Error("lessonSessionId مطلوب — افتح الأداة من حصة درس.");
+      }
+      return generate({ data: { ...input, lessonSessionId } });
+    },
   });
+
+  useEffect(() => {
+    if (search.title) return;
+
+    async function loadContext() {
+      const context = await getLessonContext();
+
+      if (!context) return;
+
+      const stage = context.grade.includes("متوسط")
+        ? "intermediate"
+        : context.grade.includes("ثانوي")
+          ? "secondary"
+          : "primary";
+
+      setCurriculum({
+        stage,
+        grade: context.grade,
+        subject: context.subject,
+        semester: "",
+      });
+      setTitle(context.title);
+    }
+
+    void loadContext();
+  }, [search.title]);
 
   function validateAndRun() {
     const curriculumErrors = validateCurriculum(curriculum) ?? {};
@@ -126,6 +177,12 @@ function ActivityIdeasPage() {
   }
 
   const canSubmit = !mutation.isPending;
+
+  const generated = mutation.data?.content;
+
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="أفكار الأنشطة" />;
+  }
 
   return (
     <PageShell>
@@ -226,7 +283,10 @@ function ActivityIdeasPage() {
             </Button>
 
             {mutation.isError ? (
-              <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
+              <div className="space-y-3">
+                <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
+                <EntitlementDeniedCta error={mutation.error} />
+              </div>
             ) : null}
           </CardContent>
         </Card>
@@ -266,6 +326,7 @@ function ActivityIdeasPage() {
             ) : mutation.isError ? (
               <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
                 <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
+                <EntitlementDeniedCta error={mutation.error} />
                 <Button variant="secondary" size="sm" onClick={validateAndRun}>
                   <RefreshCw className="ml-2 h-4 w-4" />
                   إعادة المحاولة

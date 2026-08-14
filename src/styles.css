@@ -168,3 +168,28 @@
 @utility gradient-hero {
   background: linear-gradient(135deg, oklch(0.48 0.09 190 / 0.08), oklch(0.85 0.09 75 / 0.15));
 }
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #semester-plan-print,
+  #semester-plan-print * {
+    visibility: visible !important;
+  }
+
+  #semester-plan-print {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 16px;
+    background: white;
+    color: black;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

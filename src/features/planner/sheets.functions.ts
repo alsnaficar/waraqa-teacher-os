@@ -1,10 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import crypto from "crypto";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { assertAdmin } from "@/platform/auth/assert-admin";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 import { deserializeLessonNotes } from "@/platform/curriculum/curriculum-management.functions";
-import type { Database } from "@/platform/database/supabase/types";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
   CONFIG_SCHEDULE_OVERRIDES_DATE,
@@ -104,29 +103,12 @@ async function getAccessToken(
   return data.access_token;
 }
 
-// Check admin role
-async function validateAdmin(
-  userId: string,
-  email: string,
-  supabaseAdmin: SupabaseClient<Database>,
-) {
-  if (email === "coonan89@gmail.com") return true;
-  const { data: userRole } = await supabaseAdmin
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (userRole?.role === "admin") return true;
-  throw new Error("عذراً، هذا الإجراء متاح فقط لمديري النظام (Administrators).");
-}
-
 // 1. Get Connection Configuration & Info
 export const getSheetsConnectionInfo = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<SheetConnectionInfo> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-    await validateAdmin(context.userId, context.claims.email || "", supabaseAdmin);
+    await assertAdmin(supabaseAdmin, context.userId);
 
     const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL || "";
     const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY || "";
@@ -189,7 +171,7 @@ export const runSheetsDiagnostics = createServerFn({ method: "POST" })
 
     // Check 1: Caller Permissions
     try {
-      await validateAdmin(context.userId, context.claims.email || "", supabaseAdmin);
+      await assertAdmin(supabaseAdmin, context.userId);
       results.push({
         name: "صلاحيات الوصول والتحكم",
         status: "PASS",
@@ -339,7 +321,7 @@ export const getSheetsWorksheets = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<SheetWorksheetInfo[]> => {
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-    await validateAdmin(context.userId, context.claims.email || "", supabaseAdmin);
+    await assertAdmin(supabaseAdmin, context.userId);
 
     const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
     const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY;
@@ -462,7 +444,7 @@ export const exportDataToGoogleSheets = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<ExportResult> => {
     const startTime = Date.now();
     const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-    await validateAdmin(context.userId, context.claims.email || "", supabaseAdmin);
+    await assertAdmin(supabaseAdmin, context.userId);
 
     const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
     const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY;
@@ -879,7 +861,7 @@ export const syncSheetsToSupabaseAdmin = createServerFn({ method: "POST" })
     }> => {
       const startTime = Date.now();
       const { supabaseAdmin } = await import("@/platform/database/supabase/client.server");
-      await validateAdmin(context.userId, context.claims.email || "", supabaseAdmin);
+      await assertAdmin(supabaseAdmin, context.userId);
 
       const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
       const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY;

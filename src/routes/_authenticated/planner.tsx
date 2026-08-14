@@ -1,19 +1,56 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
+import {
+  Archive,
+  CalendarRange,
+  CheckCircle2,
+  GitBranch,
+  Play,
+  Printer,
+  RefreshCw,
+  Table2,
+} from "lucide-react";
+
 import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { PlannerDesktopLayout } from "@/features/planner/components/planner-desktop-layout";
-import { PlannerMobileLayout } from "@/features/planner/components/planner-mobile-layout";
+import { TeacherWeeklyTimetable } from "@/features/teacher-timetable/components/teacher-weekly-timetable";
+import { SemesterPlanCalendarField } from "@/features/planner/components/semester-plan-calendar-field";
+import { SemesterPlanTable } from "@/features/planner/components/semester-plan-table";
+import { SemesterPlanPrintDocument } from "@/features/planner/components/semester-plan-print";
+import { SemesterPlanPrintDialog } from "@/features/planner/components/semester-plan-print-dialog";
 import { type DayKey, type Lesson } from "@/features/planner/components/types";
 import {
-  generateSchedule,
-  syncScheduleToDatabase,
-  recalculateAndSyncPlanner,
-  type CalculatedLessonEntry,
-} from "@/features/planner/services/planner-engine";
+  buildSemesterPlanMeta,
+  generateSemesterPlan,
+  loadOrGeneratePlan,
+  moveLessonInPlan,
+  shiftLessonOrder,
+  type SemesterPlanMeta,
+} from "@/features/planner/services/semester-plan.service";
+import {
+  approveSemesterPlan,
+  archiveSemesterPlan,
+  completeSemesterPlan,
+  createSemesterPlanVersion,
+  formatPlanVersionLabel,
+  getPlanUiActions,
+  SEMESTER_PLAN_STATUS_LABELS,
+  startSemesterPlanExecution,
+  updateSemesterPlanCalendarVariant,
+  type SemesterPlanRow,
+} from "@/features/planner/services/semester-plan-lifecycle";
+import { listSelectableCalendarVariants } from "@/features/calendar/services/calendar-variants";
+import type { SelectableCalendarVariant } from "@/features/calendar/services/calendar-variant-selection";
+import {
+  getActiveAcademicYear,
+  getCurrentAcademicTerm,
+} from "@/features/calendar/services/calendar.service";
 import type { LessonOverrideScope } from "@/features/planner/services/overrides";
+import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/utils/utils";
+import type { CalculatedLessonEntry } from "@/features/planner/services/planner-engine";
 
 export const Route = createFileRoute("/_authenticated/planner")({
   component: PlannerPage,
@@ -26,6 +63,8 @@ type Assignment = {
   klasses: string[];
 };
 
+type PlannerView = "week" | "semester";
+
 const DAY_MAP: Record<number, DayKey> = {
   0: "sun",
   1: "mon",
@@ -34,17 +73,65 @@ const DAY_MAP: Record<number, DayKey> = {
   4: "thu",
 };
 
+function formatUpdatedAt(value: string | null | undefined): string {
+  if (!value) return "—";
+  try {
+    return new Intl.DateTimeFormat("ar-SA", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value.slice(0, 16);
+  }
+}
+
 export default function PlannerPage() {
   const isMobile = useIsMobile();
+  const [view, setView] = useState<PlannerView>("semester");
   const [weekOffset, setWeekOffset] = useState(0);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishTarget, setPublishTarget] = useState("madrasati");
+  const [printOpen, setPrintOpen] = useState(false);
+  const [includeSchoolLogo, setIncludeSchoolLogo] = useState(false);
+  const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
+  const [includeQr, setIncludeQr] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [entries, setEntries] = useState<CalculatedLessonEntry[]>([]);
+  const [plan, setPlan] = useState<SemesterPlanRow | null>(null);
+  const [calendarVariants, setCalendarVariants] = useState<SelectableCalendarVariant[]>([]);
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
+  const [metaBase, setMetaBase] = useState({
+    teacherName: "",
+    schoolName: "",
+    educationAdministration: "",
+    subject: "",
+    grade: "",
+    semesterLabel: "",
+    academicYearLabel: "",
+  });
 
-  const { today, weekStart, weekEnd } = useMemo(() => {
+  const actions = getPlanUiActions(plan?.status ?? "draft");
+
+  const meta: SemesterPlanMeta = useMemo(
+    () =>
+      buildSemesterPlanMeta(
+        {
+          ...metaBase,
+          subject: subject || metaBase.subject,
+          grade: grade || metaBase.grade,
+          statusLabel: plan ? SEMESTER_PLAN_STATUS_LABELS[plan.status] : undefined,
+          versionLabel: plan ? formatPlanVersionLabel(plan.current_version) : undefined,
+          approvedAt: plan?.approved_at,
+          updatedAt: plan?.updated_at,
+        },
+        entries,
+      ),
+    [metaBase, subject, grade, entries, plan],
+  );
+
+  const { weekStart, weekEnd } = useMemo(() => {
     const todayDate = new Date();
     const wStart = new Date(todayDate);
     wStart.setDate(todayDate.getDate() - todayDate.getDay() + weekOffset * 7);
@@ -52,7 +139,7 @@ export default function PlannerPage() {
     const wEnd = new Date(wStart);
     wEnd.setDate(wStart.getDate() + 4);
 
-    return { today: todayDate, weekStart: wStart, weekEnd: wEnd };
+    return { weekStart: wStart, weekEnd: wEnd };
   }, [weekOffset]);
 
   const weekDates = useMemo(() => {
@@ -82,8 +169,14 @@ export default function PlannerPage() {
 
         let activeGrade = "الأول متوسط";
         let activeSubject = "العلوم";
+        let teacherName = "";
+        let schoolName = "";
+        let educationAdministration = "";
 
         if (profile) {
+          teacherName = profile.full_name || "";
+          schoolName = profile.school || "";
+          educationAdministration = profile.education_system || "";
           const classes = profile.classes as {
             assignments?: Assignment[];
           } | null;
@@ -98,25 +191,79 @@ export default function PlannerPage() {
           }
         }
 
+        const [year, term, variants] = await Promise.all([
+          getActiveAcademicYear(),
+          getCurrentAcademicTerm(),
+          listSelectableCalendarVariants(),
+        ]);
+        setCalendarVariants(variants);
+
         setGrade(activeGrade);
         setSubject(activeSubject);
+        setMetaBase({
+          teacherName,
+          schoolName,
+          educationAdministration,
+          subject: activeSubject,
+          grade: activeGrade,
+          semesterLabel: term?.label || profile?.semester || "",
+          academicYearLabel: year?.label || profile?.academic_year || "",
+        });
 
-        // load schedule
-        const calculated = await generateSchedule(activeSubject, activeGrade);
-        if (calculated.length > 0) {
-          setEntries(calculated);
-          await syncScheduleToDatabase(calculated, activeSubject);
-        } else {
-          const newSched = await recalculateAndSyncPlanner(activeSubject, activeGrade);
-          setEntries(newSched);
+        const loaded = await loadOrGeneratePlan(activeSubject, activeGrade);
+        setPlan(loaded.plan);
+        setEntries(loaded.entries);
+
+        // افتح تلقائياً أول أسبوع فعلي في الخطة إذا كان الأسبوع الحالي فارغاً.
+        if (loaded.entries.length > 0) {
+          const DAY_MS = 24 * 60 * 60 * 1000;
+          const WEEK_MS = 7 * DAY_MS;
+
+          const getWeekStart = (date: Date) => {
+            const start = new Date(date);
+            start.setHours(0, 0, 0, 0);
+            start.setDate(start.getDate() - start.getDay());
+            return start;
+          };
+
+          const currentWeekStart = getWeekStart(new Date());
+
+          const hasCurrentWeekEntries = loaded.entries.some((entry) => {
+            const entryDate = new Date(`${entry.suggestedDate}T00:00:00`);
+            return getWeekStart(entryDate).getTime() === currentWeekStart.getTime();
+          });
+
+          if (!hasCurrentWeekEntries) {
+            const currentWeekISO = currentWeekStart.toISOString().slice(0, 10);
+
+            const futureEntries = loaded.entries
+              .filter((entry) => entry.suggestedDate >= currentWeekISO)
+              .sort((a, b) => a.suggestedDate.localeCompare(b.suggestedDate));
+
+            const targetEntry =
+              futureEntries[0] ??
+              [...loaded.entries].sort((a, b) => b.suggestedDate.localeCompare(a.suggestedDate))[0];
+            if (targetEntry) {
+              const targetWeekStart = getWeekStart(
+                new Date(`${targetEntry.suggestedDate}T00:00:00`),
+              );
+
+              const offset = Math.round(
+                (targetWeekStart.getTime() - currentWeekStart.getTime()) / WEEK_MS,
+              );
+
+              setWeekOffset(offset);
+            }
+          }
         }
       } catch (err) {
         console.error("Error loading planner:", err);
+        toast.error("تعذر تحميل الخطة الدراسية");
       } finally {
         setLoading(false);
       }
     }
-    loadData();
+    void loadData();
   }, []);
 
   const lessons: Lesson[] = useMemo(() => {
@@ -139,7 +286,7 @@ export default function PlannerPage() {
     return lessons.find((l) => l.day === day && l.period === period);
   };
 
-  const onChangeLesson = (lesson: Lesson, newTitle: string, scope: LessonOverrideScope) => {
+  const onChangeLesson = (_lesson: Lesson, _newTitle: string, _scope: LessonOverrideScope) => {
     toast.info("جاري حفظ التعديل...");
   };
 
@@ -147,31 +294,97 @@ export default function PlannerPage() {
     toast.info(`${feature} قريباً!`);
   };
 
-  const props = {
-    weekOffset,
-    setWeekOffset,
-    weekStart,
-    weekEnd,
-    onComingSoon,
-    onPublishClick: () => setPublishOpen(true),
-    lessons,
-    lessonAt,
-    onChangeLesson,
-    publishOpen,
-    setPublishOpen,
-    publishTarget,
-    setPublishTarget,
-    onConfirmPublish: () => {
-      toast.success("تم النشر بنجاح!");
-      setPublishOpen(false);
-    },
+  const runGenerate = async () => {
+    if (!actions.canGenerate) {
+      toast.error("التوليد متاح للمسودة فقط — أنشئ إصداراً جديداً أولاً");
+      return;
+    }
+    setBusy(true);
+    try {
+      const next = await generateSemesterPlan(subject, grade, {
+        calendarVariantId: plan?.calendar_variant_id,
+      });
+      setPlan(next.plan);
+      setEntries(next.entries);
+      toast.success(
+        next.entries.length > 0
+          ? `تم توليد خطة الفصل (${next.entries.length} حصة)`
+          : "لم يُعثر على منهج منشور أو جدول حصص لهذا الصف والمادة",
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "فشل توليد خطة الفصل");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onMoveDate = async (lessonId: string, date: string, period: number) => {
+    if (!actions.canEdit) return;
+    setBusy(true);
+    try {
+      const next = await moveLessonInPlan({
+        lessonId,
+        targetDate: date,
+        targetPeriod: period,
+        subject,
+        grade,
+      });
+      setPlan(next.plan);
+      setEntries(next.entries);
+      toast.success("تم تحديث موعد الدرس");
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "تعذر نقل الدرس");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onShiftOrder = async (lessonId: string, direction: "up" | "down") => {
+    if (!actions.canEdit) return;
+    setBusy(true);
+    try {
+      const next = await shiftLessonOrder({
+        entries,
+        lessonId,
+        direction,
+        subject,
+        grade,
+      });
+      setPlan(next.plan);
+      setEntries(next.entries);
+      toast.success("تم تعديل ترتيب الدرس");
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "تعذر تعديل الترتيب");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runLifecycle = async (
+    action: () => Promise<{ plan: SemesterPlanRow }>,
+    successMessage: string,
+  ) => {
+    setBusy(true);
+    try {
+      const next = await action();
+      setPlan(next.plan);
+      toast.success(successMessage);
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "تعذر تحديث حالة الخطة");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (loading) {
     return (
       <PageShell className="px-3 md:px-6">
-        <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+        <div className="flex min-h-[400px] flex-col items-center justify-center">
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
           <p className="text-muted-foreground">جاري تحميل الخطة...</p>
         </div>
       </PageShell>
@@ -180,12 +393,226 @@ export default function PlannerPage() {
 
   return (
     <PageShell className="px-3 md:px-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-black tracking-tight">الخطة والجدول الدراسي</h1>
-        <p className="text-muted-foreground">تخطيط وعرض الحصص الدراسية بشكل مبسط</p>
+      <div className="mb-4 space-y-3">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">الخطة والجدول الدراسي</h1>
+          <p className="text-muted-foreground">
+            خطة الفصل هي المصدر الأساسي للتخطيط — الجدول الأسبوعي وحصص اليوم والتحضير يُشتقّون منها
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={view === "semester" ? "default" : "outline"}
+            className="h-11"
+            onClick={() => setView("semester")}
+          >
+            <CalendarRange className="ml-2 h-4 w-4" />
+            خطة الفصل
+          </Button>
+          <Button
+            type="button"
+            variant={view === "week" ? "default" : "outline"}
+            className="h-11"
+            onClick={() => setView("week")}
+          >
+            <Table2 className="ml-2 h-4 w-4" />
+            الجدول الأسبوعي
+          </Button>
+        </div>
+
+        {view === "semester" ? (
+          <div className="space-y-3 rounded-2xl border border-border bg-card p-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="inline-flex h-11 items-center rounded-xl bg-muted px-3 font-semibold">
+                {plan ? SEMESTER_PLAN_STATUS_LABELS[plan.status] : "مسودة"}
+              </span>
+              <span className="inline-flex h-11 items-center rounded-xl border border-border px-3">
+                {plan ? formatPlanVersionLabel(plan.current_version) : "الإصدار 1"}
+              </span>
+              <span className="text-muted-foreground">
+                آخر تحديث: {formatUpdatedAt(plan?.updated_at)}
+              </span>
+              {plan?.approved_at ? (
+                <span className="text-muted-foreground">
+                  الاعتماد: {plan.approved_at.slice(0, 10)}
+                </span>
+              ) : null}
+              <p className="w-full text-xs text-muted-foreground sm:ms-auto sm:w-auto">
+                {meta.academicYearLabel || "—"} · {meta.semesterLabel || "—"} · {subject} · {grade}
+              </p>
+            </div>
+
+            <SemesterPlanCalendarField
+              variants={calendarVariants}
+              calendarVariantId={plan?.calendar_variant_id}
+              editable={actions.canEdit}
+              disabled={busy}
+              onSelect={(variantId) => {
+                if (!plan) return;
+                void (async () => {
+                  setBusy(true);
+                  try {
+                    const updated = await updateSemesterPlanCalendarVariant(plan.id, variantId);
+                    setPlan(updated);
+                    toast.success("تم حفظ التقويم الدراسي للخطة");
+                  } catch (error) {
+                    console.error(error);
+                    toast.error(
+                      error instanceof Error ? error.message : "تعذر حفظ التقويم الدراسي",
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+            />
+
+            <div className="flex flex-wrap gap-2">
+              {actions.canGenerate ? (
+                <Button
+                  className="h-11 min-w-[44px]"
+                  disabled={busy}
+                  onClick={() => void runGenerate()}
+                >
+                  <RefreshCw className={cn("ml-2 h-4 w-4", busy && "animate-spin")} />
+                  {entries.length > 0 ? "إعادة توليد" : "توليد خطة الفصل"}
+                </Button>
+              ) : null}
+
+              {actions.canApprove ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || entries.length === 0 || !plan}
+                  variant="default"
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(
+                      () => approveSemesterPlan(plan.id),
+                      "تم اعتماد الخطة — أصبحت غير قابلة للتعديل المباشر",
+                    )
+                  }
+                >
+                  <CheckCircle2 className="ml-2 h-4 w-4" />
+                  اعتماد الخطة
+                </Button>
+              ) : null}
+
+              {actions.canStartExecution ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(() => startSemesterPlanExecution(plan.id), "بدأ تنفيذ الخطة")
+                  }
+                >
+                  <Play className="ml-2 h-4 w-4" />
+                  بدء التنفيذ
+                </Button>
+              ) : null}
+
+              {actions.canCreateVersion ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  variant="outline"
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(
+                      () => createSemesterPlanVersion(plan.id),
+                      "تم إنشاء إصدار جديد كمسودة — الإصدار السابق محفوظ للمراجعة",
+                    )
+                  }
+                >
+                  <GitBranch className="ml-2 h-4 w-4" />
+                  إنشاء إصدار جديد
+                </Button>
+              ) : null}
+
+              {actions.canComplete ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  variant="outline"
+                  onClick={() =>
+                    plan && void runLifecycle(() => completeSemesterPlan(plan.id), "تم إكمال الخطة")
+                  }
+                >
+                  <CheckCircle2 className="ml-2 h-4 w-4" />
+                  إكمال الخطة
+                </Button>
+              ) : null}
+
+              {actions.canArchive ? (
+                <Button
+                  className="h-11"
+                  disabled={busy || !plan}
+                  variant="outline"
+                  onClick={() =>
+                    plan &&
+                    void runLifecycle(
+                      () => archiveSemesterPlan(plan.id),
+                      "تم أرشفة الخطة — للقراءة والطباعة فقط",
+                    )
+                  }
+                >
+                  <Archive className="ml-2 h-4 w-4" />
+                  أرشفة
+                </Button>
+              ) : null}
+
+              {actions.canPrint ? (
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  disabled={busy || entries.length === 0}
+                  onClick={() => setPrintOpen(true)}
+                >
+                  <Printer className="ml-2 h-4 w-4" />
+                  طباعة خطة الفصل
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {isMobile ? <PlannerMobileLayout {...props} /> : <PlannerDesktopLayout {...props} />}
+      {view === "semester" ? (
+        <SemesterPlanTable
+          entries={entries}
+          busy={busy}
+          readOnly={actions.isReadOnly}
+          onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
+          onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
+        />
+      ) : (
+        <TeacherWeeklyTimetable />
+      )}
+
+      <SemesterPlanPrintDialog
+        open={printOpen}
+        onOpenChange={setPrintOpen}
+        includeSchoolLogo={includeSchoolLogo}
+        onIncludeSchoolLogoChange={setIncludeSchoolLogo}
+        schoolLogoUrl={schoolLogoUrl}
+        onSchoolLogoUrlChange={setSchoolLogoUrl}
+        includeQr={includeQr}
+        onIncludeQrChange={setIncludeQr}
+        onPrint={() => {
+          setPrintOpen(false);
+          window.setTimeout(() => window.print(), 250);
+        }}
+      />
+
+      <SemesterPlanPrintDocument
+        meta={meta}
+        entries={entries}
+        includeSchoolLogo={includeSchoolLogo}
+        schoolLogoUrl={schoolLogoUrl}
+        includeQr={includeQr}
+      />
     </PageShell>
   );
 }

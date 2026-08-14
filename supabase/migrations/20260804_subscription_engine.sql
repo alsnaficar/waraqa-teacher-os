@@ -22,7 +22,6 @@ create table if not exists subscriptions (
                       created_at timestamptz default now(),
                         updated_at timestamptz default now()
                         );
-)
 create table if not exists payment_methods (
   id uuid primary key default gen_random_uuid(),
   name text not null,

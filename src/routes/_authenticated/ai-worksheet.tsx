@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { getLessonContext } from "@/features/lesson-context/services/context-engine";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -9,12 +11,15 @@ import { SectionHeader } from "@/shared/components/section-header";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { generateWorksheet } from "@/platform/ai/functions/ai.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import { useAIGeneration, useAIClipboard, useAIExport } from "@/features/ai/components/hooks";
 import { AIGenerationForm } from "@/features/ai/components/ai-generation-form";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
 import { AIExportPanel } from "@/features/ai/components/ai-export-panel";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 
 const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
   grade: z.string().optional(),
   subject: z.string().optional(),
@@ -80,9 +85,15 @@ const HOMEWORK_TYPE_LABEL: Record<"essay" | "mcq" | "true_false" | "mixed", stri
 function WorksheetPage() {
   const generate = useServerFn(generateWorksheet);
   const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
 
   const mutation = useMutation({
-    mutationFn: (input: z.input<typeof FormSchema>) => generate({ data: input }),
+    mutationFn: (input: z.input<typeof FormSchema>) => {
+      if (!lessonSessionId) {
+        throw new Error("lessonSessionId مطلوب — افتح الأداة من حصة درس.");
+      }
+      return generate({ data: { ...input, lessonSessionId } });
+    },
   });
 
   const {
@@ -121,6 +132,33 @@ function WorksheetPage() {
   const { copy, copied } = useAIClipboard();
   const { downloadDocx, exporting } = useAIExport();
 
+  useEffect(() => {
+    if (search.title) return;
+
+    async function loadContext() {
+      const context = await getLessonContext();
+
+      if (!context) return;
+
+      const stage = context.grade.includes("متوسط")
+        ? "intermediate"
+        : context.grade.includes("ثانوي")
+          ? "secondary"
+          : "primary";
+
+      setCurriculum({
+        stage,
+        grade: context.grade,
+        subject: context.subject,
+        semester: "",
+      });
+
+      setTitle(context.title);
+    }
+
+    void loadContext();
+  }, [search.title, setCurriculum, setTitle]);
+
   const handleCopy = async () => {
     await copy(editedContent);
   };
@@ -133,6 +171,10 @@ function WorksheetPage() {
       filename: title || "homework",
     });
   };
+
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="ورقة العمل / الواجب" />;
+  }
 
   return (
     <PageShell>
@@ -221,6 +263,7 @@ function WorksheetPage() {
                   <RefreshCw className="h-4 w-4" />
                   إعادة المحاولة
                 </Button>
+                <EntitlementDeniedCta error={mutation.error} />
               </div>
             ) : (
               <div className="flex min-h-[450px] flex-col items-center justify-center text-center p-8 space-y-4">

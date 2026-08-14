@@ -1,3 +1,5 @@
+import { getLessonSessionView } from "@/platform/lesson-sessions/get-lesson-session-view.functions";
+import { getCurrentLessonPreparation } from "@/platform/lesson-sessions/get-current-lesson-preparation.functions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -33,16 +35,11 @@ import { Button } from "@/shared/ui/button";
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
-import { type Assignment } from "@/routes/_authenticated/settings";
-import {
-  CurriculumSelector,
-  type CurriculumSelection,
-} from "@/features/ai/components/curriculum-selector";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
-import { generateLessonPreparation } from "@/platform/ai/functions/ai-lesson-generator.functions";
+import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
+import { prepareLessonSession } from "@/platform/lesson-sessions/prepare-lesson-session.functions";
+import { EntitlementDeniedCta } from "@/features/billing/components/entitlement-denied-cta";
 import { downloadStructuredLessonPrepDocx, copyToClipboard } from "@/platform/ai/docx";
-import { supabase } from "@/platform/database/supabase/client";
 import {
   CONFIG_ACADEMIC_CALENDAR_DATE,
   CONFIG_SCHEDULE_OVERRIDES_DATE,
@@ -51,6 +48,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
 const SearchSchema = z.object({
+  lessonSessionId: z.string().uuid().optional(),
   stage: z.enum(["primary", "intermediate", "secondary"]).optional(),
   grade: z.string().optional(),
   subject: z.string().optional(),
@@ -147,158 +145,159 @@ ${data.assessmentAndHomework?.summativeAssessment?.map((item: string) => `- ${it
 }
 
 function LessonPlanPage() {
-  const generate = useServerFn(generateLessonPreparation);
+  const prepare = useServerFn(prepareLessonSession);
   const search = Route.useSearch();
+  const lessonSessionId = search.lessonSessionId;
 
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState<string>("");
+  const getSessionView = useServerFn(getLessonSessionView);
+  const getCurrentPreparation = useServerFn(getCurrentLessonPreparation);
+  const [sessionView, setSessionView] = useState<Awaited<ReturnType<typeof getSessionView>> | null>(
+    null,
+  );
 
-  useEffect(() => {
-    async function fetchAssignments() {
-      const { data: userRes } = await supabase.auth.getUser();
-      if (!userRes.user) return;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("classes, subject, grade")
-        .eq("id", userRes.user.id)
-        .maybeSingle();
+  const [currentPreparation, setCurrentPreparation] = useState<Awaited<
+    ReturnType<typeof getCurrentLessonPreparation>
+  > | null>(null);
 
-      if (profile) {
-        let list: Assignment[] = [];
-        const classes = (profile.classes as Record<string, unknown>) || {};
-        if (Array.isArray(classes.assignments)) {
-          list = classes.assignments as Assignment[];
-        } else if (profile.subject || profile.grade) {
-          const grade = profile.grade || "";
-          const subject = profile.subject || "";
-          const stage = grade.includes("متوسط")
-            ? "intermediate"
-            : grade.includes("ثانوي")
-              ? "secondary"
-              : "primary";
-          list = [
-            {
-              stage,
-              grade,
-              subject,
-              klasses: ["أ"],
-            },
-          ];
-        }
-        setAssignments(list);
-      }
-    }
-    fetchAssignments();
-  }, []);
-
-  const [curriculum, setCurriculum] = useState<CurriculumSelection>({
-    stage: search.stage ?? "",
-    grade: search.grade ?? "",
-    subject: search.subject ?? "",
+  const curriculum = {
+    stage: sessionView?.grade?.includes("متوسط")
+      ? "intermediate"
+      : sessionView?.grade?.includes("ثانوي")
+        ? "secondary"
+        : "primary",
+    grade: sessionView?.grade ?? "",
+    subject: sessionView?.subject ?? "",
     semester: "",
-  });
+  } as const;
 
   const [lessonName, setLessonName] = useState(search.title ?? "");
   const [objectives, setObjectives] = useState("");
   const [unit, setUnit] = useState("");
   const [duration, setDuration] = useState("45 دقيقة");
-
+  const [lessonId, setLessonId] = useState<string | null>(null);
+  const [suggestedDate, setSuggestedDate] = useState("");
   const [viewMode, setViewMode] = useState<"interactive" | "markdown">("interactive");
   const [editedMarkdown, setEditedMarkdown] = useState("");
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  // Fetch today's scheduled lesson if initial search lesson title is empty
   useEffect(() => {
-    if (search.title) {
-      setLessonName(search.title);
-      return;
-    }
+    if (!lessonSessionId) return;
 
-    async function loadTodayLesson() {
+    let cancelled = false;
+
+    async function loadSessionView() {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+        const view = await getSessionView({
+          data: { lessonSessionId },
+        });
 
-        const today = new Date();
-        const todayISO = today.toISOString().slice(0, 10);
+        if (cancelled) return;
 
-        const { data: entries, error } = await supabase
-          .from("planner_entries")
-          .select("notes")
-          .eq("user_id", user.id)
-          .not("week_start_date", "eq", CONFIG_ACADEMIC_CALENDAR_DATE)
-          .not("week_start_date", "eq", CONFIG_SCHEDULE_OVERRIDES_DATE);
+        setSessionView(view);
 
-        if (error || !entries) return;
+        const preparation = await getCurrentPreparation({
+          data: { lessonSessionId },
+        });
 
-        const todayEntry = entries
-          .map((e) => {
-            try {
-              return JSON.parse(e.notes || "{}");
-            } catch {
-              return {};
-            }
-          })
-          .find((notes) => notes.suggestedDate === todayISO && notes.status !== "Skipped");
+        if (cancelled) return;
 
-        if (todayEntry && todayEntry.lessonTitle) {
-          const g = todayEntry.className || "";
-          let computedStage: "primary" | "intermediate" | "secondary" = "primary";
-          if (g.includes("متوسط")) {
-            computedStage = "intermediate";
-          } else if (g.includes("ثانوي")) {
-            computedStage = "secondary";
-          }
+        setCurrentPreparation(preparation);
 
-          setCurriculum({
-            stage: computedStage,
-            grade: todayEntry.className || "",
-            subject: todayEntry.subject || "",
-            semester: todayEntry.semester || "",
-          });
-          setLessonName(todayEntry.lessonTitle);
-          setObjectives(todayEntry.objectives || "");
-          toast.success(`تم تحميل درس اليوم المجدول تلقائياً: ${todayEntry.lessonTitle}`);
+        if (preparation?.content) {
+          setEditedMarkdown(
+            convertStructuredToMarkdown(
+              view.subject,
+              view.grade,
+              view.lessonTitle,
+              view.unitTitle ?? "",
+              preparation.content as StructuredLessonPrep,
+            ),
+          );
         }
+
+        setLessonName(view.lessonTitle);
+        setLessonId(view.curriculumLessonId);
+        setObjectives(view.lessonObjectives ?? "");
+        setUnit(view.unitTitle ?? "");
+        setSuggestedDate(view.sessionDate);
+
+        toast.success(
+          preparation
+            ? `تم تحميل الحصة والتحضير المحفوظ: ${view.lessonTitle}`
+            : `تم تحميل الحصة: ${view.lessonTitle}`,
+        );
       } catch (err) {
-        console.warn("Failed to auto-load today's lesson:", err);
+        if (!cancelled) {
+          console.error("Failed to load lesson session:", err);
+          toast.error(err instanceof Error ? err.message : "تعذر تحميل بيانات الحصة.");
+        }
       }
     }
 
-    loadTodayLesson();
-  }, [search.title]);
+    loadSessionView();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lessonSessionId, getSessionView, getCurrentPreparation]);
 
   const mutation = useMutation({
-    mutationFn: async (input: {
-      subject: string;
-      grade: string;
-      lessonName: string;
-      objectives?: string;
-      unit?: string;
-    }) => {
-      const result = await generate({ data: input });
-      return result;
+    mutationFn: async (input: { lessonSessionId: string }) => {
+      return prepare({ data: input });
     },
-    onSuccess: (data) => {
-      const md = convertStructuredToMarkdown(
-        curriculum.subject,
-        curriculum.grade,
-        lessonName,
-        unit,
-        data.content as StructuredLessonPrep,
-      );
-      setEditedMarkdown(md);
-      toast.success("تم توليد تحضير الدرس بنجاح!");
+    onSuccess: async () => {
+      // The Prepare pipeline persists the generation and marks the session prepared.
+      // Reload the authoritative session/preparation state from the server.
+      if (!lessonSessionId) return;
+
+      try {
+        const [view, preparation] = await Promise.all([
+          getSessionView({ data: { lessonSessionId } }),
+          getCurrentPreparation({ data: { lessonSessionId } }),
+        ]);
+
+        setSessionView(view);
+        setCurrentPreparation(preparation);
+
+        if (preparation?.content) {
+          setEditedMarkdown(
+            convertStructuredToMarkdown(
+              view.subject,
+              view.grade,
+              view.lessonTitle,
+              view.unitTitle ?? "",
+              preparation.content as StructuredLessonPrep,
+            ),
+          );
+        }
+
+        setLessonName(view.lessonTitle);
+        setLessonId(view.curriculumLessonId);
+        setObjectives(view.lessonObjectives ?? "");
+        setUnit(view.unitTitle ?? "");
+        setSuggestedDate(view.sessionDate);
+
+        toast.success("تم توليد تحضير الدرس وحفظه بنجاح!");
+      } catch (error) {
+        console.error("Failed to reload prepared lesson:", error);
+        toast.error("تم التوليد، لكن تعذر تحديث شاشة التحضير.");
+      }
     },
     onError: (error) => {
       console.error(error);
       toast.error(error.message || "فشل في توليد تحضير الدرس.");
     },
   });
+
+  const resetMutation = mutation.reset;
+
+  useEffect(() => {
+    resetMutation();
+    setEditedMarkdown("");
+    setCurrentPreparation(null);
+  }, [lessonSessionId, resetMutation]);
 
   const handleGenerate = () => {
     const errors: Record<string, string> = {};
@@ -314,25 +313,20 @@ function LessonPlanPage() {
 
     setValidationErrors({});
     mutation.mutate({
-      subject: curriculum.subject,
-      grade: curriculum.grade,
-      lessonName,
-      objectives: objectives || undefined,
-      unit: unit || undefined,
+      lessonSessionId: lessonSessionId!,
     });
   };
-
   const handleCopy = async () => {
     const contentToCopy =
       viewMode === "markdown"
         ? editedMarkdown
-        : mutation.data?.content
+        : lessonData
           ? convertStructuredToMarkdown(
               curriculum.subject,
               curriculum.grade,
               lessonName,
               unit,
-              mutation.data.content as StructuredLessonPrep,
+              lessonData,
             )
           : "";
 
@@ -343,7 +337,7 @@ function LessonPlanPage() {
   };
 
   const handleDownload = async () => {
-    if (!mutation.data?.content) return;
+    if (!lessonData) return;
     setExporting(true);
     try {
       await downloadStructuredLessonPrepDocx({
@@ -352,7 +346,7 @@ function LessonPlanPage() {
         grade: curriculum.grade,
         duration,
         unit: unit || "غير محدد",
-        data: mutation.data.content as StructuredLessonPrep,
+        data: lessonData,
         filename: lessonName || "تحضير_درس",
       });
     } finally {
@@ -361,7 +355,11 @@ function LessonPlanPage() {
   };
 
   const isPending = mutation.isPending;
-  const lessonData = mutation.data?.content as StructuredLessonPrep | undefined;
+  const lessonData = currentPreparation?.content as StructuredLessonPrep | undefined;
+
+  if (!lessonSessionId) {
+    return <SessionBindingRequiredGate toolLabel="تحضير الدرس" />;
+  }
 
   return (
     <PageShell>
@@ -397,48 +395,6 @@ function LessonPlanPage() {
               <CardDescription>أدخل تفاصيل الدرس للحصول على تحضير تفصيلي متناسق.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              {assignments.length > 0 && (
-                <div className="space-y-1.5 border-b pb-4 mb-4">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    اختر من المواد والصفوف المسندة لك لتعبئة البيانات تلقائياً
-                  </Label>
-                  <Select
-                    value={selectedIdx}
-                    onValueChange={(val) => {
-                      setSelectedIdx(val);
-                      const idx = parseInt(val, 10);
-                      const selected = assignments[idx];
-                      if (selected) {
-                        setCurriculum({
-                          stage: selected.stage,
-                          grade: selected.grade,
-                          subject: selected.subject,
-                          semester: curriculum.semester,
-                        });
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-10 text-xs bg-slate-50/50 border-dashed border-slate-200">
-                      <SelectValue placeholder="اختر الإسناد للتعبئة التلقائية..." />
-                    </SelectTrigger>
-                    <SelectContent dir="rtl">
-                      {assignments.map((asm, idx) => (
-                        <SelectItem key={idx} value={String(idx)} className="text-xs">
-                          {asm.subject} - {asm.grade}{" "}
-                          {asm.klasses?.length > 0 ? `(فصول: ${asm.klasses.join(", ")})` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <CurriculumSelector
-                value={curriculum}
-                onChange={setCurriculum}
-                errors={validationErrors}
-              />
-
               <div className="space-y-2">
                 <Label
                   htmlFor="lessonName"
@@ -891,6 +847,7 @@ function LessonPlanPage() {
                   <RefreshCw className="h-4 w-4" />
                   إعادة المحاولة
                 </Button>
+                <EntitlementDeniedCta error={mutation.error} />
               </div>
             ) : (
               <div

@@ -39,43 +39,47 @@ type ToolCard = {
   icon: LucideIcon;
   title: string;
   body: string;
-  to?: "/ai-lesson-plan" | "/ai-worksheet" | "/ai-quiz" | "/ai-activity-ideas";
+  /** Session-bound tools open via /lesson-sessions (P3 Step 2). */
+  to?: "/lesson-sessions" | "/ai-enrichment";
+  comingSoon?: boolean;
 };
 
 const tools: ToolCard[] = [
   {
     icon: FileText,
     title: "خطة درس",
-    body: "أنشئ خطة درس متكاملة انطلاقاً من موضوع أو هدف تعليمي.",
-    to: "/ai-lesson-plan",
+    body: "أنشئ خطة درس متكاملة انطلاقاً من حصة درس اليوم (مرتبطة بـ Lesson Session).",
+    to: "/lesson-sessions",
   },
   {
     icon: PenLine,
     title: "الواجب",
-    body: "أنشئ واجبات جاهزة للطباعة بأسلوب متدرج.",
-    to: "/ai-worksheet",
+    body: "أنشئ واجبات جاهزة للطباعة من حصة درس محددة.",
+    to: "/lesson-sessions",
   },
   {
     icon: ListChecks,
     title: "اختبار قصير",
-    body: "ولّد اختبارات متعددة الاختيار أو أسئلة مفتوحة تلقائياً.",
-    to: "/ai-quiz",
+    body: "ولّد اختبارات مرتبطة بحصة درس محددة.",
+    to: "/lesson-sessions",
   },
   {
     icon: Sparkles,
     title: "أفكار أنشطة",
-    body: "احصل على أفكار أنشطة صفية إبداعية.",
-    to: "/ai-activity-ideas",
+    body: "احصل على أفكار أنشطة صفية انطلاقاً من حصة درس.",
+    to: "/lesson-sessions",
   },
   {
     icon: Presentation,
     title: "عرض تقديمي",
     body: "حوّل الدرس إلى شرائح عرض جاهزة.",
+    comingSoon: true,
   },
   {
     icon: MessageSquare,
     title: "مساعد المعلم",
     body: "محادثة ذكية للإجابة عن أسئلتك التربوية.",
+    comingSoon: true,
   },
 ];
 
@@ -84,11 +88,11 @@ function AIWorkspacePage() {
     <PageShell>
       <SectionHeader
         title="مساحة الذكاء الاصطناعي"
-        description="أدوات ذكية لإنشاء المحتوى التعليمي بسرعة."
+        description="أدوات التحضير مرتبطة بحصة درس — اختر الحصة أولاً من حصص اليوم."
       />
       <div className="grid gap-4 sm:grid-cols-2">
         {tools.map((t) => {
-          const enabled = Boolean(t.to);
+          const enabled = Boolean(t.to) && !t.comingSoon;
           return (
             <Card key={t.title} className="relative overflow-hidden">
               <CardContent className="p-6">
@@ -97,7 +101,7 @@ function AIWorkspacePage() {
                     <t.icon className="h-5 w-5" />
                   </div>
                   {enabled ? (
-                    <Badge>متاح</Badge>
+                    <Badge>متاح عبر الحصة</Badge>
                   ) : (
                     <Badge variant="secondary">{ar.common.comingSoon}</Badge>
                   )}
@@ -107,7 +111,7 @@ function AIWorkspacePage() {
                 {enabled && t.to ? (
                   <Button asChild size="sm" className="mt-4">
                     <Link to={t.to}>
-                      فتح الأداة
+                      اختيار حصة
                       <ArrowLeft className="mr-1 h-4 w-4" />
                     </Link>
                   </Button>

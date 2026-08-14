@@ -12,8 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ConnectSchoolRouteImport } from './routes/connect-school'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedAiRouteImport } from './routes/_authenticated/ai'
 import { Route as AuthenticatedAiActivityIdeasRouteImport } from './routes/_authenticated/ai-activity-ideas'
 import { Route as AuthenticatedAiEnrichmentRouteImport } from './routes/_authenticated/ai-enrichment'
@@ -21,15 +24,25 @@ import { Route as AuthenticatedAiLessonPlanRouteImport } from './routes/_authent
 import { Route as AuthenticatedAiQuizRouteImport } from './routes/_authenticated/ai-quiz'
 import { Route as AuthenticatedAiWorksheetRouteImport } from './routes/_authenticated/ai-worksheet'
 import { Route as AuthenticatedCorrectionsRouteImport } from './routes/_authenticated/corrections'
-import { Route as AuthenticatedCurriculumRouteImport } from './routes/_authenticated/curriculum'
 import { Route as AuthenticatedCurriculumManagementRouteImport } from './routes/_authenticated/curriculum-management'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedGoogleSheetsRouteImport } from './routes/_authenticated/google-sheets'
+import { Route as AuthenticatedGradingRouteImport } from './routes/_authenticated/grading'
+import { Route as AuthenticatedHomeworkRouteImport } from './routes/_authenticated/homework'
+import { Route as AuthenticatedLessonSessionsRouteImport } from './routes/_authenticated/lesson-sessions'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPlannerRouteImport } from './routes/_authenticated/planner'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSubscriptionRouteImport } from './routes/_authenticated/subscription'
+import { Route as AuthenticatedTestsRouteImport } from './routes/_authenticated/tests'
+import { Route as AuthenticatedWeeklyPreparationRouteImport } from './routes/_authenticated/weekly-preparation'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminAcademicCalendarRouteImport } from './routes/_authenticated/admin/academic-calendar'
+import { Route as AuthenticatedAdminCurriculumManagementRouteImport } from './routes/_authenticated/admin/curriculum-management'
+import { Route as AuthenticatedAdminGoogleSheetsRouteImport } from './routes/_authenticated/admin/google-sheets'
+import { Route as AuthenticatedAdminPaymentsRouteImport } from './routes/_authenticated/admin/payments'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -45,6 +58,16 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConnectSchoolRoute = ConnectSchoolRouteImport.update({
+  id: '/connect-school',
+  path: '/connect-school',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -54,6 +77,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAiRoute = AuthenticatedAiRouteImport.update({
   id: '/ai',
@@ -95,11 +123,6 @@ const AuthenticatedCorrectionsRoute =
     path: '/corrections',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedCurriculumRoute = AuthenticatedCurriculumRouteImport.update({
-  id: '/curriculum',
-  path: '/curriculum',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedCurriculumManagementRoute =
   AuthenticatedCurriculumManagementRouteImport.update({
     id: '/curriculum-management',
@@ -115,6 +138,22 @@ const AuthenticatedGoogleSheetsRoute =
   AuthenticatedGoogleSheetsRouteImport.update({
     id: '/google-sheets',
     path: '/google-sheets',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedGradingRoute = AuthenticatedGradingRouteImport.update({
+  id: '/grading',
+  path: '/grading',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHomeworkRoute = AuthenticatedHomeworkRouteImport.update({
+  id: '/homework',
+  path: '/homework',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedLessonSessionsRoute =
+  AuthenticatedLessonSessionsRouteImport.update({
+    id: '/lesson-sessions',
+    path: '/lesson-sessions',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedNotificationsRoute =
@@ -144,12 +183,60 @@ const AuthenticatedSubscriptionRoute =
     path: '/subscription',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTestsRoute = AuthenticatedTestsRouteImport.update({
+  id: '/tests',
+  path: '/tests',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWeeklyPreparationRoute =
+  AuthenticatedWeeklyPreparationRouteImport.update({
+    id: '/weekly-preparation',
+    path: '/weekly-preparation',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
+const AuthenticatedAdminAcademicCalendarRoute =
+  AuthenticatedAdminAcademicCalendarRouteImport.update({
+    id: '/academic-calendar',
+    path: '/academic-calendar',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminCurriculumManagementRoute =
+  AuthenticatedAdminCurriculumManagementRouteImport.update({
+    id: '/curriculum-management',
+    path: '/curriculum-management',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminGoogleSheetsRoute =
+  AuthenticatedAdminGoogleSheetsRouteImport.update({
+    id: '/google-sheets',
+    path: '/google-sheets',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminPaymentsRoute =
+  AuthenticatedAdminPaymentsRouteImport.update({
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/connect-school': typeof ConnectSchoolRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/ai': typeof AuthenticatedAiRoute
   '/ai-activity-ideas': typeof AuthenticatedAiActivityIdeasRoute
   '/ai-enrichment': typeof AuthenticatedAiEnrichmentRoute
@@ -157,19 +244,31 @@ export interface FileRoutesByFullPath {
   '/ai-quiz': typeof AuthenticatedAiQuizRoute
   '/ai-worksheet': typeof AuthenticatedAiWorksheetRoute
   '/corrections': typeof AuthenticatedCorrectionsRoute
-  '/curriculum': typeof AuthenticatedCurriculumRoute
   '/curriculum-management': typeof AuthenticatedCurriculumManagementRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/google-sheets': typeof AuthenticatedGoogleSheetsRoute
+  '/grading': typeof AuthenticatedGradingRoute
+  '/homework': typeof AuthenticatedHomeworkRoute
+  '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/tests': typeof AuthenticatedTestsRoute
+  '/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
+  '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
+  '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
+  '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/connect-school': typeof ConnectSchoolRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/ai': typeof AuthenticatedAiRoute
@@ -179,23 +278,36 @@ export interface FileRoutesByTo {
   '/ai-quiz': typeof AuthenticatedAiQuizRoute
   '/ai-worksheet': typeof AuthenticatedAiWorksheetRoute
   '/corrections': typeof AuthenticatedCorrectionsRoute
-  '/curriculum': typeof AuthenticatedCurriculumRoute
   '/curriculum-management': typeof AuthenticatedCurriculumManagementRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/google-sheets': typeof AuthenticatedGoogleSheetsRoute
+  '/grading': typeof AuthenticatedGradingRoute
+  '/homework': typeof AuthenticatedHomeworkRoute
+  '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/subscription': typeof AuthenticatedSubscriptionRoute
+  '/tests': typeof AuthenticatedTestsRoute
+  '/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
+  '/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
+  '/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
+  '/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/connect-school': typeof ConnectSchoolRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/ai': typeof AuthenticatedAiRoute
   '/_authenticated/ai-activity-ideas': typeof AuthenticatedAiActivityIdeasRoute
   '/_authenticated/ai-enrichment': typeof AuthenticatedAiEnrichmentRoute
@@ -203,23 +315,36 @@ export interface FileRoutesById {
   '/_authenticated/ai-quiz': typeof AuthenticatedAiQuizRoute
   '/_authenticated/ai-worksheet': typeof AuthenticatedAiWorksheetRoute
   '/_authenticated/corrections': typeof AuthenticatedCorrectionsRoute
-  '/_authenticated/curriculum': typeof AuthenticatedCurriculumRoute
   '/_authenticated/curriculum-management': typeof AuthenticatedCurriculumManagementRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/google-sheets': typeof AuthenticatedGoogleSheetsRoute
+  '/_authenticated/grading': typeof AuthenticatedGradingRoute
+  '/_authenticated/homework': typeof AuthenticatedHomeworkRoute
+  '/_authenticated/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/planner': typeof AuthenticatedPlannerRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/subscription': typeof AuthenticatedSubscriptionRoute
+  '/_authenticated/tests': typeof AuthenticatedTestsRoute
+  '/_authenticated/weekly-preparation': typeof AuthenticatedWeeklyPreparationRoute
+  '/_authenticated/admin/academic-calendar': typeof AuthenticatedAdminAcademicCalendarRoute
+  '/_authenticated/admin/curriculum-management': typeof AuthenticatedAdminCurriculumManagementRoute
+  '/_authenticated/admin/google-sheets': typeof AuthenticatedAdminGoogleSheetsRoute
+  '/_authenticated/admin/payments': typeof AuthenticatedAdminPaymentsRoute
+  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
+    | '/connect-school'
+    | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
+    | '/admin'
     | '/ai'
     | '/ai-activity-ideas'
     | '/ai-enrichment'
@@ -227,19 +352,31 @@ export interface FileRouteTypes {
     | '/ai-quiz'
     | '/ai-worksheet'
     | '/corrections'
-    | '/curriculum'
     | '/curriculum-management'
     | '/dashboard'
     | '/google-sheets'
+    | '/grading'
+    | '/homework'
+    | '/lesson-sessions'
     | '/notifications'
     | '/planner'
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/tests'
+    | '/weekly-preparation'
+    | '/admin/academic-calendar'
+    | '/admin/curriculum-management'
+    | '/admin/google-sheets'
+    | '/admin/payments'
+    | '/admin/users'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/connect-school'
+    | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
     | '/ai'
@@ -249,22 +386,35 @@ export interface FileRouteTypes {
     | '/ai-quiz'
     | '/ai-worksheet'
     | '/corrections'
-    | '/curriculum'
     | '/curriculum-management'
     | '/dashboard'
     | '/google-sheets'
+    | '/grading'
+    | '/homework'
+    | '/lesson-sessions'
     | '/notifications'
     | '/planner'
     | '/reports'
     | '/settings'
     | '/subscription'
+    | '/tests'
+    | '/weekly-preparation'
+    | '/admin/academic-calendar'
+    | '/admin/curriculum-management'
+    | '/admin/google-sheets'
+    | '/admin/payments'
+    | '/admin/users'
+    | '/admin'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/connect-school'
+    | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
+    | '/_authenticated/admin'
     | '/_authenticated/ai'
     | '/_authenticated/ai-activity-ideas'
     | '/_authenticated/ai-enrichment'
@@ -272,21 +422,33 @@ export interface FileRouteTypes {
     | '/_authenticated/ai-quiz'
     | '/_authenticated/ai-worksheet'
     | '/_authenticated/corrections'
-    | '/_authenticated/curriculum'
     | '/_authenticated/curriculum-management'
     | '/_authenticated/dashboard'
     | '/_authenticated/google-sheets'
+    | '/_authenticated/grading'
+    | '/_authenticated/homework'
+    | '/_authenticated/lesson-sessions'
     | '/_authenticated/notifications'
     | '/_authenticated/planner'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/subscription'
+    | '/_authenticated/tests'
+    | '/_authenticated/weekly-preparation'
+    | '/_authenticated/admin/academic-calendar'
+    | '/_authenticated/admin/curriculum-management'
+    | '/_authenticated/admin/google-sheets'
+    | '/_authenticated/admin/payments'
+    | '/_authenticated/admin/users'
+    | '/_authenticated/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ConnectSchoolRoute: typeof ConnectSchoolRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
 }
@@ -314,6 +476,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/connect-school': {
+      id: '/connect-school'
+      path: '/connect-school'
+      fullPath: '/connect-school'
+      preLoaderRoute: typeof ConnectSchoolRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -327,6 +503,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/ai': {
       id: '/_authenticated/ai'
@@ -377,13 +560,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCorrectionsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/curriculum': {
-      id: '/_authenticated/curriculum'
-      path: '/curriculum'
-      fullPath: '/curriculum'
-      preLoaderRoute: typeof AuthenticatedCurriculumRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/curriculum-management': {
       id: '/_authenticated/curriculum-management'
       path: '/curriculum-management'
@@ -403,6 +579,27 @@ declare module '@tanstack/react-router' {
       path: '/google-sheets'
       fullPath: '/google-sheets'
       preLoaderRoute: typeof AuthenticatedGoogleSheetsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/grading': {
+      id: '/_authenticated/grading'
+      path: '/grading'
+      fullPath: '/grading'
+      preLoaderRoute: typeof AuthenticatedGradingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/homework': {
+      id: '/_authenticated/homework'
+      path: '/homework'
+      fullPath: '/homework'
+      preLoaderRoute: typeof AuthenticatedHomeworkRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/lesson-sessions': {
+      id: '/_authenticated/lesson-sessions'
+      path: '/lesson-sessions'
+      fullPath: '/lesson-sessions'
+      preLoaderRoute: typeof AuthenticatedLessonSessionsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/notifications': {
@@ -440,10 +637,93 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSubscriptionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/tests': {
+      id: '/_authenticated/tests'
+      path: '/tests'
+      fullPath: '/tests'
+      preLoaderRoute: typeof AuthenticatedTestsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/weekly-preparation': {
+      id: '/_authenticated/weekly-preparation'
+      path: '/weekly-preparation'
+      fullPath: '/weekly-preparation'
+      preLoaderRoute: typeof AuthenticatedWeeklyPreparationRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/academic-calendar': {
+      id: '/_authenticated/admin/academic-calendar'
+      path: '/academic-calendar'
+      fullPath: '/admin/academic-calendar'
+      preLoaderRoute: typeof AuthenticatedAdminAcademicCalendarRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/curriculum-management': {
+      id: '/_authenticated/admin/curriculum-management'
+      path: '/curriculum-management'
+      fullPath: '/admin/curriculum-management'
+      preLoaderRoute: typeof AuthenticatedAdminCurriculumManagementRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/google-sheets': {
+      id: '/_authenticated/admin/google-sheets'
+      path: '/google-sheets'
+      fullPath: '/admin/google-sheets'
+      preLoaderRoute: typeof AuthenticatedAdminGoogleSheetsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/payments': {
+      id: '/_authenticated/admin/payments'
+      path: '/payments'
+      fullPath: '/admin/payments'
+      preLoaderRoute: typeof AuthenticatedAdminPaymentsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
   }
 }
 
+interface AuthenticatedAdminRouteRouteChildren {
+  AuthenticatedAdminAcademicCalendarRoute: typeof AuthenticatedAdminAcademicCalendarRoute
+  AuthenticatedAdminCurriculumManagementRoute: typeof AuthenticatedAdminCurriculumManagementRoute
+  AuthenticatedAdminGoogleSheetsRoute: typeof AuthenticatedAdminGoogleSheetsRoute
+  AuthenticatedAdminPaymentsRoute: typeof AuthenticatedAdminPaymentsRoute
+  AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+}
+
+const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
+  {
+    AuthenticatedAdminAcademicCalendarRoute:
+      AuthenticatedAdminAcademicCalendarRoute,
+    AuthenticatedAdminCurriculumManagementRoute:
+      AuthenticatedAdminCurriculumManagementRoute,
+    AuthenticatedAdminGoogleSheetsRoute: AuthenticatedAdminGoogleSheetsRoute,
+    AuthenticatedAdminPaymentsRoute: AuthenticatedAdminPaymentsRoute,
+    AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+    AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  }
+
+const AuthenticatedAdminRouteRouteWithChildren =
+  AuthenticatedAdminRouteRoute._addFileChildren(
+    AuthenticatedAdminRouteRouteChildren,
+  )
+
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
   AuthenticatedAiRoute: typeof AuthenticatedAiRoute
   AuthenticatedAiActivityIdeasRoute: typeof AuthenticatedAiActivityIdeasRoute
   AuthenticatedAiEnrichmentRoute: typeof AuthenticatedAiEnrichmentRoute
@@ -451,18 +731,23 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAiQuizRoute: typeof AuthenticatedAiQuizRoute
   AuthenticatedAiWorksheetRoute: typeof AuthenticatedAiWorksheetRoute
   AuthenticatedCorrectionsRoute: typeof AuthenticatedCorrectionsRoute
-  AuthenticatedCurriculumRoute: typeof AuthenticatedCurriculumRoute
   AuthenticatedCurriculumManagementRoute: typeof AuthenticatedCurriculumManagementRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGoogleSheetsRoute: typeof AuthenticatedGoogleSheetsRoute
+  AuthenticatedGradingRoute: typeof AuthenticatedGradingRoute
+  AuthenticatedHomeworkRoute: typeof AuthenticatedHomeworkRoute
+  AuthenticatedLessonSessionsRoute: typeof AuthenticatedLessonSessionsRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedPlannerRoute: typeof AuthenticatedPlannerRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSubscriptionRoute: typeof AuthenticatedSubscriptionRoute
+  AuthenticatedTestsRoute: typeof AuthenticatedTestsRoute
+  AuthenticatedWeeklyPreparationRoute: typeof AuthenticatedWeeklyPreparationRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
   AuthenticatedAiRoute: AuthenticatedAiRoute,
   AuthenticatedAiActivityIdeasRoute: AuthenticatedAiActivityIdeasRoute,
   AuthenticatedAiEnrichmentRoute: AuthenticatedAiEnrichmentRoute,
@@ -470,16 +755,20 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAiQuizRoute: AuthenticatedAiQuizRoute,
   AuthenticatedAiWorksheetRoute: AuthenticatedAiWorksheetRoute,
   AuthenticatedCorrectionsRoute: AuthenticatedCorrectionsRoute,
-  AuthenticatedCurriculumRoute: AuthenticatedCurriculumRoute,
   AuthenticatedCurriculumManagementRoute:
     AuthenticatedCurriculumManagementRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGoogleSheetsRoute: AuthenticatedGoogleSheetsRoute,
+  AuthenticatedGradingRoute: AuthenticatedGradingRoute,
+  AuthenticatedHomeworkRoute: AuthenticatedHomeworkRoute,
+  AuthenticatedLessonSessionsRoute: AuthenticatedLessonSessionsRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedPlannerRoute: AuthenticatedPlannerRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSubscriptionRoute: AuthenticatedSubscriptionRoute,
+  AuthenticatedTestsRoute: AuthenticatedTestsRoute,
+  AuthenticatedWeeklyPreparationRoute: AuthenticatedWeeklyPreparationRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -489,6 +778,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ConnectSchoolRoute: ConnectSchoolRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
 }
