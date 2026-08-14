@@ -8,7 +8,7 @@ export const SUBMISSION_STATUS_LABELS: Record<HomeworkSubmissionStatus, string> 
 };
 
 export const SUBMISSION_STATUS_HINT =
-  "حالة «مُصحّح» تعني أن السجل يحمل هذه الحالة فقط، ولا تعني أن واجهة التصحيح مفعّلة بعد.";
+  "حالة «مُصحّح» تعني أن التسليم صُحّح يدوياً. التصحيح بالذكاء الاصطناعي غير مفعّل بعد.";
 
 export const STUDENTS_EMPTY_TITLE = "لا يوجد طلاب بعد";
 export const STUDENTS_EMPTY_DESCRIPTION =
@@ -16,8 +16,27 @@ export const STUDENTS_EMPTY_DESCRIPTION =
 export const STUDENTS_ERROR_TITLE = "تعذر تحميل الطلاب";
 export const SUBMISSIONS_EMPTY_TITLE = "لا توجد تسليمات لهذا الواجب";
 export const SUBMISSIONS_EMPTY_DESCRIPTION =
-  "أنشئ سجلات تسليم للطلاب، أو اختر واجباً آخر. التصحيح اليدوي الكامل سيأتي لاحقاً.";
+  "أنشئ سجلات تسليم للطلاب، أو اختر واجباً آخر. يمكنك تصحيح التسليمات المُسلَّمة يدوياً.";
 export const SUBMISSIONS_ERROR_TITLE = "تعذر تحميل التسليمات";
+
+export function formatScoreLabel(
+  score: number | null,
+  maxScore?: number | null,
+): string {
+  if (score == null) return "—";
+  if (maxScore != null && Number.isFinite(maxScore)) {
+    return `${score}/${maxScore}`;
+  }
+  return String(score);
+}
+
+export function canOpenGradingDialog(status: HomeworkSubmissionStatus): boolean {
+  return status === "submitted" || status === "graded";
+}
+
+export function gradingActionLabel(status: HomeworkSubmissionStatus): string {
+  return status === "graded" ? "إعادة التصحيح" : "تصحيح";
+}
 
 export type StudentFormState = {
   fullName: string;
@@ -141,6 +160,7 @@ export function formatSubmissionDate(iso: string | null): string {
 export function toSubmissionListItemView(
   submission: HomeworkSubmission,
   student: Student | undefined,
+  options: { maxScore?: number | null } = {},
 ): SubmissionListItemView {
   return {
     id: submission.id,
@@ -150,7 +170,7 @@ export function toSubmissionListItemView(
     status: submission.status,
     statusLabel: SUBMISSION_STATUS_LABELS[submission.status],
     submittedAtLabel: formatSubmissionDate(submission.submittedAt),
-    scoreLabel: submission.score == null ? "—" : String(submission.score),
+    scoreLabel: formatScoreLabel(submission.score, options.maxScore),
     feedbackLabel: submission.feedback?.trim() || "—",
   };
 }

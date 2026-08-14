@@ -73,6 +73,44 @@ export type HomeworkSubmissionUpdateInput = Partial<
   studentId?: string;
 };
 
+/** Manual grading payload. Never includes teacher_id. */
+export type HomeworkGradeInput = {
+  score: number;
+  feedback?: string | null;
+  /** Optional ceiling; enforced only when provided (schema has no max_score yet). */
+  maxScore?: number | null;
+};
+
+export function parseGradeScore(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  throw new Error("الدرجة يجب أن تكون رقماً.");
+}
+
+export function assertValidGradeScore(score: number, maxScore?: number | null): void {
+  if (!Number.isFinite(score)) {
+    throw new Error("الدرجة يجب أن تكون رقماً.");
+  }
+  if (score < 0) {
+    throw new Error("الدرجة يجب أن تكون أكبر من أو تساوي صفر.");
+  }
+  if (maxScore != null && Number.isFinite(maxScore) && score > maxScore) {
+    throw new Error("الدرجة لا يجوز أن تتجاوز الدرجة الكاملة.");
+  }
+}
+
+export function assertSubmissionGradable(status: HomeworkSubmissionStatus): void {
+  if (status === "pending") {
+    throw new Error("لا يمكن تصحيح تسليم لم يُسلَّم بعد.");
+  }
+  if (status !== "submitted" && status !== "graded") {
+    throw new Error("حالة التسليم لا تسمح بالتصحيح.");
+  }
+}
+
 function toSubmission(row: SubmissionRow): HomeworkSubmission {
   return {
     id: row.id,
@@ -239,6 +277,53 @@ export class HomeworkSubmissionService {
 
     if (error) throw error;
     return Boolean(data);
+  }
+
+  /**
+   * Manual grade / regrade for a teacher-owned submission.
+   * Allowed for status submitted|graded only — pending is rejected.
+   * Sets status=graded, graded_at=now, score + optional feedback.
+   */
+  static async grade(
+    id: string,
+    input: HomeworkGradeInput,
+    context?: SupabaseUserContext,
+  ): Promise<HomeworkSubmission | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    const existing = await this.getById(id, resolved);
+    if (!existing) {
+      throw new Error("التسليم غير موجود أو لا تملك صلاحية الوصول إليه.");
+    }
+
+    assertSubmissionGradable(existing.status);
+
+    const score = parseGradeScore(input.score);
+    assertValidGradeScore(score, input.maxScore);
+
+    const feedback =
+      input.feedback === undefined
+        ? existing.feedback
+        : input.feedback?.trim()
+          ? input.feedback.trim()
+          : null;
+
+    const { data, error } = await resolved.client
+      .from("homework_submissions")
+      .update({
+        status: "graded",
+        score,
+        feedback,
+        graded_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("teacher_id", resolved.userId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? toSubmission(data) : null;
   }
 }
 

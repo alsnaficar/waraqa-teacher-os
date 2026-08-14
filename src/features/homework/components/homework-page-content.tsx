@@ -87,7 +87,7 @@ export function HomeworkPageContent() {
                 <div className="min-w-0">
                   <h1 className="text-xl font-bold">إدارة الواجبات</h1>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    أنشئ وعدّل واجباتك، ثم افتح التسليمات لكل واجب دون واجهة تصحيح بعد.
+                    أنشئ وعدّل واجباتك، ثم افتح التسليمات وصحّحها يدوياً عند الحاجة.
                   </p>
                 </div>
               </div>

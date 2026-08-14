@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { HomeworkSubmissionService } from "../services/homework-submission.service";
+import type { HomeworkGradeInput } from "../services/homework-submission.service";
 import { StudentService } from "../services/student.service";
 
 export function homeworkSubmissionsQueryKey(homeworkId: string) {
@@ -58,6 +59,17 @@ export function useHomeworkSubmissions(homeworkId: string | null) {
     onSuccess: invalidate,
   });
 
+  const grade = useMutation({
+    mutationFn: ({
+      submissionId,
+      input,
+    }: {
+      submissionId: string;
+      input: HomeworkGradeInput;
+    }) => HomeworkSubmissionService.grade(submissionId, input),
+    onSuccess: invalidate,
+  });
+
   const remove = useMutation({
     mutationFn: (submissionId: string) => HomeworkSubmissionService.delete(submissionId),
     onSuccess: invalidate,
@@ -71,6 +83,7 @@ export function useHomeworkSubmissions(homeworkId: string | null) {
     refresh: invalidate,
     createPending,
     markSubmitted,
+    grade,
     remove,
   };
 }

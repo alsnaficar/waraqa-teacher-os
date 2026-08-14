@@ -29,6 +29,8 @@ import { cn } from "@/shared/utils/utils";
 import { useHomeworkSubmissions } from "../hooks/useHomeworkSubmissions";
 import type { HomeworkSubmission } from "../services/homework-submission.service";
 import {
+  canOpenGradingDialog,
+  gradingActionLabel,
   studentsWithoutSubmission,
   SUBMISSION_STATUS_HINT,
   SUBMISSIONS_EMPTY_DESCRIPTION,
@@ -36,13 +38,17 @@ import {
   SUBMISSIONS_ERROR_TITLE,
   toSubmissionListItemView,
 } from "../services/students-ui.logic";
+import { HomeworkGradeDialog } from "./homework-grade-dialog";
 
 export function HomeworkSubmissionsPanel({
   homeworkId,
   homeworkTitle,
+  maxScore = null,
 }: {
   homeworkId: string;
   homeworkTitle: string;
+  /** Optional full score when homework defines one later; schema has no max_score yet. */
+  maxScore?: number | null;
 }) {
   const {
     submissions,
@@ -52,11 +58,13 @@ export function HomeworkSubmissionsPanel({
     refresh,
     createPending,
     markSubmitted,
+    grade,
     remove,
   } = useHomeworkSubmissions(homeworkId);
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [deleteTarget, setDeleteTarget] = useState<HomeworkSubmission | null>(null);
+  const [gradeTarget, setGradeTarget] = useState<HomeworkSubmission | null>(null);
 
   const studentById = useMemo(
     () => new Map(students.map((student) => [student.id, student])),
@@ -66,7 +74,9 @@ export function HomeworkSubmissionsPanel({
     () => studentsWithoutSubmission(students, submissions),
     [students, submissions],
   );
-  const views = submissions.map((row) => toSubmissionListItemView(row, studentById.get(row.studentId)));
+  const views = submissions.map((row) =>
+    toSubmissionListItemView(row, studentById.get(row.studentId), { maxScore }),
+  );
 
   async function handleCreatePending() {
     if (!selectedStudentId) {
@@ -168,7 +178,9 @@ export function HomeworkSubmissionsPanel({
                       </td>
                       <td className="px-3 py-3">{view.submittedAtLabel}</td>
                       <td className="px-3 py-3">{view.scoreLabel}</td>
-                      <td className="max-w-[12rem] truncate px-3 py-3">{view.feedbackLabel}</td>
+                      <td className="max-w-[12rem] truncate px-3 py-3">
+                        {view.feedbackLabel}
+                      </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
                           {submission.status === "pending" ? (
@@ -188,6 +200,16 @@ export function HomeworkSubmissionsPanel({
                               }
                             >
                               تعليم كمُسلّم
+                            </Button>
+                          ) : null}
+                          {canOpenGradingDialog(submission.status) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="min-h-11"
+                              onClick={() => setGradeTarget(submission)}
+                            >
+                              {gradingActionLabel(submission.status)}
                             </Button>
                           ) : null}
                           <Button
@@ -221,7 +243,10 @@ export function HomeworkSubmissionsPanel({
                           التسليم: {view.submittedAtLabel}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          الدرجة: {view.scoreLabel} · ملاحظات: {view.feedbackLabel}
+                          الدرجة: {view.scoreLabel}
+                          {view.feedbackLabel !== "—"
+                            ? ` · ملاحظات: ${view.feedbackLabel}`
+                            : ""}
                         </p>
                       </div>
                       <Badge variant="outline">{view.statusLabel}</Badge>
@@ -246,6 +271,16 @@ export function HomeworkSubmissionsPanel({
                           تعليم كمُسلّم
                         </Button>
                       ) : null}
+                      {canOpenGradingDialog(submission.status) ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="min-h-11 flex-1"
+                          onClick={() => setGradeTarget(submission)}
+                        >
+                          {gradingActionLabel(submission.status)}
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="outline"
@@ -264,6 +299,26 @@ export function HomeworkSubmissionsPanel({
         </>
       )}
 
+      <HomeworkGradeDialog
+        open={Boolean(gradeTarget)}
+        submission={gradeTarget}
+        studentName={
+          gradeTarget
+            ? (studentById.get(gradeTarget.studentId)?.fullName ?? "الطالب")
+            : ""
+        }
+        maxScore={maxScore}
+        busy={grade.isPending}
+        onOpenChange={(open) => {
+          if (!open) setGradeTarget(null);
+        }}
+        onSubmit={async (input) => {
+          if (!gradeTarget) throw new Error("معرّف التسليم مفقود.");
+          await grade.mutateAsync({ submissionId: gradeTarget.id, input });
+          toast.success("تم حفظ التصحيح.");
+        }}
+      />
+
       <AlertDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
@@ -274,7 +329,7 @@ export function HomeworkSubmissionsPanel({
           <AlertDialogHeader>
             <AlertDialogTitle>حذف سجل التسليم؟</AlertDialogTitle>
             <AlertDialogDescription>
-              سيتم حذف سجل التسليم فقط. هذا لا يفعّل واجهة التصحيح.
+              سيتم حذف سجل التسليم فقط. يمكنك إعادة إنشائه لاحقاً.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
