@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { beforeEach, describe, it } from "node:test";
 
+import { resetPaidAiRequestGuardForTests } from "@/features/ai/providers/paid-ai-request-guard.ts";
 import { getCurrentLessonPlanPreparation } from "./current-preparation.ts";
 import {
   LessonSessionAlreadyPreparedError,
@@ -341,6 +342,10 @@ function mockAuth(options: {
 }
 
 describe("P3 Step 4 preparing-state claim", () => {
+  beforeEach(() => {
+    resetPaidAiRequestGuardForTests();
+  });
+
   it("A. scheduled owned session claims successfully", async () => {
     const { auth, sessionState } = mockAuth({
       userId: TEACHER_A,
