@@ -1,4 +1,7 @@
-import { getCurrentLesson } from "@/features/lesson-engine/services/lesson-engine";
+import {
+  LessonSessionService,
+  todayIso,
+} from "@/features/lesson-sessions/services/lesson-session.service";
 
 export interface LessonContext {
   lessonId: string | null;
@@ -11,21 +14,26 @@ export interface LessonContext {
   period: number;
 }
 
+/**
+ * Current-lesson context for AI form prefills.
+ * Resolves via ensureSessionsForDate (session truth + P2), not planner generateSchedule.
+ */
 export async function getLessonContext(): Promise<LessonContext | null> {
-  const lesson = await getCurrentLesson();
+  const result = await LessonSessionService.ensureSessionsForDate(todayIso());
+  const session = result.sessions[0];
 
-  if (!lesson) {
+  if (!session) {
     return null;
   }
 
   return {
-    lessonId: lesson.lessonId,
-    title: lesson.lessonTitle,
-    subject: lesson.subject,
-    grade: lesson.className,
-    className: lesson.className,
-    unit: lesson.unit,
-    suggestedDate: lesson.suggestedDate,
-    period: lesson.period,
+    lessonId: session.curriculumLessonId,
+    title: session.lessonTitle,
+    subject: session.subject,
+    grade: session.grade,
+    className: session.className,
+    unit: session.unitTitle ?? "",
+    suggestedDate: session.sessionDate,
+    period: session.periodNumber,
   };
 }

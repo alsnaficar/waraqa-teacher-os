@@ -813,3 +813,64 @@ describe("TASK 11 ensureSessionsForDate P2 refresh", () => {
     assert.equal(db.lesson_sessions.length, 1);
   });
 });
+
+describe("TASK 17 today ensure path (ownership + P2)", () => {
+  beforeEach(() => {
+    assert.equal(process.env.NODE_ENV, "test");
+  });
+
+  it("D. TEACHER_OWNERSHIP — ensure only returns the authenticated teacher's sessions", async () => {
+    const otherTeacher = "22222222-2222-4222-8222-222222222222";
+    const db = seedDb([
+      makeSessionRow({
+        id: "mine",
+        teacher_id: TEACHER_ID,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+      }),
+      makeSessionRow({
+        id: "theirs",
+        teacher_id: otherTeacher,
+        period_number: 4,
+        curriculum_lesson_id: LESSON_B,
+        curriculum_lesson_source: "plan",
+      }),
+    ]);
+    const auth = authFor(db);
+
+    const result = await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([planEntry({ lessonId: LESSON_A, period: 1 })]),
+    );
+
+    assert.equal(result.sessions.length, 1);
+    assert.equal(result.sessions[0]?.id, "mine");
+    assert.equal(result.sessions[0]?.teacherId, TEACHER_ID);
+    assert.ok(result.sessions.every((s) => s.id !== "theirs"));
+  });
+
+  it("H. STALE_PLAN_REFRESH — ensure refreshes unlocked plan session (today path)", async () => {
+    const db = seedDb([
+      makeSessionRow({
+        id: "session-today",
+        period_number: 1,
+        curriculum_lesson_id: LESSON_A,
+        curriculum_lesson_source: "plan",
+        status: "scheduled",
+        lesson_locked: false,
+      }),
+    ]);
+    const auth = authFor(db);
+
+    const result = await LessonSessionService.ensureSessionsForDate(
+      SUNDAY_ISO,
+      auth,
+      planEntriesForTest([planEntry({ lessonId: LESSON_B, period: 1 })]),
+    );
+
+    assert.equal(result.sessions[0]?.id, "session-today");
+    assert.equal(result.sessions[0]?.curriculumLessonId, LESSON_B);
+    assert.equal(result.sessions[0]?.curriculumLessonSource, "plan");
+  });
+});
