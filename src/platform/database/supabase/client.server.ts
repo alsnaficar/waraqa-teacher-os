@@ -32,19 +32,66 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
   };
 }
 
-function createSupabaseAdminClient() {
-  const SUPABASE_URL = process.env.SUPABASE_URL || "https://placeholder.supabase.co";
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "placeholder-key";
+const PLACEHOLDER_SUPABASE_URL = "https://placeholder.supabase.co";
+const PLACEHOLDER_SERVICE_ROLE_KEY = "placeholder-key";
 
-  if (SUPABASE_URL === "https://placeholder.supabase.co") {
+const MISSING_ADMIN_ENV_MESSAGE =
+  "[Supabase Admin] Missing required server environment configuration. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.";
+
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+function isUsableSupabaseUrl(url: string | undefined): url is string {
+  const value = url?.trim();
+  if (!value) return false;
+  if (value === PLACEHOLDER_SUPABASE_URL) return false;
+  if (value.includes("placeholder")) return false;
+  return true;
+}
+
+function isUsableServiceRoleKey(key: string | undefined): key is string {
+  const value = key?.trim();
+  if (!value) return false;
+  if (value === PLACEHOLDER_SERVICE_ROLE_KEY) return false;
+  if (value.includes("placeholder")) return false;
+  return true;
+}
+
+/** Resolves admin credentials; throws in production when required env is missing or placeholder. */
+export function resolveSupabaseAdminEnv(): {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+} {
+  const rawUrl = process.env.SUPABASE_URL;
+  const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const configured = isUsableSupabaseUrl(rawUrl) && isUsableServiceRoleKey(rawKey);
+
+  if (!configured) {
+    if (isProductionRuntime()) {
+      throw new Error(MISSING_ADMIN_ENV_MESSAGE);
+    }
     console.warn(
       "[Supabase Admin] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured. Running in unconfigured mode.",
     );
+    return {
+      supabaseUrl: rawUrl?.trim() || PLACEHOLDER_SUPABASE_URL,
+      serviceRoleKey: rawKey?.trim() || PLACEHOLDER_SERVICE_ROLE_KEY,
+    };
   }
 
-  return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  return {
+    supabaseUrl: rawUrl.trim(),
+    serviceRoleKey: rawKey.trim(),
+  };
+}
+
+function createSupabaseAdminClient() {
+  const { supabaseUrl, serviceRoleKey } = resolveSupabaseAdminEnv();
+
+  return createClient<Database>(supabaseUrl, serviceRoleKey, {
     global: {
-      fetch: createSupabaseFetch(SUPABASE_SERVICE_ROLE_KEY),
+      fetch: createSupabaseFetch(serviceRoleKey),
     },
     auth: {
       storage: undefined,
@@ -55,6 +102,11 @@ function createSupabaseAdminClient() {
 }
 
 let _supabaseAdmin: ReturnType<typeof createSupabaseAdminClient> | undefined;
+
+/** Clears the lazy singleton so tests can re-resolve env. Test-only. */
+export function resetSupabaseAdminClientForTests(): void {
+  _supabaseAdmin = undefined;
+}
 
 // Server-side Supabase client with service role - bypasses RLS
 // SECURITY: Only use this for trusted server-side operations, never expose to client code
