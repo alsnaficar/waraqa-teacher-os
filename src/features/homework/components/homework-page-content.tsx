@@ -1,5 +1,5 @@
 import { ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/shared/components/empty-state";
@@ -36,7 +36,11 @@ import { HomeworkReportsPanel } from "./homework-reports-panel";
 import { HomeworkSubmissionsPanel } from "./homework-submissions-panel";
 import { StudentsPanel } from "./students-panel";
 
-export function HomeworkPageContent() {
+export function HomeworkPageContent({
+  initialHomeworkId,
+}: {
+  initialHomeworkId?: string;
+} = {}) {
   const [tab, setTab] = useState("homework");
   const [statusFilter, setStatusFilter] = useState<HomeworkStatus | "all">("all");
   const filter = useMemo(
@@ -49,7 +53,15 @@ export function HomeworkPageContent() {
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editing, setEditing] = useState<Homework | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Homework | null>(null);
-  const [selectedHomeworkId, setSelectedHomeworkId] = useState<string | null>(null);
+  const [selectedHomeworkId, setSelectedHomeworkId] = useState<string | null>(
+    initialHomeworkId ?? null,
+  );
+
+  useEffect(() => {
+    if (initialHomeworkId) {
+      setSelectedHomeworkId(initialHomeworkId);
+    }
+  }, [initialHomeworkId]);
 
   const views = items.map(toHomeworkListItemView);
   const selectedHomework = items.find((row) => row.id === selectedHomeworkId) ?? null;

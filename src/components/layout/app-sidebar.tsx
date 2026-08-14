@@ -33,7 +33,7 @@ const items = [
   { title: "الجدول", url: "/planner", icon: CalendarDays },
   { title: "الواجبات", url: "/homework", icon: ClipboardList },
   { title: "الاختبارات", url: "/tests", icon: FlaskConical },
-  { title: "التصحيح", url: "/grading", icon: ClipboardCheck },
+  { title: "التصحيح", url: "/corrections", icon: ClipboardCheck },
   { title: "الاشتراك", url: "/subscription", icon: CreditCard },
   { title: ar.nav.settings, url: "/settings", icon: Settings },
 ] as const;

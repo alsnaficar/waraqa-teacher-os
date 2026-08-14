@@ -177,6 +177,27 @@ export class HomeworkSubmissionService {
     return (data ?? []).map(toSubmission);
   }
 
+  /**
+   * Teacher-wide submitted homework needing manual grade.
+   * Single filtered query — no per-homework N+1.
+   */
+  static async listSubmittedForTeacher(
+    context?: SupabaseUserContext,
+  ): Promise<HomeworkSubmission[]> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return [];
+
+    const { data, error } = await resolved.client
+      .from("homework_submissions")
+      .select("*")
+      .eq("teacher_id", resolved.userId)
+      .eq("status", "submitted")
+      .order("submitted_at", { ascending: false, nullsFirst: false });
+
+    if (error) throw error;
+    return (data ?? []).map(toSubmission);
+  }
+
   static async getById(
     id: string,
     context?: SupabaseUserContext,

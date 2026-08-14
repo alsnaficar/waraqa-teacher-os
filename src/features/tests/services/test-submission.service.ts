@@ -147,6 +147,27 @@ export class TestSubmissionService {
     return (data ?? []).map(toSubmission);
   }
 
+  /**
+   * Teacher-wide submitted tests needing auto-grade.
+   * Single filtered query — no per-test N+1.
+   */
+  static async listSubmittedForTeacher(
+    context?: SupabaseUserContext,
+  ): Promise<TestSubmission[]> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return [];
+
+    const { data, error } = await resolved.client
+      .from("test_submissions")
+      .select("*")
+      .eq("teacher_id", resolved.userId)
+      .eq("status", "submitted")
+      .order("submitted_at", { ascending: false, nullsFirst: false });
+
+    if (error) throw error;
+    return (data ?? []).map(toSubmission);
+  }
+
   static async getById(
     id: string,
     context?: SupabaseUserContext,
