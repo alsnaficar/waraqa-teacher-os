@@ -40,6 +40,12 @@ const FILE_ACCEPT = "application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png";
 
 type YearOption = { id: string; label: string };
 type SemesterOption = { id: string; label: string };
+type VariantOption = { code: CalendarImportVariantCode; label: string };
+
+const FALLBACK_VARIANT_OPTIONS: VariantOption[] = [
+  { code: "GENERAL", label: "جميع المناطق" },
+  { code: "WESTERN", label: "المنطقة الغربية" },
+];
 
 function statusLabel(status: CalendarImportDraftItem["status"]): string {
   if (status === "ready") return "جاهز";
@@ -83,9 +89,7 @@ export function CalendarImportPanel({
   selectedYearId: string | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [variants, setVariants] = useState<
-    Array<{ code: CalendarImportVariantCode; label: string }>
-  >([]);
+  const [variants, setVariants] = useState<VariantOption[]>([]);
   const [semesters, setSemesters] = useState<SemesterOption[]>([]);
   const [academicYearId, setAcademicYearId] = useState(selectedYearId ?? "");
   const [semesterId, setSemesterId] = useState("");
@@ -95,9 +99,34 @@ export function CalendarImportPanel({
   const [loadingSemesters, setLoadingSemesters] = useState(false);
   const [draft, setDraft] = useState<CalendarImportDraft | null>(null);
 
+  const variantOptions = variants.length > 0 ? variants : FALLBACK_VARIANT_OPTIONS;
+
+  const applyLoadedVariants = (rows: VariantOption[]) => {
+    setVariants(rows);
+    setVariantCode((prev) =>
+      rows.length > 0 && !rows.some((row) => row.code === prev) ? rows[0].code : prev,
+    );
+  };
+
   useEffect(() => {
     if (selectedYearId) setAcademicYearId(selectedYearId);
   }, [selectedYearId]);
+
+  useEffect(() => {
+    let active = true;
+    void listAdminCalendarVariants()
+      .then((rows) => {
+        if (!active) return;
+        applyLoadedVariants(rows.map((row) => ({ code: row.code, label: row.label })));
+      })
+      .catch((err) => {
+        if (!active) return;
+        toast.error(err instanceof Error ? err.message : "تعذر تحميل التقويمات");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!academicYearId) {
@@ -129,12 +158,15 @@ export function CalendarImportPanel({
     setOpen(true);
     try {
       const rows = await listAdminCalendarVariants();
-      setVariants(rows.map((row) => ({ code: row.code, label: row.label })));
-      if (rows[0] && !rows.some((row) => row.code === variantCode)) {
-        setVariantCode(rows[0].code);
-      }
+      applyLoadedVariants(rows.map((row) => ({ code: row.code, label: row.label })));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "تعذر تحميل التقويمات");
+    }
+  };
+
+  const onVariantChange = (next: string) => {
+    if (next === "GENERAL" || next === "WESTERN") {
+      setVariantCode(next);
     }
   };
 
@@ -262,15 +294,34 @@ export function CalendarImportPanel({
 
   return (
     <div className="space-y-6">
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 min-h-[44px] w-full sm:w-auto text-xs font-bold gap-1.5"
-        onClick={() => void openDialog()}
-      >
-        <FileUp className="h-3.5 w-3.5" />
-        استيراد من PDF / صورة
-      </Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="min-w-0 w-full space-y-1.5 sm:w-auto sm:min-w-[220px]">
+          <Label className="text-xs font-bold" htmlFor="admin-page-calendar-variant">
+            التقويم الدراسي
+          </Label>
+          <select
+            id="admin-page-calendar-variant"
+            className="h-11 min-h-[44px] w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={variantCode}
+            onChange={(e) => onVariantChange(e.target.value)}
+          >
+            {variantOptions.map((variant) => (
+              <option key={variant.code} value={variant.code}>
+                {variant.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 min-h-[44px] w-full sm:w-auto text-xs font-bold gap-1.5"
+          onClick={() => void openDialog()}
+        >
+          <FileUp className="h-3.5 w-3.5" />
+          استيراد من PDF / صورة
+        </Button>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
@@ -314,24 +365,20 @@ export function CalendarImportPanel({
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold">التقويم</Label>
+              <Label className="text-xs font-bold" htmlFor="admin-import-calendar-variant">
+                التقويم
+              </Label>
               <select
+                id="admin-import-calendar-variant"
                 className="h-11 min-h-[44px] w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={variantCode}
-                onChange={(e) => setVariantCode(e.target.value as CalendarImportVariantCode)}
+                onChange={(e) => onVariantChange(e.target.value)}
               >
-                {variants.length === 0 ? (
-                  <>
-                    <option value="GENERAL">جميع المناطق</option>
-                    <option value="WESTERN">المنطقة الغربية</option>
-                  </>
-                ) : (
-                  variants.map((variant) => (
-                    <option key={variant.code} value={variant.code}>
-                      {variant.label}
-                    </option>
-                  ))
-                )}
+                {variantOptions.map((variant) => (
+                  <option key={variant.code} value={variant.code}>
+                    {variant.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1.5">
