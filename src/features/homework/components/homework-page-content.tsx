@@ -32,6 +32,7 @@ import {
   toHomeworkListItemView,
 } from "../services/homework-ui.logic";
 import { HomeworkFormDialog } from "./homework-form-dialog";
+import { HomeworkReportsPanel } from "./homework-reports-panel";
 import { HomeworkSubmissionsPanel } from "./homework-submissions-panel";
 import { StudentsPanel } from "./students-panel";
 
@@ -74,6 +75,9 @@ export function HomeworkPageContent() {
           </TabsTrigger>
           <TabsTrigger value="students" className="min-h-11 flex-1 sm:flex-none">
             الطلاب
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="min-h-11 flex-1 sm:flex-none">
+            التقارير
           </TabsTrigger>
         </TabsList>
 
@@ -228,6 +232,10 @@ export function HomeworkPageContent() {
 
         <TabsContent value="students" className="mt-0">
           <StudentsPanel />
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-0">
+          <HomeworkReportsPanel />
         </TabsContent>
       </Tabs>
 
