@@ -18,6 +18,11 @@ import { changeLesson } from "@/platform/lesson-sessions/change-lesson.functions
 import { getLessonOptions } from "@/platform/lesson-sessions/get-lesson-options.functions";
 import { cn } from "@/shared/utils/utils";
 
+import {
+  PLANNER_WEEKLY_LESSON_OPTIONS_QUERY_KEY,
+  useWeeklyLessonOptions,
+} from "./weekly-lesson-options-context";
+
 /** Strip a leading "درس" prefix from curriculum titles for display only. */
 function formatLessonOptionTitle(title: string) {
   return title.replace(/^درس\s+/u, "").trim() || title;
@@ -59,6 +64,8 @@ export function LessonSelector({
   const getOptions = useServerFn(getLessonOptions);
   const change = useServerFn(changeLesson);
   const queryClient = useQueryClient();
+  const weeklyOptions = useWeeklyLessonOptions();
+  const useWeeklyBatch = weeklyOptions != null;
 
   const [selectedLessonId, setSelectedLessonId] = useState("");
 
@@ -66,13 +73,21 @@ export function LessonSelector({
     queryKey: ["lesson-options", lessonSessionId],
     queryFn: () => getOptions({ data: { lessonSessionId } }),
     staleTime: 30_000,
+    enabled: !useWeeklyBatch,
   });
 
+  const batchedOptions = weeklyOptions?.optionsBySessionId[lessonSessionId];
+  const optionsData = useWeeklyBatch ? batchedOptions : optionsQuery.data;
+  const optionsLoading = useWeeklyBatch ? Boolean(weeklyOptions?.isPending) : optionsQuery.isLoading;
+  const optionsError = useWeeklyBatch
+    ? Boolean(weeklyOptions?.isError) || (!weeklyOptions?.isPending && batchedOptions == null)
+    : optionsQuery.isError;
+
   useEffect(() => {
-    if (optionsQuery.data?.selectedLessonId) {
-      setSelectedLessonId(optionsQuery.data.selectedLessonId);
+    if (optionsData?.selectedLessonId) {
+      setSelectedLessonId(optionsData.selectedLessonId);
     }
-  }, [optionsQuery.data?.selectedLessonId]);
+  }, [optionsData?.selectedLessonId]);
 
   const changeMutation = useMutation({
     mutationFn: (curriculumLessonId: string) =>
@@ -92,16 +107,19 @@ export function LessonSelector({
       void queryClient.invalidateQueries({
         queryKey: ["lesson-options", lessonSessionId],
       });
+      void queryClient.invalidateQueries({
+        queryKey: [PLANNER_WEEKLY_LESSON_OPTIONS_QUERY_KEY],
+      });
     },
     onError: (error) => {
       console.error("Failed to change lesson:", error);
-      setSelectedLessonId(optionsQuery.data?.selectedLessonId ?? "");
+      setSelectedLessonId(optionsData?.selectedLessonId ?? "");
     },
   });
 
-  const lessons = optionsQuery.data?.lessons ?? [];
+  const lessons = optionsData?.lessons ?? [];
 
-  if (optionsQuery.isLoading) {
+  if (optionsLoading) {
     return (
       <div
         className={cn(
@@ -116,7 +134,7 @@ export function LessonSelector({
     );
   }
 
-  if (optionsQuery.isError) {
+  if (optionsError) {
     return (
       <div
         className={cn(

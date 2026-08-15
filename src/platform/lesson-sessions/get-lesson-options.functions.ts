@@ -1,16 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import {
-  listPublishedCurriculumLessons,
-  resolvePublishedCurriculumFileId,
-} from "@/features/lesson-sessions/services/lesson-curriculum-authorization";
-import { LessonSessionService } from "@/features/lesson-sessions/services/lesson-session.service";
-import { requireOwnedLessonSession } from "@/features/lesson-sessions/services/require-owned-lesson-session";
+import { loadLessonOptionsForOwnedSessions } from "@/features/lesson-sessions/services/lesson-options";
+import { LessonSessionBindingError } from "@/features/lesson-sessions/services/require-owned-lesson-session";
 import { requireSupabaseAuth } from "@/platform/database/supabase/auth-middleware";
 
 const Input = z.object({
   lessonSessionId: z.string().uuid(),
+});
+
+const BatchInput = z.object({
+  lessonSessionIds: z.array(z.string().uuid()).max(80),
 });
 
 export const getLessonOptions = createServerFn({ method: "POST" })
@@ -22,27 +22,30 @@ export const getLessonOptions = createServerFn({ method: "POST" })
       userId: context.userId,
     };
 
-    const session = await requireOwnedLessonSession(data.lessonSessionId, auth);
+    const optionsBySessionId = await loadLessonOptionsForOwnedSessions(
+      [data.lessonSessionId],
+      auth,
+    );
+    const result = optionsBySessionId[data.lessonSessionId];
 
-    const view = await LessonSessionService.getSessionViewById(data.lessonSessionId, auth);
-
-    if (!view) {
-      throw new Error("تعذر تحميل بيانات حصة الدرس.");
+    if (!result) {
+      throw new LessonSessionBindingError(
+        "NOT_FOUND",
+        "حصة الدرس غير موجودة أو غير مصرح بالوصول إليها.",
+      );
     }
 
-    const fileId = await resolvePublishedCurriculumFileId(auth, view.grade, view.subject);
+    return result;
+  });
 
-    if (!fileId) {
-      return {
-        lessons: [],
-        selectedLessonId: session.curriculumLessonId,
-      };
-    }
-
-    const lessons = await listPublishedCurriculumLessons(auth, fileId);
-
-    return {
-      lessons,
-      selectedLessonId: session.curriculumLessonId,
+export const getLessonOptionsBatch = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => BatchInput.parse(data))
+  .handler(async ({ data, context }) => {
+    const auth = {
+      client: context.supabase,
+      userId: context.userId,
     };
+
+    return loadLessonOptionsForOwnedSessions(data.lessonSessionIds, auth);
   });

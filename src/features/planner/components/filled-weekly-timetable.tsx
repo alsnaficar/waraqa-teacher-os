@@ -39,6 +39,7 @@ import {
 } from "@/features/teacher-timetable/components/teacher-timetable-lesson-controls";
 import { TIMETABLE_DAYS } from "@/features/teacher-timetable/components/teacher-timetable.constants";
 import { TeacherWeeklyTimetableMobile } from "@/features/teacher-timetable/components/teacher-weekly-timetable-mobile";
+import { WeeklyLessonOptionsProvider } from "@/features/teacher-timetable/components/weekly-lesson-options-context";
 
 function getWeekRange(weekOffset = 0) {
   const today = new Date();
@@ -427,6 +428,9 @@ export function FilledWeeklyTimetable() {
   const sessionBySlot = new Map(
     sessions.map((session) => [`${session.dayOfWeek}-${session.periodNumber}`, session]),
   );
+  const weeklyLessonSessionIds = [
+    ...new Set(sessions.map((session) => session.id).filter(Boolean)),
+  ].sort();
 
   const showLoading =
     loading ||
@@ -491,7 +495,8 @@ export function FilledWeeklyTimetable() {
     entries.find((entry) => entry.dayOfWeek === day && entry.period === period);
 
   return (
-    <div className="min-w-0 w-full max-w-[100dvw] overflow-x-hidden">
+    <WeeklyLessonOptionsProvider lessonSessionIds={weeklyLessonSessionIds}>
+      <div className="min-w-0 w-full max-w-[100dvw] overflow-x-hidden">
       <Card className="min-w-0 overflow-hidden">
         <CardHeader className="min-w-0 overflow-x-hidden border-b bg-muted/30 px-3 py-3 sm:px-4 md:p-6">
           <TimetableWeekHeader
@@ -620,6 +625,7 @@ export function FilledWeeklyTimetable() {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </WeeklyLessonOptionsProvider>
   );
 }

@@ -144,6 +144,32 @@ export class LessonSessionService {
     return sessions.length > 0;
   }
 
+  /**
+   * Loads the authenticated teacher's sessions by id in one round trip.
+   * Unknown or other-teacher ids are omitted (existence is not leaked).
+   */
+  static async getOwnedSessionsByIds(
+    ids: readonly string[],
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession[]> {
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    if (uniqueIds.length === 0) return [];
+
+    const resolved = await resolveUserContext(context);
+
+    if (!resolved) return [];
+
+    const { data, error } = await resolved.client
+      .from("lesson_sessions")
+      .select("*")
+      .eq("teacher_id", resolved.userId)
+      .in("id", uniqueIds);
+
+    if (error) throw error;
+
+    return (data ?? []).map(toSession);
+  }
+
   static async getSessionById(
     id: string,
     context?: SupabaseUserContext,
