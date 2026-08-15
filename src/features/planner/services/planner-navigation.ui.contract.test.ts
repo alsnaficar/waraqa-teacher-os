@@ -15,9 +15,6 @@ describe("TASK 25.12 planner navigation contract", () => {
   const planner = readSrc("../../../routes/_authenticated/planner.tsx");
   const toolbar = readSrc("../components/planner-toolbar.tsx");
   const bottomNav = readSrc("../../../components/layout/bottom-nav.tsx");
-  const prepActions = readSrc(
-    "../../teacher-timetable/components/timetable-preparation-actions.tsx",
-  );
 
   it("planner navigation renders only الجدول الأسبوعي and خطة الفصل", () => {
     assert.match(planner, /PLANNER_NAV_ITEMS/);
@@ -40,16 +37,16 @@ describe("TASK 25.12 planner navigation contract", () => {
     assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
   });
 
-  it("keeps preparation toolbar labels and TASK 25.11 actions", () => {
-    assert.match(planner, /TimetablePreparationActions/);
-    assert.match(prepActions, /تحضير اليوم/);
-    assert.match(prepActions, /تحضير الأسبوع/);
+  it("keeps preparation toolbar labels without duplicating them in top navigation", () => {
+    assert.doesNotMatch(planner, /TimetablePreparationActions/);
     assert.match(toolbar, /تحضير اليوم/);
     assert.match(toolbar, /تحضير الأسبوع/);
     assert.match(toolbar, /نشر الخطة/);
     assert.match(toolbar, />\s*حذف\s*</);
     assert.match(toolbar, /onClick=\{\(\) => onComingSoon\("حذف اليوم"\)\}/);
     assert.match(toolbar, /onClick=\{\(\) => onComingSoon\("حذف الأسبوع"\)\}/);
+    assert.match(toolbar, /to=["']\/lesson-sessions["']/);
+    assert.match(toolbar, /to=["']\/weekly-preparation["']/);
   });
 
   it("keeps weekly grid, legend, and timetable routes without deleting them", () => {

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { CalendarDays, ChevronLeft, ChevronRight, Megaphone, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { formatHijri } from "@/shared/utils/date";
@@ -51,13 +52,15 @@ export function PlannerToolbar({
         {/* Action buttons group with a fixed gap - flex-nowrap on tablet & desktop, wrapping on mobile */}
         <div className="flex flex-wrap sm:flex-nowrap items-center justify-center gap-1 sm:gap-1.5 md:gap-2 w-full">
           <Button
+            asChild
             variant="outline"
             size="sm"
             className="gap-1 sm:gap-1.5 h-9 sm:h-8 px-2 sm:px-2.5 md:px-3 whitespace-nowrap text-[11px] sm:text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800 rounded-xl dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30"
-            onClick={() => onComingSoon("تحضير اليوم")}
           >
-            <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-            تحضير اليوم
+            <Link to="/lesson-sessions">
+              <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              تحضير اليوم
+            </Link>
           </Button>
           <Button
             variant="outline"
@@ -69,13 +72,15 @@ export function PlannerToolbar({
             حذف
           </Button>
           <Button
+            asChild
             variant="outline"
             size="sm"
             className="gap-1 sm:gap-1.5 h-9 sm:h-8 px-2 sm:px-2.5 md:px-3 whitespace-nowrap text-[11px] sm:text-xs bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100 hover:text-pink-800 rounded-xl dark:bg-pink-900/20 dark:text-pink-400 dark:border-pink-800/30"
-            onClick={() => onComingSoon("تحضير الأسبوع")}
           >
-            <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-            تحضير الأسبوع
+            <Link to="/weekly-preparation">
+              <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              تحضير الأسبوع
+            </Link>
           </Button>
           <Button
             variant="outline"

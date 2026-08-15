@@ -6,20 +6,18 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-describe("TASK 25.11 timetable preparation actions contract", () => {
-  it("planner mounts preparation actions above timetable content", () => {
-    const planner = readFileSync(
-      path.join(here, "../../../routes/_authenticated/planner.tsx"),
+describe("TASK 25.11 timetable preparation destinations", () => {
+  it("weekly toolbar keeps preparation links to existing routes", () => {
+    const toolbar = readFileSync(
+      path.join(here, "../../planner/components/planner-toolbar.tsx"),
       "utf8",
     );
-    const actions = readFileSync(path.join(here, "timetable-preparation-actions.tsx"), "utf8");
 
-    assert.match(planner, /TimetablePreparationActions/);
-    assert.match(actions, /تحضير اليوم/);
-    assert.match(actions, /تحضير الأسبوع/);
-    assert.match(actions, /to=["']\/lesson-sessions["']/);
-    assert.match(actions, /to=["']\/weekly-preparation["']/);
-    assert.doesNotMatch(actions, /supabase|teacher_id\s*[:=]/);
+    assert.match(toolbar, /تحضير اليوم/);
+    assert.match(toolbar, /تحضير الأسبوع/);
+    assert.match(toolbar, /to=["']\/lesson-sessions["']/);
+    assert.match(toolbar, /to=["']\/weekly-preparation["']/);
+    assert.doesNotMatch(toolbar, /supabase|teacher_id\s*[:=]/);
   });
 
   it("bottom nav keeps التقارير and does not add التحضير destination", () => {
