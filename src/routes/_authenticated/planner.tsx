@@ -16,6 +16,7 @@ import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { TeacherWeeklyTimetable } from "@/features/teacher-timetable/components/teacher-weekly-timetable";
+import { TimetablePreparationActions } from "@/features/teacher-timetable/components/timetable-preparation-actions";
 import { SemesterPlanCalendarField } from "@/features/planner/components/semester-plan-calendar-field";
 import { SemesterPlanTable } from "@/features/planner/components/semester-plan-table";
 import { SemesterPlanPrintDocument } from "@/features/planner/components/semester-plan-print";
@@ -400,6 +401,8 @@ export default function PlannerPage() {
             خطة الفصل هي المصدر الأساسي للتخطيط — الجدول الأسبوعي وحصص اليوم والتحضير يُشتقّون منها
           </p>
         </div>
+
+        <TimetablePreparationActions />
 
         <div className="flex flex-wrap gap-2">
           <Button
