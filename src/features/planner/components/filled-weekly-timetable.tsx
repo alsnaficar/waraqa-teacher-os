@@ -2,9 +2,10 @@
  * Family C filled weekly planner (6a8687c → 9340e56).
  * Uses teacher timetable slots + lesson sessions. Not the 5db3207 slot-CRUD UI.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
   BookOpen,
   CalendarDays,
@@ -16,8 +17,10 @@ import {
   KeyRound,
   Lightbulb,
   PlaySquare,
+  Sparkles,
   Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -139,6 +142,32 @@ function PlannerLegend() {
   );
 }
 
+const weekHeaderActionBtnClass =
+  "h-11 min-h-[44px] w-full min-w-0 gap-1 rounded-xl px-1.5 text-[11px] leading-tight whitespace-normal sm:px-2 sm:text-xs";
+
+function WeekHeaderPrepGroup({
+  children,
+  onDelete,
+}: {
+  children: ReactNode;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex min-w-0 w-full flex-col items-stretch gap-1.5 md:w-44">
+      {children}
+      <Button
+        variant="outline"
+        size="sm"
+        className={`${weekHeaderActionBtnClass} border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800`}
+        onClick={onDelete}
+      >
+        <Trash2 className="h-3.5 w-3.5 shrink-0" />
+        حذف
+      </Button>
+    </div>
+  );
+}
+
 function TimetableWeekHeader({
   weekRange,
   entriesCount,
@@ -152,53 +181,94 @@ function TimetableWeekHeader({
   onPreviousWeek: () => void;
   onNextWeek: () => void;
 }) {
+  const onComingSoon = (label: string) => toast(`${label} — قريباً`);
+
   return (
-    <>
-      <div className="flex items-center justify-between gap-2" dir="rtl">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-11 min-h-[44px] shrink-0 gap-1 px-2"
-          onClick={onPreviousWeek}
-          aria-label="الأسبوع السابق"
-        >
-          <ChevronRight className="h-4 w-4" />
-          <span className="hidden sm:inline">السابق</span>
-        </Button>
+    <div
+      className="flex min-w-0 w-full max-w-full flex-col gap-3 overflow-x-hidden md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center md:gap-4"
+      dir="rtl"
+    >
+      <div className="order-1 flex min-w-0 w-full flex-col items-center md:order-2">
+        <div className="flex w-full min-w-0 items-center justify-between gap-1 sm:gap-2 md:justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-11 min-h-[44px] min-w-[44px] w-11 shrink-0 px-0 lg:w-auto lg:gap-1 lg:px-2"
+            onClick={onPreviousWeek}
+            aria-label="الأسبوع السابق"
+          >
+            <ChevronRight className="h-4 w-4" />
+            <span className="hidden lg:inline">السابق</span>
+          </Button>
 
-        <CardTitle className="flex min-w-0 flex-1 flex-col items-center text-center">
-          <span className="text-base font-bold">الجدول الأسبوعي</span>
-          <span className="mt-1 text-[11px] font-normal text-muted-foreground">
-            من {weekRange.hijriStart} إلى {weekRange.hijriEnd} هـ
-          </span>
-          <span className="text-[10px] font-normal text-muted-foreground/80">
-            من {weekRange.gregorianStart} إلى {weekRange.gregorianEnd} م
-          </span>
-        </CardTitle>
+          <CardTitle className="flex min-w-0 flex-1 flex-col items-center px-1 text-center">
+            <span className="text-sm font-bold sm:text-base">الجدول الأسبوعي</span>
+            <span className="mt-1 text-[11px] font-normal leading-snug text-muted-foreground">
+              من {weekRange.hijriStart} إلى {weekRange.hijriEnd} هـ
+            </span>
+            <span className="text-[10px] font-normal leading-snug text-muted-foreground/80">
+              من {weekRange.gregorianStart} إلى {weekRange.gregorianEnd} م
+            </span>
+          </CardTitle>
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-11 min-h-[44px] shrink-0 gap-1 px-2"
-          onClick={onNextWeek}
-          aria-label="الأسبوع التالي"
-        >
-          <span className="hidden sm:inline">التالي</span>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-11 min-h-[44px] min-w-[44px] w-11 shrink-0 px-0 lg:w-auto lg:gap-1 lg:px-2"
+            onClick={onNextWeek}
+            aria-label="الأسبوع التالي"
+          >
+            <span className="hidden lg:inline">التالي</span>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          <Badge variant="secondary">{entriesCount} حصص</Badge>
+          {switching ? (
+            <span
+              className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
+              aria-label="جاري تحميل الأسبوع"
+              aria-live="polite"
+            />
+          ) : null}
+        </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-        <Badge variant="secondary">{entriesCount} حصص</Badge>
-        {switching ? (
-          <span
-            className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
-            aria-label="جاري تحميل الأسبوع"
-            aria-live="polite"
-          />
-        ) : null}
+      <div className="order-2 grid min-w-0 w-full grid-cols-2 gap-3 md:contents">
+        <div className="min-w-0 md:order-1 md:justify-self-start">
+          <WeekHeaderPrepGroup onDelete={() => onComingSoon("حذف اليوم")}>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className={`${weekHeaderActionBtnClass} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:border-blue-800/30 dark:bg-blue-900/20 dark:text-blue-400`}
+            >
+              <Link to="/lesson-sessions">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                تحضير اليوم
+              </Link>
+            </Button>
+          </WeekHeaderPrepGroup>
+        </div>
+
+        <div className="min-w-0 md:order-3 md:justify-self-end">
+          <WeekHeaderPrepGroup onDelete={() => onComingSoon("حذف الأسبوع")}>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className={`${weekHeaderActionBtnClass} border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 dark:border-pink-800/30 dark:bg-pink-900/20 dark:text-pink-400`}
+            >
+              <Link to="/weekly-preparation">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                تحضير الأسبوع
+              </Link>
+            </Button>
+          </WeekHeaderPrepGroup>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -356,7 +426,7 @@ export function FilledWeeklyTimetable() {
   return (
     <div className="min-w-0 w-full max-w-[100dvw] overflow-x-hidden">
       <Card className="min-w-0 overflow-hidden">
-        <CardHeader className="border-b bg-muted/30">
+        <CardHeader className="min-w-0 overflow-x-hidden border-b bg-muted/30 px-3 py-3 sm:px-4 md:p-6">
           <TimetableWeekHeader
             weekRange={weekRange}
             entriesCount={entries.length}
