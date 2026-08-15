@@ -6,10 +6,10 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   BookOpen,
   CheckCircle2,
-  ClipboardList,
   FileCheck2,
   FlaskConical,
   Globe,
+  Lightbulb,
   PlaySquare,
   Trash2,
 } from "lucide-react";
@@ -249,7 +249,7 @@ export function LessonActions({
       </span>
 
       <span className={buttonClass} aria-label="ورقة عمل">
-        <ClipboardList className={`${iconClass} text-orange-500`} />
+        <Lightbulb className={`${iconClass} text-orange-500`} />
       </span>
 
       <span className={buttonClass} aria-label="إثراء">
