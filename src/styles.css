@@ -136,11 +136,12 @@
 }
 
 /*
- * Bottom navigation safe-area (TASK 25.38).
- * Item spacing stays on the links (py-2.5). The inset is additive, with a 0px
- * fallback when env() is unsupported so the existing visual spacing is kept.
- * The authenticated shell keeps the existing 8rem (pb-32) spacer and adds the
- * same inset so page content can scroll above the taller bar.
+ * Bottom navigation safe-area (TASK 25.38 / 25.38C).
+ * Item spacing stays on the links (py-2.5). Desktop/tablet use env() only
+ * (typically 0). Mobile (< md / max-width: 767px) uses max(32px, env()) so
+ * Android gesture overlays still clear the icons when env() is 0, while a
+ * larger iOS inset still wins. The shell spacer keeps 8rem and adds the
+ * same mobile floor so page content can scroll above the taller bar.
  */
 @layer components {
   .bottom-nav-safe-area {
@@ -151,6 +152,18 @@
   .authenticated-shell-offset {
     padding-bottom: 8rem;
     padding-bottom: calc(8rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (max-width: 767px) {
+    .bottom-nav-safe-area {
+      padding-bottom: 32px;
+      padding-bottom: max(32px, env(safe-area-inset-bottom, 0px));
+    }
+
+    .authenticated-shell-offset {
+      padding-bottom: calc(8rem + 32px);
+      padding-bottom: calc(8rem + max(32px, env(safe-area-inset-bottom, 0px)));
+    }
   }
 }
 

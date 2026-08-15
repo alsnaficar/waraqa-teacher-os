@@ -177,3 +177,88 @@ describe("TASK 25.38 mobile bottom navigation safe area", () => {
     assert.doesNotMatch(source, /min-w-\[(?:3|4|5)\d{2}px\]/);
   });
 });
+
+describe("TASK 25.38C Android/Honor mobile bottom-nav floor", () => {
+  const source = readFileSync(path.join(here, "bottom-nav.tsx"), "utf8");
+  const styles = readFileSync(path.join(here, "../../styles.css"), "utf8");
+  const shell = readFileSync(
+    path.join(here, "../../routes/_authenticated/route.tsx"),
+    "utf8",
+  );
+  const root = readFileSync(path.join(here, "../../routes/__root.tsx"), "utf8");
+
+  const mobileBlock = styles.slice(
+    styles.indexOf("@media (max-width: 767px)"),
+    styles.indexOf("@layer base"),
+  );
+
+  it("uses a mobile-only 32px max() floor and keeps env(safe-area-inset-bottom)", () => {
+    assert.match(styles, /@media \(max-width: 767px\)/);
+    assert.match(
+      mobileBlock,
+      /padding-bottom:\s*max\(32px,\s*env\(safe-area-inset-bottom,\s*0px\)\)/,
+    );
+    assert.match(
+      mobileBlock,
+      /padding-bottom:\s*calc\(8rem \+ max\(32px,\s*env\(safe-area-inset-bottom,\s*0px\)\)\)/,
+    );
+    assert.match(root, /viewport-fit=cover/);
+    assert.match(source, /bottom-nav-safe-area/);
+    assert.match(shell, /authenticated-shell-offset/);
+  });
+
+  it("does not apply the 32px floor to desktop/tablet rules", () => {
+    const desktopNav = styles.slice(
+      styles.indexOf(".bottom-nav-safe-area"),
+      styles.indexOf("@media (max-width: 767px)"),
+    );
+    assert.match(
+      desktopNav,
+      /padding-bottom:\s*calc\(0px \+ env\(safe-area-inset-bottom,\s*0px\)\)/,
+    );
+    assert.match(
+      desktopNav,
+      /padding-bottom:\s*calc\(8rem \+ env\(safe-area-inset-bottom,\s*0px\)\)/,
+    );
+    assert.doesNotMatch(desktopNav, /max\(32px/);
+    assert.doesNotMatch(source, /md:hidden|lg:hidden|sm:hidden/);
+    assert.doesNotMatch(source, /translate-y|translateY/);
+  });
+
+  it("keeps seven destinations and does not change routes or item metrics", () => {
+    assert.equal(BOTTOM_NAV_ITEMS.length, 7);
+    assert.deepEqual(
+      BOTTOM_NAV_ITEMS.map((item) => item.to),
+      [
+        "/dashboard",
+        "/planner",
+        "/homework",
+        "/tests",
+        "/corrections",
+        "/reports",
+        "/settings",
+      ],
+    );
+    assert.deepEqual(
+      BOTTOM_NAV_ITEMS.map((item) => item.label),
+      [
+        "الرئيسية",
+        "الجدول",
+        "الواجبات",
+        "الاختبارات",
+        "التصحيح",
+        "التقارير",
+        "الإعدادات",
+      ],
+    );
+    assert.match(source, /grid-cols-7/);
+    assert.match(source, /min-h-\[44px\]/);
+    assert.match(source, /h-5 w-5/);
+    assert.match(source, /h-9 w-9/);
+    assert.match(source, /text-\[10px\]/);
+    assert.match(source, /py-2\.5/);
+    assert.match(source, /fixed inset-x-0 bottom-0/);
+    assert.doesNotMatch(source, /["']\/lesson-sessions["']/);
+    assert.doesNotMatch(source, /["']\/weekly-preparation["']/);
+  });
+});
