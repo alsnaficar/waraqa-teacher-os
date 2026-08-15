@@ -1,6 +1,8 @@
 import { resolveUserContext, type SupabaseUserContext } from "@/platform/database/supabase/context";
 import type { Database } from "@/platform/database/supabase/types";
 
+import { StudentService } from "./student.service";
+
 type SubmissionRow = Database["public"]["Tables"]["homework_submissions"]["Row"];
 type SubmissionInsert = Database["public"]["Tables"]["homework_submissions"]["Insert"];
 type SubmissionUpdate = Database["public"]["Tables"]["homework_submissions"]["Update"];
@@ -301,6 +303,86 @@ export class HomeworkSubmissionService {
   }
 
   /**
+   * TASK 25.3 — Assign pending submissions to all active students in an owned class.
+   * Idempotent: existing (homework, student) pairs are skipped.
+   * Does not mark submitted/graded and does not change homework status.
+   */
+  static async assignToClass(
+    homeworkId: string,
+    classId: string,
+    context?: SupabaseUserContext,
+  ): Promise<HomeworkAssignToClassResult | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    if (!homeworkId?.trim()) {
+      throw new Error("معرّف الواجب مطلوب.");
+    }
+    if (!classId?.trim()) {
+      throw new Error("معرّف الفصل مطلوب.");
+    }
+
+    await assertOwnedHomework(resolved, homeworkId.trim());
+    await assertOwnedClass(resolved, classId.trim());
+
+    const eligible = await StudentService.list(
+      { classId: classId.trim(), active: true },
+      resolved,
+    );
+
+    // Defense: only owned active students in the selected class.
+    const students = eligible.filter(
+      (student) =>
+        student.teacherId === resolved.userId &&
+        student.active &&
+        student.classId === classId.trim(),
+    );
+
+    const existing = await this.listByHomework(homeworkId.trim(), resolved);
+    const alreadyAssigned = new Set(existing.map((row) => row.studentId));
+
+    let createdCount = 0;
+    let skippedExistingCount = 0;
+
+    for (const student of students) {
+      if (alreadyAssigned.has(student.id)) {
+        skippedExistingCount += 1;
+        continue;
+      }
+
+      try {
+        const created = await this.create(
+          {
+            homeworkId: homeworkId.trim(),
+            studentId: student.id,
+            status: "pending",
+          },
+          resolved,
+        );
+        if (created) {
+          createdCount += 1;
+          alreadyAssigned.add(student.id);
+        }
+      } catch (error) {
+        if (error instanceof HomeworkSubmissionConflictError) {
+          skippedExistingCount += 1;
+          alreadyAssigned.add(student.id);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return {
+      homeworkId: homeworkId.trim(),
+      classId: classId.trim(),
+      eligibleCount: students.length,
+      createdCount,
+      skippedExistingCount,
+    };
+  }
+
+  /**
    * Manual grade / regrade for a teacher-owned submission.
    * Allowed for status submitted|graded only — pending is rejected.
    * Sets status=graded, graded_at=now, score + optional feedback.
@@ -348,6 +430,14 @@ export class HomeworkSubmissionService {
   }
 }
 
+export type HomeworkAssignToClassResult = {
+  homeworkId: string;
+  classId: string;
+  eligibleCount: number;
+  createdCount: number;
+  skippedExistingCount: number;
+};
+
 async function assertOwnedHomework(
   context: SupabaseUserContext,
   homeworkId: string,
@@ -362,6 +452,23 @@ async function assertOwnedHomework(
   if (error) throw error;
   if (!data) {
     throw new Error("الواجب غير موجود أو لا تملك صلاحية الوصول إليه.");
+  }
+}
+
+async function assertOwnedClass(
+  context: SupabaseUserContext,
+  classId: string,
+): Promise<void> {
+  const { data, error } = await context.client
+    .from("classes")
+    .select("id")
+    .eq("id", classId)
+    .eq("user_id", context.userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) {
+    throw new Error("الفصل غير موجود أو لا تملك صلاحية الوصول إليه.");
   }
 }
 

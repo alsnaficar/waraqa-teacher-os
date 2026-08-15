@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HomeworkSubmissionService } from "../services/homework-submission.service";
 import type { HomeworkGradeInput } from "../services/homework-submission.service";
 import { StudentService } from "../services/student.service";
+import { TeacherCatalogService } from "../services/teacher-catalog.service";
 
 export function homeworkSubmissionsQueryKey(homeworkId: string) {
   return ["homework-submissions", homeworkId] as const;
@@ -31,6 +32,19 @@ export function useHomeworkSubmissions(homeworkId: string | null) {
     queryFn: () => StudentService.list({ active: true }),
   });
 
+  const catalogs = useQuery({
+    queryKey: ["teacher-catalog", "classes-grades"],
+    enabled: Boolean(homeworkId),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const [classes, grades] = await Promise.all([
+        TeacherCatalogService.listClasses(),
+        TeacherCatalogService.listGrades(),
+      ]);
+      return { classes, grades };
+    },
+  });
+
   const invalidate = () => {
     if (homeworkId) {
       void queryClient.invalidateQueries({ queryKey: homeworkSubmissionsQueryKey(homeworkId) });
@@ -46,6 +60,16 @@ export function useHomeworkSubmissions(homeworkId: string | null) {
         studentId,
         status: "pending",
       });
+    },
+    onSuccess: invalidate,
+  });
+
+  const assignToClass = useMutation({
+    mutationFn: async (classId: string) => {
+      if (!homeworkId) throw new Error("معرّف الواجب مفقود.");
+      const result = await HomeworkSubmissionService.assignToClass(homeworkId, classId);
+      if (!result) throw new Error("يجب تسجيل الدخول لإسناد الواجب.");
+      return result;
     },
     onSuccess: invalidate,
   });
@@ -78,10 +102,13 @@ export function useHomeworkSubmissions(homeworkId: string | null) {
   return {
     submissions: submissionsQuery.data ?? [],
     students: studentsQuery.data ?? [],
+    classes: catalogs.data?.classes ?? [],
+    grades: catalogs.data?.grades ?? [],
     loading: submissionsQuery.isPending || studentsQuery.isPending,
     error: submissionsQuery.error ?? studentsQuery.error,
     refresh: invalidate,
     createPending,
+    assignToClass,
     markSubmitted,
     grade,
     remove,

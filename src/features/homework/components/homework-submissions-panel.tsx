@@ -1,4 +1,4 @@
-import { FileCheck2, Plus, Trash2 } from "lucide-react";
+import { FileCheck2, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -38,6 +38,7 @@ import {
   SUBMISSIONS_ERROR_TITLE,
   toSubmissionListItemView,
 } from "../services/students-ui.logic";
+import { HomeworkBulkAssignDialog } from "./homework-bulk-assign-dialog";
 import { HomeworkGradeDialog } from "./homework-grade-dialog";
 
 export function HomeworkSubmissionsPanel({
@@ -53,10 +54,13 @@ export function HomeworkSubmissionsPanel({
   const {
     submissions,
     students,
+    classes,
+    grades,
     loading,
     error,
     refresh,
     createPending,
+    assignToClass,
     markSubmitted,
     grade,
     remove,
@@ -65,6 +69,7 @@ export function HomeworkSubmissionsPanel({
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [deleteTarget, setDeleteTarget] = useState<HomeworkSubmission | null>(null);
   const [gradeTarget, setGradeTarget] = useState<HomeworkSubmission | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const studentById = useMemo(
     () => new Map(students.map((student) => [student.id, student])),
@@ -125,6 +130,15 @@ export function HomeworkSubmissionsPanel({
         >
           <Plus className="h-4 w-4" />
           إضافة تسليم
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 gap-1"
+          onClick={() => setBulkOpen(true)}
+        >
+          <Users className="h-4 w-4" />
+          إسناد للفصل
         </Button>
       </div>
 
@@ -298,6 +312,17 @@ export function HomeworkSubmissionsPanel({
           </div>
         </>
       )}
+
+      <HomeworkBulkAssignDialog
+        open={bulkOpen}
+        homeworkTitle={homeworkTitle}
+        grades={grades}
+        classes={classes}
+        students={students}
+        busy={assignToClass.isPending}
+        onOpenChange={setBulkOpen}
+        onAssign={(classId) => assignToClass.mutateAsync(classId)}
+      />
 
       <HomeworkGradeDialog
         open={Boolean(gradeTarget)}
