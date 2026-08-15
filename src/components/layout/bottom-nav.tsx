@@ -5,7 +5,7 @@ import {
   ClipboardList,
   FlaskConical,
   ClipboardCheck,
-  BarChart3,
+  BookOpen,
   Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -18,7 +18,7 @@ type NavItem = {
     | "/homework"
     | "/tests"
     | "/corrections"
-    | "/reports"
+    | "/lesson-sessions"
     | "/settings";
   label: string;
   icon: LucideIcon;
@@ -31,7 +31,7 @@ export const BOTTOM_NAV_ITEMS: NavItem[] = [
   { to: "/homework", label: "الواجبات", icon: ClipboardList },
   { to: "/tests", label: "الاختبارات", icon: FlaskConical },
   { to: "/corrections", label: "التصحيح", icon: ClipboardCheck },
-  { to: "/reports", label: "التقارير", icon: BarChart3 },
+  { to: "/lesson-sessions", label: "التحضير", icon: BookOpen },
   { to: "/settings", label: "الإعدادات", icon: Settings },
 ];
 
