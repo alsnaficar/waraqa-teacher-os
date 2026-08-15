@@ -4,6 +4,11 @@ import type { TeacherTimetableEntry } from "@/features/teacher-timetable/types";
 import type { Database } from "@/platform/database/supabase/types";
 
 import { matchPlanEntryToTimetableSlot } from "./match-plan-entry-to-timetable-slot";
+import {
+  resolveOwnedGradeClassIds,
+  type CatalogClass,
+  type CatalogGrade,
+} from "./resolve-grade-class.logic";
 
 type SessionInsert = Database["public"]["Tables"]["lesson_sessions"]["Insert"];
 
@@ -21,13 +26,15 @@ export type BuildSessionInsertsInput = {
   academicYearId: string;
   semesterId: string;
   takenPeriods: ReadonlySet<number>;
-  gradeIdByName: ReadonlyMap<string, string>;
-  classIdByName: ReadonlyMap<string, string>;
+  /** Teacher-owned catalog used for unambiguous name → ID resolution. */
+  grades: ReadonlyArray<CatalogGrade>;
+  classes: ReadonlyArray<CatalogClass>;
 };
 
 /**
  * Builds lesson_session insert rows for timetable slots with slot-aware plan matching.
  * Skips periods already taken and slots with zero or ambiguous plan matches.
+ * Grade/class IDs are set only when catalog resolution is unambiguous and owned.
  */
 export function buildSessionInsertsForTimetableSlots(
   input: BuildSessionInsertsInput,
@@ -45,12 +52,42 @@ export function buildSessionInsertsForTimetableSlots(
 
     if (!planned?.lessonId) continue;
 
+    const resolved = resolveOwnedGradeClassIds({
+      gradeName: slot.grade,
+      className: slot.className,
+      grades: input.grades,
+      classes: input.classes,
+    });
+
+    const gradeId =
+      resolved.status === "resolved" || resolved.status === "unresolved"
+        ? resolved.gradeId
+        : null;
+    const classId =
+      resolved.status === "resolved" || resolved.status === "unresolved"
+        ? resolved.classId
+        : null;
+
+    // ambiguous / mismatch / foreign → leave nulls (do not guess)
+    const safeGradeId =
+      resolved.status === "ambiguous" ||
+      resolved.status === "mismatch" ||
+      resolved.status === "foreign"
+        ? null
+        : gradeId;
+    const safeClassId =
+      resolved.status === "ambiguous" ||
+      resolved.status === "mismatch" ||
+      resolved.status === "foreign"
+        ? null
+        : classId;
+
     rows.push({
       teacher_id: input.teacherId,
       academic_year_id: input.academicYearId,
       semester_id: input.semesterId,
-      grade_id: input.gradeIdByName.get(slot.grade) ?? null,
-      class_id: input.classIdByName.get(slot.className) ?? null,
+      grade_id: safeGradeId,
+      class_id: safeClassId,
       curriculum_lesson_id: planned.lessonId,
       curriculum_lesson_source: "plan",
       session_date: input.sessionDate,

@@ -12,6 +12,12 @@ import {
 import { buildSessionInsertsForTimetableSlots } from "./session-generation.logic";
 import { collectUnlockedSessionCurriculumRefreshMatches } from "./session-curriculum-refresh.logic";
 import {
+  assertGradeClassRelationship,
+  resolveOwnedGradeClassIds,
+  type CatalogClass,
+  type CatalogGrade,
+} from "./resolve-grade-class.logic";
+import {
   LessonSessionLockedError,
   LessonSessionPreparingError,
   toCurriculumLessonSource,
@@ -281,7 +287,7 @@ export class LessonSessionService {
     const existing = await this.getSessionsByDate(date, resolved);
     const takenPeriods = new Set(existing.map((session) => session.periodNumber));
 
-    const { gradeIdByName, classIdByName } = await this.loadGradeAndClassIds(resolved);
+    const catalog = await this.loadOwnedGradeClassCatalog(resolved);
 
     const rows = buildSessionInsertsForTimetableSlots({
       slots,
@@ -292,8 +298,8 @@ export class LessonSessionService {
       academicYearId: scope.academicYearId,
       semesterId: scope.semesterId,
       takenPeriods,
-      gradeIdByName,
-      classIdByName,
+      grades: catalog.grades,
+      classes: catalog.classes,
     });
 
     if (rows.length > 0) {
@@ -614,6 +620,100 @@ export class LessonSessionService {
     }
   }
 
+  /**
+   * Attach or change grade/class on an owned lesson session.
+   * Ownership + class↔grade relationship enforced server-side.
+   * Does not accept teacher_id from the client.
+   */
+  static async updateGradeAndClass(
+    sessionId: string,
+    input: { gradeId?: string | null; classId?: string | null },
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession | null> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) return null;
+
+    if (!sessionId?.trim()) {
+      throw new Error("معرّف الحصة مطلوب.");
+    }
+
+    const existing = await this.getSessionById(sessionId.trim(), resolved);
+    if (!existing) {
+      throw new Error("الحصة غير موجودة أو لا تملك صلاحية الوصول إليها.");
+    }
+
+    const catalog = await this.loadOwnedGradeClassCatalog(resolved);
+
+    let nextGradeId =
+      input.gradeId !== undefined ? input.gradeId : existing.gradeId;
+    let nextClassId =
+      input.classId !== undefined ? input.classId : existing.classId;
+
+    if (nextGradeId?.trim()) {
+      const grade = catalog.grades.find((item) => item.id === nextGradeId!.trim());
+      if (!grade) {
+        throw new Error("الصف غير موجود أو لا تملك صلاحية الوصول إليه.");
+      }
+      nextGradeId = grade.id;
+    } else {
+      nextGradeId = null;
+    }
+
+    if (nextClassId?.trim()) {
+      const klass = catalog.classes.find((item) => item.id === nextClassId!.trim());
+      if (!klass) {
+        throw new Error("الفصل غير موجود أو لا تملك صلاحية الوصول إليه.");
+      }
+      nextClassId = klass.id;
+
+      // Class drives grade when it has a binding — prevents stale mismatched pairs.
+      if (klass.gradeId) {
+        if (
+          input.gradeId !== undefined &&
+          input.gradeId?.trim() &&
+          input.gradeId.trim() !== klass.gradeId
+        ) {
+          throw new Error("الفصل لا ينتمي إلى الصف المحدد.");
+        }
+        nextGradeId = klass.gradeId;
+      } else if (nextGradeId) {
+        assertGradeClassRelationship(nextGradeId, nextClassId, catalog.classes);
+      }
+    } else {
+      nextClassId = null;
+    }
+
+    if (nextGradeId && nextClassId) {
+      assertGradeClassRelationship(nextGradeId, nextClassId, catalog.classes);
+    }
+
+    const mapped = resolveOwnedGradeClassIds({
+      gradeId: nextGradeId,
+      classId: nextClassId,
+      grades: catalog.grades,
+      classes: catalog.classes,
+    });
+
+    if (mapped.status === "foreign") {
+      throw new Error("الصف أو الفصل غير موجود أو لا تملك صلاحية الوصول إليه.");
+    }
+    if (mapped.status === "mismatch") {
+      throw new Error("الفصل لا ينتمي إلى الصف المحدد.");
+    }
+    if (mapped.status === "ambiguous") {
+      throw new Error("تعذر تحديد الصف/الفصل بشكل فريد.");
+    }
+
+    return this.applyUpdate(
+      sessionId.trim(),
+      {
+        grade_id: mapped.gradeId,
+        class_id: mapped.classId,
+      },
+      resolved,
+    );
+  }
+
   private static async applyUpdate(
     id: string,
     patch: SessionUpdate,
@@ -636,18 +736,25 @@ export class LessonSessionService {
     return data ? toSession(data) : null;
   }
 
-  private static async loadGradeAndClassIds(context: SupabaseUserContext): Promise<{
-    gradeIdByName: Map<string, string>;
-    classIdByName: Map<string, string>;
+  private static async loadOwnedGradeClassCatalog(context: SupabaseUserContext): Promise<{
+    grades: CatalogGrade[];
+    classes: CatalogClass[];
   }> {
     const [{ data: grades }, { data: classes }] = await Promise.all([
       context.client.from("grades").select("id, name").eq("user_id", context.userId),
-      context.client.from("classes").select("id, name").eq("user_id", context.userId),
+      context.client
+        .from("classes")
+        .select("id, name, grade_id")
+        .eq("user_id", context.userId),
     ]);
 
     return {
-      gradeIdByName: new Map((grades ?? []).map((grade) => [grade.name, grade.id])),
-      classIdByName: new Map((classes ?? []).map((klass) => [klass.name, klass.id])),
+      grades: (grades ?? []).map((grade) => ({ id: grade.id, name: grade.name })),
+      classes: (classes ?? []).map((klass) => ({
+        id: klass.id,
+        name: klass.name,
+        gradeId: klass.grade_id,
+      })),
     };
   }
 }

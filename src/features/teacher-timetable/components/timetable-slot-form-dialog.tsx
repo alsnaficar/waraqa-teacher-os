@@ -1,6 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
+import { useClasses } from "@/features/classes/hooks/useClasses";
+import { useGrades } from "@/features/classes/hooks/useGrades";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -26,49 +28,22 @@ import {
   TimetableSlotConflictError,
   type TeacherTimetableSlotInput,
 } from "../services/teacher-timetable.service";
+import {
+  applyClassSelection,
+  applyGradeSelection,
+  classesForSelectedGrade,
+  emptyTimetableSlotForm,
+  formHasRequiredGradeClass,
+  timetableEntryToFormState,
+  type TimetableSlotFormState,
+} from "../services/timetable-slot-form.logic";
 import { TIMETABLE_DAYS } from "./teacher-timetable.constants";
 
 const PERIODS = [1, 2, 3, 4, 5, 6, 7] as const;
 
 export type TimetableSlotFormMode = "add" | "edit";
 
-export type TimetableSlotFormState = {
-  dayOfWeek: number;
-  period: number;
-  subject: string;
-  grade: string;
-  className: string;
-  classroom: string;
-  startsAt: string;
-  endsAt: string;
-};
-
-function emptyState(overrides: Partial<TimetableSlotFormState> = {}): TimetableSlotFormState {
-  return {
-    dayOfWeek: 0,
-    period: 1,
-    subject: "",
-    grade: "",
-    className: "",
-    classroom: "",
-    startsAt: "",
-    endsAt: "",
-    ...overrides,
-  };
-}
-
-function fromEntry(entry: TeacherTimetableEntry): TimetableSlotFormState {
-  return {
-    dayOfWeek: entry.dayOfWeek,
-    period: entry.period,
-    subject: entry.subject,
-    grade: entry.grade,
-    className: entry.className,
-    classroom: entry.classroom ?? "",
-    startsAt: entry.startsAt ?? "",
-    endsAt: entry.endsAt ?? "",
-  };
-}
+export type { TimetableSlotFormState };
 
 function toSlotInput(state: TimetableSlotFormState): TeacherTimetableSlotInput {
   return {
@@ -94,22 +69,83 @@ export function TimetableSlotFormDialog({
 }: {
   open: boolean;
   mode: TimetableSlotFormMode;
-  initial?: Partial<TimetableSlotFormState>;
+  initial?: Partial<TimetableSlotFormState> | TeacherTimetableEntry;
   editingId?: string;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void | Promise<void>;
 }) {
-  const [form, setForm] = useState<TimetableSlotFormState>(() => emptyState(initial));
+  const { items: grades } = useGrades();
+  const { items: classes } = useClasses();
+  const [form, setForm] = useState<TimetableSlotFormState>(() => emptyTimetableSlotForm());
   const [saving, setSaving] = useState(false);
+
+  const catalogGrades = useMemo(
+    () => grades.map((grade) => ({ id: grade.id, name: grade.name })),
+    [grades],
+  );
+  const catalogClasses = useMemo(
+    () =>
+      classes.map((klass) => ({
+        id: klass.id,
+        name: klass.name,
+        gradeId: klass.gradeId,
+      })),
+    [classes],
+  );
+
+  const classesForGrade = useMemo(
+    () => classesForSelectedGrade(catalogClasses, form.gradeId),
+    [catalogClasses, form.gradeId],
+  );
 
   useEffect(() => {
     if (!open) return;
-    setForm(emptyState(initial));
-  }, [open, editingId, initial?.dayOfWeek, initial?.period, initial?.subject]);
+
+    const partial = (initial ?? {}) as Partial<TimetableSlotFormState>;
+    const base = emptyTimetableSlotForm(partial);
+    const resolved = timetableEntryToFormState(
+      {
+        id: editingId ?? "draft",
+        teacherId: "",
+        dayOfWeek: base.dayOfWeek,
+        period: base.period,
+        subject: base.subject,
+        grade: base.grade,
+        className: base.className,
+        classroom: base.classroom || undefined,
+        startsAt: base.startsAt || undefined,
+        endsAt: base.endsAt || undefined,
+        active: true,
+      },
+      catalogGrades,
+      catalogClasses,
+    );
+
+    setForm({
+      ...resolved,
+      dayOfWeek: base.dayOfWeek,
+      period: base.period,
+      subject: base.subject || resolved.subject,
+      classroom: base.classroom || resolved.classroom,
+      startsAt: base.startsAt || resolved.startsAt,
+      endsAt: base.endsAt || resolved.endsAt,
+      // Prefer explicit IDs from initial when present
+      gradeId: partial.gradeId || resolved.gradeId,
+      classId: partial.classId || resolved.classId,
+      grade: partial.grade || resolved.grade,
+      className: partial.className || resolved.className,
+    });
+  }, [
+    open,
+    editingId,
+    catalogGrades,
+    catalogClasses,
+    initial,
+  ]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!form.subject.trim() || !form.grade.trim() || !form.className.trim()) {
+    if (!form.subject.trim() || !formHasRequiredGradeClass(form)) {
       toast.error("المادة والصف والفصل مطلوبة.");
       return;
     }
@@ -138,13 +174,15 @@ export function TimetableSlotFormDialog({
     }
   }
 
+  const hasCatalog = catalogGrades.length > 0 || catalogClasses.length > 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md" dir="rtl">
         <DialogHeader>
           <DialogTitle>{mode === "add" ? "إضافة حصة" : "تعديل حصة"}</DialogTitle>
           <DialogDescription>
-            الحقول تعتمد على الجدول الأسبوعي الحالي. الحصص المحضّرة سابقاً لا تُحذف تلقائياً.
+            اختر الصف والفصل من قائمتك. الحصص المحضّرة سابقاً لا تُحذف تلقائياً.
           </DialogDescription>
         </DialogHeader>
 
@@ -203,25 +241,76 @@ export function TimetableSlotFormDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="tt-grade">الصف</Label>
-              <Input
-                id="tt-grade"
-                className="min-h-11"
-                value={form.grade}
-                onChange={(e) => setForm((f) => ({ ...f, grade: e.target.value }))}
-                required
-              />
+              {hasCatalog ? (
+                <Select
+                  value={form.gradeId || undefined}
+                  onValueChange={(value) =>
+                    setForm((f) => applyGradeSelection(f, value, catalogGrades, catalogClasses))
+                  }
+                >
+                  <SelectTrigger id="tt-grade" className="min-h-11">
+                    <SelectValue placeholder="اختر الصف" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catalogGrades.map((grade) => (
+                      <SelectItem key={grade.id} value={grade.id}>
+                        {grade.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="tt-grade"
+                  className="min-h-11"
+                  value={form.grade}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, grade: e.target.value, gradeId: "" }))
+                  }
+                  required
+                />
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tt-class">الفصل</Label>
-              <Input
-                id="tt-class"
-                className="min-h-11"
-                value={form.className}
-                onChange={(e) => setForm((f) => ({ ...f, className: e.target.value }))}
-                required
-              />
+              {hasCatalog ? (
+                <Select
+                  value={form.classId || undefined}
+                  onValueChange={(value) =>
+                    setForm((f) => applyClassSelection(f, value, catalogGrades, catalogClasses))
+                  }
+                  disabled={!form.gradeId && catalogGrades.length > 0}
+                >
+                  <SelectTrigger id="tt-class" className="min-h-11">
+                    <SelectValue placeholder="اختر الفصل" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classesForGrade.map((klass) => (
+                      <SelectItem key={klass.id} value={klass.id}>
+                        {klass.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="tt-class"
+                  className="min-h-11"
+                  value={form.className}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, className: e.target.value, classId: "" }))
+                  }
+                  required
+                />
+              )}
             </div>
           </div>
+
+          {hasCatalog && catalogGrades.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              أضف الصفوف والفصول من الإعدادات لربط الحصص بالقائمة.
+            </p>
+          ) : null}
 
           <div className="space-y-1.5">
             <Label htmlFor="tt-classroom">القاعة (اختياري)</Label>
@@ -286,6 +375,10 @@ export function TimetableSlotFormDialog({
   );
 }
 
-export function entryToFormState(entry: TeacherTimetableEntry): TimetableSlotFormState {
-  return fromEntry(entry);
+export function entryToFormState(
+  entry: TeacherTimetableEntry,
+  grades: ReadonlyArray<{ id: string; name: string }> = [],
+  classes: ReadonlyArray<{ id: string; name: string; gradeId: string | null }> = [],
+): TimetableSlotFormState {
+  return timetableEntryToFormState(entry, grades, classes);
 }

@@ -359,4 +359,49 @@ describe("generateSessionsForDate slot-aware plan matching", () => {
     assert.equal(db.lesson_sessions[0]?.curriculum_lesson_id, LESSON_A);
     assert.equal(db.lesson_sessions[0]?.period_number, 3);
   });
+
+  it("TASK 25.4 — generation wires unique owned grade/class IDs from timetable names", async () => {
+    const GRADE_ID = "gggggggg-gggg-4ggg-8ggg-gggggggggggg";
+    const CLASS_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const db = seedDb();
+    db.grades = [{ id: GRADE_ID, user_id: TEACHER_ID, name: "الأول متوسط" }];
+    db.classes = [
+      { id: CLASS_ID, user_id: TEACHER_ID, name: "1/A", grade_id: GRADE_ID },
+    ];
+
+    await LessonSessionService.generateSessionsForDate(
+      SUNDAY_ISO,
+      authFor(db),
+      planEntriesForTest([
+        planEntry({ lessonId: LESSON_A, period: 1 }),
+        planEntry({ lessonId: LESSON_B, period: 4 }),
+      ]),
+    );
+
+    assert.equal(db.lesson_sessions.length, 2);
+    for (const row of db.lesson_sessions) {
+      assert.equal(row.grade_id, GRADE_ID);
+      assert.equal(row.class_id, CLASS_ID);
+    }
+  });
+
+  it("TASK 25.4 — ambiguous class names leave grade/class IDs null", async () => {
+    const GRADE_ID = "gggggggg-gggg-4ggg-8ggg-gggggggggggg";
+    const db = seedDb();
+    db.grades = [{ id: GRADE_ID, user_id: TEACHER_ID, name: "الأول متوسط" }];
+    db.classes = [
+      { id: "c1", user_id: TEACHER_ID, name: "1/A", grade_id: GRADE_ID },
+      { id: "c2", user_id: TEACHER_ID, name: "1/A", grade_id: GRADE_ID },
+    ];
+
+    await LessonSessionService.generateSessionsForDate(
+      SUNDAY_ISO,
+      authFor(db),
+      planEntriesForTest([planEntry({ lessonId: LESSON_A, period: 1 })]),
+    );
+
+    assert.equal(db.lesson_sessions.length, 1);
+    assert.equal(db.lesson_sessions[0]?.grade_id, null);
+    assert.equal(db.lesson_sessions[0]?.class_id, null);
+  });
 });
