@@ -89,3 +89,72 @@ describe("TASK 25.31 mobile-first week header layout", () => {
     assert.match(weekly, /const weekSwitchPending = existingSessionsQuery\.isPlaceholderData/);
   });
 });
+
+describe("TASK 25.32 weekly plan publish UI in Family C header", () => {
+  const weekly = readSrc("../components/filled-weekly-timetable.tsx");
+  const planner = readSrc("../../../routes/_authenticated/planner.tsx");
+  const toolbar = readSrc("../components/planner-toolbar.tsx");
+  const bottomNav = readSrc("../../../components/layout/bottom-nav.tsx");
+
+  const headerStart = weekly.indexOf("const weekHeaderActionBtnClass");
+  const headerEnd = weekly.indexOf("export function FilledWeeklyTimetable");
+  const header = weekly.slice(headerStart, headerEnd);
+  const publishStart = header.indexOf("{entriesCount} حصص");
+  const prepGroupsStart = header.indexOf("order-2 grid min-w-0 w-full grid-cols-2 gap-3 md:contents");
+  const publishBlock = header.slice(publishStart, prepGroupsStart);
+
+  it("places نشر الخطة under the lesson count with both destination labels", () => {
+    assert.notEqual(publishStart, -1);
+    assert.match(publishBlock, /نشر الخطة/);
+    assert.match(publishBlock, /منصة مدرستي/);
+    assert.match(publishBlock, /المدير وولي الأمر/);
+    assert.doesNotMatch(publishBlock, /PDF|ملف PDF/);
+    assert.ok(publishBlock.indexOf("حصص") < publishBlock.indexOf("نشر الخطة"));
+    assert.ok(publishBlock.indexOf("نشر الخطة") < publishBlock.indexOf("منصة مدرستي"));
+  });
+
+  it("uses School and Users icons and coming-soon toasts without invented routes", () => {
+    assert.match(header, /<School className=/);
+    assert.match(header, /<Users className=/);
+    assert.match(header, /onComingSoon\("منصة مدرستي"\)/);
+    assert.match(header, /onComingSoon\("المدير وولي الأمر"\)/);
+    assert.doesNotMatch(publishBlock, /to=["']\//);
+    assert.doesNotMatch(weekly, /applyMockMadrasatiTimetable/);
+    assert.doesNotMatch(weekly, /previewMadrasatiSync/);
+    assert.doesNotMatch(weekly, /PublishModal/);
+    assert.doesNotMatch(weekly, /تم النشر بنجاح/);
+  });
+
+  it("keeps equal-width wrapping publish buttons without 320px overflow widths", () => {
+    assert.match(
+      publishBlock,
+      /grid min-w-0 w-full grid-cols-2 gap-2 sm:gap-3/,
+    );
+    assert.match(header, /flex min-w-0 w-full max-w-full flex-col gap-3 overflow-x-hidden/);
+    assert.match(header, /h-11 min-h-\[44px\] w-full min-w-0/);
+    assert.match(header, /whitespace-normal/);
+    assert.doesNotMatch(header, /w-\[3(2|6)0px\]/);
+    assert.doesNotMatch(header, /min-w-\[(320|360|390|430)px\]/);
+  });
+
+  it("does not mount PlannerToolbar publish or restore historical weekly layouts", () => {
+    const top = planner.slice(
+      planner.indexOf("الخطة والجدول الدراسي"),
+      planner.indexOf('view === "semester"'),
+    );
+    assert.match(planner, /<FilledWeeklyTimetable \/>/);
+    assert.doesNotMatch(planner, /PlannerToolbar/);
+    assert.doesNotMatch(planner, /PlannerMobileLayout/);
+    assert.doesNotMatch(planner, /PlannerDesktopLayout/);
+    assert.doesNotMatch(planner, /PublishModal/);
+    assert.doesNotMatch(top, /نشر الخطة/);
+    assert.doesNotMatch(top, /منصة مدرستي/);
+    assert.match(toolbar, /نشر الخطة/);
+    assert.match(bottomNav, /التقارير/);
+    assert.match(header, /order-2 grid min-w-0 w-full grid-cols-2 gap-3 md:contents/);
+    assert.match(
+      header,
+      /md:grid md:grid-cols-\[minmax\(0,1fr\)_auto_minmax\(0,1fr\)\]/,
+    );
+  });
+});

@@ -17,8 +17,10 @@ import {
   KeyRound,
   Lightbulb,
   PlaySquare,
+  School,
   Sparkles,
   Trash2,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -232,6 +234,30 @@ function TimetableWeekHeader({
               aria-live="polite"
             />
           ) : null}
+        </div>
+
+        <div className="mt-3 flex min-w-0 w-full max-w-full flex-col items-center">
+          <span className="text-xs font-semibold text-foreground">نشر الخطة</span>
+          <div className="mt-1.5 grid min-w-0 w-full grid-cols-2 gap-2 sm:gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className={`${weekHeaderActionBtnClass} border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900 dark:border-emerald-800/30 dark:bg-emerald-900/20 dark:text-emerald-400`}
+              onClick={() => onComingSoon("منصة مدرستي")}
+            >
+              <School className="h-3.5 w-3.5 shrink-0" />
+              منصة مدرستي
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className={`${weekHeaderActionBtnClass} border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 hover:text-teal-900 dark:border-teal-800/30 dark:bg-teal-900/20 dark:text-teal-400`}
+              onClick={() => onComingSoon("المدير وولي الأمر")}
+            >
+              <Users className="h-3.5 w-3.5 shrink-0" />
+              المدير وولي الأمر
+            </Button>
+          </div>
         </div>
       </div>
 
