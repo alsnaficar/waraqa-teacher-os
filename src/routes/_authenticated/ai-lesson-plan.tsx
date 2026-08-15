@@ -35,6 +35,7 @@ import { Button } from "@/shared/ui/button";
 import { Label } from "@/shared/ui/label";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
 import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
 import { prepareLessonSession } from "@/platform/lesson-sessions/prepare-lesson-session.functions";
@@ -174,6 +175,7 @@ function LessonPlanPage() {
   const [objectives, setObjectives] = useState("");
   const [unit, setUnit] = useState("");
   const [duration, setDuration] = useState("45 دقيقة");
+  const [deliveryMode, setDeliveryMode] = useState<"classroom" | "remote">("classroom");
   const [lessonId, setLessonId] = useState<string | null>(null);
   const [suggestedDate, setSuggestedDate] = useState("");
   const [viewMode, setViewMode] = useState<"interactive" | "markdown">("interactive");
@@ -453,6 +455,33 @@ function LessonPlanPage() {
                   </div>
                 </div>
               </div>
+
+              <RadioGroup
+                dir="rtl"
+                value={deliveryMode}
+                onValueChange={(value) =>
+                  setDeliveryMode(value === "remote" ? "remote" : "classroom")
+                }
+                className="grid min-w-0 w-full grid-cols-2 gap-3"
+                aria-label="نمط تنفيذ الدرس"
+              >
+                <label
+                  htmlFor="delivery-mode-classroom"
+                  dir="ltr"
+                  className="inline-flex min-h-[44px] min-w-0 items-center justify-start gap-2"
+                >
+                  <RadioGroupItem id="delivery-mode-classroom" value="classroom" />
+                  <span className="text-sm leading-tight whitespace-normal">حضوري</span>
+                </label>
+                <label
+                  htmlFor="delivery-mode-remote"
+                  dir="ltr"
+                  className="inline-flex min-h-[44px] min-w-0 items-center justify-start gap-2"
+                >
+                  <RadioGroupItem id="delivery-mode-remote" value="remote" />
+                  <span className="text-sm leading-tight whitespace-normal">عن بعد</span>
+                </label>
+              </RadioGroup>
 
               <div className="space-y-2">
                 <Label
