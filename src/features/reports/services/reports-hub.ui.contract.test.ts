@@ -21,13 +21,14 @@ describe("TASK 25.8 reports page hub contract", () => {
     assert.doesNotMatch(page, /supabase\.from/);
   });
 
-  it("bottom nav still excludes /reports after hub", () => {
+  it("bottom nav includes /reports after TASK 25.9A (not lesson-sessions)", () => {
     const bottomNav = readFileSync(
       path.join(here, "../../../components/layout/bottom-nav.tsx"),
       "utf8",
     );
-    assert.doesNotMatch(bottomNav, /["']\/reports["']/);
-    assert.doesNotMatch(bottomNav, /التقارير/);
-    assert.match(bottomNav, /["']\/lesson-sessions["']/);
+    assert.match(bottomNav, /["']\/reports["']/);
+    assert.match(bottomNav, /التقارير/);
+    assert.doesNotMatch(bottomNav, /["']\/lesson-sessions["']/);
+    assert.doesNotMatch(bottomNav, /التحضير/);
   });
 });
