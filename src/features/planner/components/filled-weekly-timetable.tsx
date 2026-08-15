@@ -119,10 +119,10 @@ function PlannerLegend() {
 
   return (
     <div
-      className="mb-3 flex w-full items-center justify-center rounded-lg border bg-card px-3 py-2 shadow-sm"
+      className="mb-3 min-w-0 w-full max-w-full overflow-x-auto rounded-lg border bg-card px-3 py-2 shadow-sm md:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       dir="rtl"
     >
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+      <div className="flex w-max min-w-full flex-nowrap items-center justify-center gap-x-4 md:w-full md:flex-wrap md:gap-y-2">
         <div className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
           <KeyRound className="h-4 w-4 text-emerald-700" />
           <span>مفتاح الرموز</span>
@@ -190,7 +190,7 @@ function TimetableWeekHeader({
 
   return (
     <div
-      className="flex min-w-0 w-full max-w-full flex-col gap-3 overflow-x-hidden md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center md:gap-4"
+      className="flex min-w-0 w-full max-w-full flex-col gap-2 overflow-x-hidden md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center md:gap-4"
       dir="rtl"
     >
       <div className="order-1 flex min-w-0 w-full flex-col items-center md:order-2">
@@ -207,7 +207,17 @@ function TimetableWeekHeader({
           </Button>
 
           <CardTitle className="flex min-w-0 flex-1 flex-col items-center px-1 text-center">
-            <span className="text-sm font-bold sm:text-base">الجدول الأسبوعي</span>
+            <span className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-1.5">
+              <span className="text-sm font-bold sm:text-base">الجدول الأسبوعي</span>
+              <Badge variant="secondary">{entriesCount} حصص</Badge>
+              {switching ? (
+                <span
+                  className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
+                  aria-label="جاري تحميل الأسبوع"
+                  aria-live="polite"
+                />
+              ) : null}
+            </span>
             <span className="mt-1 text-[11px] font-normal leading-snug text-muted-foreground">
               من {weekRange.hijriStart} إلى {weekRange.hijriEnd} هـ
             </span>
@@ -228,21 +238,10 @@ function TimetableWeekHeader({
           </Button>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-          <Badge variant="secondary">{entriesCount} حصص</Badge>
-          {switching ? (
-            <span
-              className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
-              aria-label="جاري تحميل الأسبوع"
-              aria-live="polite"
-            />
-          ) : null}
-        </div>
-
-        <div className="mt-3 flex w-full min-w-0 max-w-full flex-col items-center">
+        <div className="mt-2 flex w-full min-w-0 max-w-full flex-col items-center md:mt-3">
           <div className="flex w-full min-w-0 max-w-[21rem] flex-col items-center">
             <span className="text-xs font-semibold text-foreground">نشر الخطة</span>
-            <div className="mt-1.5 w-full min-w-0 overflow-hidden rounded-xl border border-border/70">
+            <div className="mt-1 w-full min-w-0 overflow-hidden rounded-xl border border-border/70 md:mt-1.5">
               <div className="grid min-w-0 w-full grid-cols-2 items-stretch">
                 <Button
                   variant="outline"
@@ -498,7 +497,7 @@ export function FilledWeeklyTimetable() {
     <WeeklyLessonOptionsProvider lessonSessionIds={weeklyLessonSessionIds}>
       <div className="min-w-0 w-full max-w-[100dvw] overflow-x-hidden">
       <Card className="min-w-0 overflow-hidden">
-        <CardHeader className="min-w-0 overflow-x-hidden border-b bg-muted/30 px-3 py-3 sm:px-4 md:p-6">
+        <CardHeader className="min-w-0 overflow-x-hidden border-b bg-muted/30 px-3 py-2 sm:px-4 md:p-6">
           <TimetableWeekHeader
             weekRange={weekRange}
             entriesCount={entries.length}

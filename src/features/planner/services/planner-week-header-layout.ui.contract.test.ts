@@ -34,7 +34,7 @@ describe("TASK 25.31 mobile-first week header layout", () => {
   it("stacks two equal-width prep groups under the date on mobile, not one three-section row", () => {
     assert.match(
       header,
-      /flex min-w-0 w-full max-w-full flex-col gap-3 overflow-x-hidden/,
+      /flex min-w-0 w-full max-w-full flex-col gap-2 overflow-x-hidden/,
     );
     assert.match(header, /order-2 grid min-w-0 w-full grid-cols-2 gap-3 md:contents/);
     assert.match(header, /flex min-w-0 w-full flex-col items-stretch gap-1\.5 md:w-44/);
@@ -130,7 +130,7 @@ describe("TASK 25.32 weekly plan publish UI in Family C header", () => {
       publishBlock,
       /grid min-w-0 w-full grid-cols-2 items-stretch/,
     );
-    assert.match(header, /flex min-w-0 w-full max-w-full flex-col gap-3 overflow-x-hidden/);
+    assert.match(header, /flex min-w-0 w-full max-w-full flex-col gap-2 overflow-x-hidden/);
     assert.match(header, /h-11 min-h-\[44px\] w-full min-w-0/);
     assert.match(header, /whitespace-normal/);
     assert.doesNotMatch(header, /w-\[3(2|6)0px\]/);
@@ -273,6 +273,92 @@ describe("TASK 25.34 weekly header publish/attendance alignment", () => {
     assert.match(weekly, /TeacherWeeklyTimetableMobile/);
     assert.match(weekly, /placeholderData: keepPreviousData/);
     assert.match(weekly, /queryClient\.prefetchQuery/);
+    assert.doesNotMatch(weekly, /PublishModal/);
+  });
+});
+
+describe("TASK 25.37 mobile week header compaction", () => {
+  const weekly = readSrc("../components/filled-weekly-timetable.tsx");
+  const headerStart = weekly.indexOf("const weekHeaderActionBtnClass");
+  const headerEnd = weekly.indexOf("export function FilledWeeklyTimetable");
+  const header = weekly.slice(headerStart, headerEnd);
+  const legendStart = weekly.indexOf("function PlannerLegend");
+  const legend = weekly.slice(legendStart, weekly.indexOf("const weekHeaderActionBtnClass"));
+  const titleBlock = header.slice(
+    header.indexOf("<CardTitle"),
+    header.indexOf("</CardTitle>"),
+  );
+
+  it("compacts mobile header padding and gaps without changing md+ structure", () => {
+    assert.match(
+      weekly,
+      /CardHeader className="min-w-0 overflow-x-hidden border-b bg-muted\/30 px-3 py-2 sm:px-4 md:p-6"/,
+    );
+    assert.match(
+      header,
+      /flex min-w-0 w-full max-w-full flex-col gap-2 overflow-x-hidden md:grid md:grid-cols-\[minmax\(0,1fr\)_auto_minmax\(0,1fr\)\] md:items-center md:gap-4/,
+    );
+    assert.match(header, /mt-2 flex w-full min-w-0 max-w-full flex-col items-center md:mt-3/);
+    assert.match(
+      header,
+      /mt-1 w-full min-w-0 overflow-hidden rounded-xl border border-border\/70 md:mt-1\.5/,
+    );
+    assert.doesNotMatch(weekly, /px-3 py-3 sm:px-4 md:p-6/);
+  });
+
+  it("places the lesson count on the title row and removes the separate count row", () => {
+    assert.match(titleBlock, /الجدول الأسبوعي/);
+    assert.match(titleBlock, /\{entriesCount\} حصص/);
+    assert.match(titleBlock, /aria-label="جاري تحميل الأسبوع"/);
+    assert.ok(titleBlock.indexOf("الجدول الأسبوعي") < titleBlock.indexOf("{entriesCount} حصص"));
+    assert.ok(titleBlock.indexOf("{entriesCount} حصص") < titleBlock.indexOf("weekRange.hijriStart"));
+    assert.doesNotMatch(
+      header,
+      /mt-2 flex flex-wrap items-center justify-center gap-2/,
+    );
+  });
+
+  it("keeps publish, attendance, prep groups, and 44px targets", () => {
+    assert.match(header, /نشر الخطة/);
+    assert.match(header, /منصة مدرستي/);
+    assert.match(header, /المدير وولي الأمر/);
+    assert.match(header, /useState<"in_person" \| "remote">\("in_person"\)/);
+    assert.match(header, /aria-label="نمط الحضور"/);
+    assert.ok(header.indexOf("حضوري") < header.indexOf("عن بعد"));
+    assert.match(header, /to=["']\/lesson-sessions["']/);
+    assert.match(header, /to=["']\/weekly-preparation["']/);
+    assert.match(header, /onComingSoon\("حذف اليوم"\)/);
+    assert.match(header, /onComingSoon\("حذف الأسبوع"\)/);
+    assert.match(header, /order-2 grid min-w-0 w-full grid-cols-2 gap-3 md:contents/);
+    assert.match(header, /h-11 min-h-\[44px\] w-full min-w-0/);
+    assert.match(header, /min-h-\[44px\] min-w-\[44px\] w-11/);
+  });
+
+  it("compacts the mobile legend with internal scroll and keeps every item", () => {
+    assert.match(legend, /overflow-x-auto/);
+    assert.match(legend, /md:overflow-visible/);
+    assert.match(legend, /flex-nowrap/);
+    assert.match(legend, /md:flex-wrap/);
+    assert.match(legend, /مفتاح الرموز/);
+    assert.match(legend, /تحضير الدرس/);
+    assert.match(legend, /واجب/);
+    assert.match(legend, /اختبار/);
+    assert.match(legend, /النشاط/);
+    assert.match(legend, /إثراء/);
+    assert.match(legend, /الوسائل/);
+    assert.match(legend, /label: "حذف"/);
+    assert.match(legend, /whitespace-nowrap/);
+  });
+
+  it("does not change Family C data paths or md+ week body", () => {
+    assert.match(weekly, /TeacherWeeklyTimetableMobile/);
+    assert.match(weekly, /WeeklyLessonOptionsProvider/);
+    assert.match(weekly, /placeholderData: keepPreviousData/);
+    assert.match(weekly, /queryClient\.prefetchQuery/);
+    assert.match(weekly, /hidden min-w-0 lg:block/);
+    assert.match(weekly, /min-w-\[920px\]/);
+    assert.doesNotMatch(weekly, /w-\[3(2|6)0px\]/);
+    assert.doesNotMatch(weekly, /min-w-\[(320|360|390|430)px\]/);
     assert.doesNotMatch(weekly, /PublishModal/);
   });
 });
