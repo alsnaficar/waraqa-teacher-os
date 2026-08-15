@@ -60,5 +60,9 @@ describe("TASK 23 corrections UI/routing contracts", () => {
     assert.match(sidebar, /url:\s*["']\/corrections["']/);
     assert.equal(/url:\s*["']\/grading["']/.test(sidebar), false);
     assert.match(bottomNav, /["']\/corrections["']/);
+    assert.match(bottomNav, /["']\/homework["']/);
+    assert.match(bottomNav, /["']\/tests["']/);
+    assert.match(bottomNav, /التصحيح/);
+    assert.match(bottomNav, /grid-cols-7/);
   });
 });
