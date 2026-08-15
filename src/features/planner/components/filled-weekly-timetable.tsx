@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Skeleton } from "@/shared/ui/skeleton";
 
 import { useTeacherTimetable } from "@/features/teacher-timetable/hooks/useTeacherTimetable";
@@ -184,6 +185,7 @@ function TimetableWeekHeader({
   onNextWeek: () => void;
 }) {
   const onComingSoon = (label: string) => toast(`${label} — قريباً`);
+  const [attendanceMode, setAttendanceMode] = useState<"in_person" | "remote">("in_person");
 
   return (
     <div
@@ -258,6 +260,33 @@ function TimetableWeekHeader({
               المدير وولي الأمر
             </Button>
           </div>
+
+          <RadioGroup
+            dir="rtl"
+            value={attendanceMode}
+            onValueChange={(value) =>
+              setAttendanceMode(value === "remote" ? "remote" : "in_person")
+            }
+            className="mt-3 grid min-w-0 w-full grid-cols-2 gap-2 sm:gap-3"
+            aria-label="نمط الحضور"
+          >
+            <label
+              htmlFor="weekly-attendance-in-person"
+              dir="ltr"
+              className="inline-flex min-h-[44px] min-w-0 items-center justify-start gap-2"
+            >
+              <RadioGroupItem id="weekly-attendance-in-person" value="in_person" />
+              <span className="text-sm leading-tight whitespace-normal">حضوري</span>
+            </label>
+            <label
+              htmlFor="weekly-attendance-remote"
+              dir="ltr"
+              className="inline-flex min-h-[44px] min-w-0 items-center justify-start gap-2"
+            >
+              <RadioGroupItem id="weekly-attendance-remote" value="remote" />
+              <span className="text-sm leading-tight whitespace-normal">عن بعد</span>
+            </label>
+          </RadioGroup>
         </div>
       </div>
 

@@ -158,3 +158,62 @@ describe("TASK 25.32 weekly plan publish UI in Family C header", () => {
     );
   });
 });
+
+describe("TASK 25.33 weekly header attendance selector", () => {
+  const weekly = readSrc("../components/filled-weekly-timetable.tsx");
+  const lessonPlan = readSrc("../../../routes/_authenticated/ai-lesson-plan.tsx");
+
+  const headerStart = weekly.indexOf("const weekHeaderActionBtnClass");
+  const headerEnd = weekly.indexOf("export function FilledWeeklyTimetable");
+  const header = weekly.slice(headerStart, headerEnd);
+  const publishStart = header.indexOf("نشر الخطة");
+  const prepGroupsStart = header.indexOf("order-2 grid min-w-0 w-full grid-cols-2 gap-3 md:contents");
+  const attendanceBlock = header.slice(publishStart, prepGroupsStart);
+
+  it("places حضوري / عن بعد under the publish buttons with in_person default", () => {
+    assert.match(header, /useState<"in_person" \| "remote">\("in_person"\)/);
+    assert.match(attendanceBlock, /نشر الخطة/);
+    assert.match(attendanceBlock, /منصة مدرستي/);
+    assert.match(attendanceBlock, /المدير وولي الأمر/);
+    assert.match(attendanceBlock, /aria-label="نمط الحضور"/);
+    assert.ok(attendanceBlock.indexOf("المدير وولي الأمر") < attendanceBlock.indexOf("حضوري"));
+    assert.ok(attendanceBlock.indexOf("حضوري") < attendanceBlock.indexOf("عن بعد"));
+    assert.match(attendanceBlock, /value="in_person"/);
+    assert.match(attendanceBlock, /value="remote"/);
+  });
+
+  it("keeps each radio circle before its Arabic label and حضوري on the RTL right", () => {
+    assert.match(attendanceBlock, /dir="rtl"/);
+    const inPerson = attendanceBlock.slice(
+      attendanceBlock.indexOf("weekly-attendance-in-person"),
+      attendanceBlock.indexOf("weekly-attendance-remote"),
+    );
+    const remote = attendanceBlock.slice(attendanceBlock.indexOf("weekly-attendance-remote"));
+    assert.match(inPerson, /dir="ltr"/);
+    assert.match(remote, /dir="ltr"/);
+    assert.match(inPerson, /min-h-\[44px\] min-w-0/);
+    assert.match(remote, /min-h-\[44px\] min-w-0/);
+    assert.ok(inPerson.indexOf("<RadioGroupItem") < inPerson.indexOf("حضوري"));
+    assert.ok(remote.indexOf("<RadioGroupItem") < remote.indexOf("عن بعد"));
+    assert.doesNotMatch(inPerson, /حضوري[\s\S]*<RadioGroupItem/);
+    assert.doesNotMatch(remote, /عن بعد[\s\S]*<RadioGroupItem/);
+    assert.match(attendanceBlock, /grid min-w-0 w-full grid-cols-2/);
+    assert.doesNotMatch(attendanceBlock, /flex-row-reverse/);
+    assert.doesNotMatch(header, /w-\[3(2|6)0px\]/);
+  });
+
+  it("keeps attendance local-only and does not change lesson-plan or Family C data paths", () => {
+    assert.doesNotMatch(lessonPlan, /حضوري|عن بعد|in_person|deliveryMode/);
+    assert.doesNotMatch(lessonPlan, /RadioGroup/);
+    assert.doesNotMatch(weekly, /teacher_timetable/);
+    assert.doesNotMatch(
+      header,
+      /LessonSessionService\.(getSessionsByDates|ensureSessionsForDate)/,
+    );
+    assert.doesNotMatch(header, /\.insert\(|\.update\(|\.upsert\(/);
+    assert.match(weekly, /TeacherWeeklyTimetableMobile/);
+    assert.match(weekly, /placeholderData: keepPreviousData/);
+    assert.match(weekly, /queryClient\.prefetchQuery/);
+    assert.match(weekly, /const weekSwitchPending = existingSessionsQuery\.isPlaceholderData/);
+  });
+});
