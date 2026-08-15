@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from "react";
 
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
   BookOpen,
   CalendarDays,
@@ -128,11 +128,13 @@ function PlannerLegend() {
 function TimetableWeekHeader({
   weekRange,
   entriesCount,
+  switching,
   onPreviousWeek,
   onNextWeek,
 }: {
   weekRange: ReturnType<typeof getWeekRange>;
   entriesCount: number;
+  switching: boolean;
   onPreviousWeek: () => void;
   onNextWeek: () => void;
 }) {
@@ -172,8 +174,15 @@ function TimetableWeekHeader({
         </Button>
       </div>
 
-      <div className="mt-2 flex justify-center">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
         <Badge variant="secondary">{entriesCount} حصص</Badge>
+        {switching ? (
+          <span
+            className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
+            aria-label="جاري تحميل الأسبوع"
+            aria-live="polite"
+          />
+        ) : null}
       </div>
     </>
   );
@@ -201,11 +210,17 @@ export function FilledWeeklyTimetable() {
     queryKey: ["planner-weekly-session-slots", ...weekDates],
     staleTime: 30_000,
     enabled: loading || entries.length > 0,
+    placeholderData: keepPreviousData,
     queryFn: () => LessonSessionService.getSessionsByDates(weekDates),
   });
 
   const datesNeedingEnsure = useMemo(() => {
-    if (loading || existingSessionsQuery.isPending || !existingSessionsQuery.data) {
+    if (
+      loading ||
+      existingSessionsQuery.isPlaceholderData ||
+      existingSessionsQuery.isPending ||
+      !existingSessionsQuery.data
+    ) {
       return [];
     }
 
@@ -224,6 +239,7 @@ export function FilledWeeklyTimetable() {
     });
   }, [
     loading,
+    existingSessionsQuery.isPlaceholderData,
     existingSessionsQuery.isPending,
     existingSessionsQuery.data,
     entries,
@@ -244,12 +260,18 @@ export function FilledWeeklyTimetable() {
   ];
   const sessionsPending =
     existingSessionsQuery.isPending || ensureQueries.some((query) => query.isPending);
+  const weekSwitchPending =
+    existingSessionsQuery.isPlaceholderData ||
+    existingSessionsQuery.isFetching ||
+    ensureQueries.some((query) => query.isPending || query.isFetching);
 
   const sessionBySlot = new Map(
     sessions.map((session) => [`${session.dayOfWeek}-${session.periodNumber}`, session]),
   );
 
-  const showLoading = loading || (entries.length > 0 && sessionsPending);
+  const showLoading =
+    loading ||
+    (entries.length > 0 && sessionsPending && existingSessionsQuery.data === undefined);
 
   if (showLoading) {
     return (
@@ -316,6 +338,7 @@ export function FilledWeeklyTimetable() {
           <TimetableWeekHeader
             weekRange={weekRange}
             entriesCount={entries.length}
+            switching={weekSwitchPending}
             onPreviousWeek={() => setWeekOffset((value) => value - 1)}
             onNextWeek={() => setWeekOffset((value) => value + 1)}
           />

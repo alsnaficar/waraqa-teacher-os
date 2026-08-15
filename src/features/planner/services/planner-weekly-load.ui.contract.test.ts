@@ -17,9 +17,7 @@ describe("TASK 25.23 weekly timetable initial load", () => {
   const sessions = readSrc("../../lesson-sessions/services/lesson-session.service.ts");
 
   it("empty-state renders only after timetable loading completes with zero entries", () => {
-    const loadingIdx = weekly.indexOf(
-      "const showLoading = loading || (entries.length > 0 && sessionsPending)",
-    );
+    const loadingIdx = weekly.indexOf("const showLoading =");
     const skeletonIdx = weekly.indexOf("if (showLoading)");
     const emptyIdx = weekly.indexOf("if (!loading && entries.length === 0)");
     const emptyCopyIdx = weekly.indexOf("لم يتم تسجيل حصص للمعلم في الجدول التشغيلي حتى الآن.");
@@ -30,6 +28,10 @@ describe("TASK 25.23 weekly timetable initial load", () => {
     assert.ok(skeletonIdx < emptyIdx);
     assert.ok(emptyIdx < emptyCopyIdx);
     assert.match(weekly, /لا يوجد جدول أسبوعي/);
+    assert.match(
+      weekly,
+      /entries\.length > 0 && sessionsPending && existingSessionsQuery\.data === undefined/,
+    );
     assert.doesNotMatch(
       weekly.slice(emptyIdx),
       /if \(entries\.length === 0\) \{\s*return/,
@@ -53,6 +55,25 @@ describe("TASK 25.23 weekly timetable initial load", () => {
     assert.doesNotMatch(
       planner.slice(0, planner.indexOf("return (")),
       /if \(loading\) \{\s*return/,
+    );
+  });
+});
+
+describe("TASK 25.28 week switch keeps previous timetable visible", () => {
+  const weekly = readSrc("../components/filled-weekly-timetable.tsx");
+
+  it("uses React Query keepPreviousData and does not skeleton on week-session fetch", () => {
+    assert.match(weekly, /placeholderData: keepPreviousData/);
+    assert.match(weekly, /existingSessionsQuery\.isPlaceholderData/);
+    assert.match(
+      weekly,
+      /entries\.length > 0 && sessionsPending && existingSessionsQuery\.data === undefined/,
+    );
+    assert.match(weekly, /aria-label="جاري تحميل الأسبوع"/);
+    assert.match(weekly, /switching=\{weekSwitchPending\}/);
+    assert.doesNotMatch(
+      weekly,
+      /const showLoading = loading \|\| \(entries\.length > 0 && sessionsPending\)/,
     );
   });
 });
