@@ -77,3 +77,39 @@ describe("TASK 25.28 week switch keeps previous timetable visible", () => {
     );
   });
 });
+
+describe("TASK 25.29 week spinner only for uncached week transition", () => {
+  const weekly = readSrc("../components/filled-weekly-timetable.tsx");
+  const mobile = readSrc(
+    "../../teacher-timetable/components/teacher-weekly-timetable-mobile.tsx",
+  );
+
+  it("new uncached week can show the indicator via isPlaceholderData", () => {
+    assert.match(weekly, /placeholderData: keepPreviousData/);
+    assert.match(
+      weekly,
+      /const weekSwitchPending = existingSessionsQuery\.isPlaceholderData/,
+    );
+    assert.match(weekly, /switching=\{weekSwitchPending\}/);
+    assert.match(weekly, /aria-label="جاري تحميل الأسبوع"/);
+  });
+
+  it("cached week background isFetching does not drive the week spinner", () => {
+    const spinnerBlock = weekly.slice(
+      weekly.indexOf("const weekSwitchPending"),
+      weekly.indexOf("const sessionBySlot"),
+    );
+    assert.match(spinnerBlock, /isPlaceholderData/);
+    assert.doesNotMatch(spinnerBlock, /isFetching/);
+    assert.doesNotMatch(spinnerBlock, /ensureQueries/);
+  });
+
+  it("Family C desktop table and mobile/tablet cards remain unchanged", () => {
+    assert.match(weekly, /TeacherWeeklyTimetableMobile/);
+    assert.match(mobile, /lg:hidden/);
+    assert.match(weekly, /hidden min-w-0 lg:block/);
+    assert.match(weekly, /min-w-\[920px\]/);
+    assert.match(weekly, /overflow-x-auto/);
+    assert.match(weekly, /staleTime: 30_000/);
+  });
+});

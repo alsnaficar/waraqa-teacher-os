@@ -260,10 +260,7 @@ export function FilledWeeklyTimetable() {
   ];
   const sessionsPending =
     existingSessionsQuery.isPending || ensureQueries.some((query) => query.isPending);
-  const weekSwitchPending =
-    existingSessionsQuery.isPlaceholderData ||
-    existingSessionsQuery.isFetching ||
-    ensureQueries.some((query) => query.isPending || query.isFetching);
+  const weekSwitchPending = existingSessionsQuery.isPlaceholderData;
 
   const sessionBySlot = new Map(
     sessions.map((session) => [`${session.dayOfWeek}-${session.periodNumber}`, session]),
