@@ -29,12 +29,13 @@ describe("TASK 25.12 planner navigation contract", () => {
   it("does not mount a third timetable-management tab", () => {
     const navBlock = planner.slice(
       planner.indexOf("export const PLANNER_NAV_ITEMS"),
-      planner.indexOf("const DAY_MAP"),
+      planner.indexOf("function formatUpdatedAt"),
     );
     assert.match(navBlock, /الجدول الأسبوعي/);
     assert.match(navBlock, /خطة الفصل/);
     assert.equal((navBlock.match(/view: "/g) ?? []).length, 2);
-    assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
+    assert.doesNotMatch(planner, /import \{ TeacherWeeklyTimetable \}/);
+    assert.doesNotMatch(planner, /<TeacherWeeklyTimetable/);
     assert.doesNotMatch(planner, /إدارة الجدول/);
   });
 
@@ -50,10 +51,13 @@ describe("TASK 25.12 planner navigation contract", () => {
     assert.match(toolbar, /to=["']\/weekly-preparation["']/);
   });
 
-  it("keeps weekly grid, legend, and timetable routes without deleting them", () => {
-    assert.match(planner, /PlannerMobileLayout/);
-    assert.match(planner, /PlannerDesktopLayout/);
-    assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
+  it("keeps filled weekly timetable, legend, and timetable routes without deleting them", () => {
+    assert.match(planner, /FilledWeeklyTimetable/);
+    assert.doesNotMatch(planner, /PlannerMobileLayout/);
+    assert.doesNotMatch(planner, /PlannerDesktopLayout/);
+    assert.doesNotMatch(planner, /PlannerDesktopGrid/);
+    assert.doesNotMatch(planner, /import \{ TeacherWeeklyTimetable \}/);
+    assert.doesNotMatch(planner, /<TeacherWeeklyTimetable[\s/>]/);
     assert.match(readSrc("../components/planner-legend.tsx"), /export function PlannerLegend/);
     assert.equal(
       existsSync(

@@ -28,9 +28,9 @@ interface TeacherWeeklyTimetableMobileProps {
   maxPeriod: number;
   getEntry: (day: number, period: number) => TeacherTimetableEntry | undefined;
   sessionBySlot: Map<string, { id: string; lessonLocked: boolean }>;
-  onAddSlot: (dayOfWeek: number, period: number) => void;
-  onEditSlot: (entry: TeacherTimetableEntry) => void;
-  onDeleteSlot: (entry: TeacherTimetableEntry) => void;
+  onAddSlot?: (dayOfWeek: number, period: number) => void;
+  onEditSlot?: (entry: TeacherTimetableEntry) => void;
+  onDeleteSlot?: (entry: TeacherTimetableEntry) => void;
 }
 
 export function TeacherWeeklyTimetableMobile({
@@ -87,9 +87,9 @@ export function TeacherWeeklyTimetableMobile({
                     period={period}
                     entry={entry}
                     lessonSession={lessonSession}
-                    onAdd={() => onAddSlot(day.value, period)}
-                    onEdit={entry ? () => onEditSlot(entry) : undefined}
-                    onDelete={entry ? () => onDeleteSlot(entry) : undefined}
+                    onAdd={onAddSlot ? () => onAddSlot(day.value, period) : undefined}
+                    onEdit={entry && onEditSlot ? () => onEditSlot(entry) : undefined}
+                    onDelete={entry && onDeleteSlot ? () => onDeleteSlot(entry) : undefined}
                   />
                 );
               })}

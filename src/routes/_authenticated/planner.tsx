@@ -14,14 +14,11 @@ import {
 
 import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { PlannerDesktopLayout } from "@/features/planner/components/planner-desktop-layout";
-import { PlannerMobileLayout } from "@/features/planner/components/planner-mobile-layout";
+import { FilledWeeklyTimetable } from "@/features/planner/components/filled-weekly-timetable";
 import { SemesterPlanCalendarField } from "@/features/planner/components/semester-plan-calendar-field";
 import { SemesterPlanTable } from "@/features/planner/components/semester-plan-table";
 import { SemesterPlanPrintDocument } from "@/features/planner/components/semester-plan-print";
 import { SemesterPlanPrintDialog } from "@/features/planner/components/semester-plan-print-dialog";
-import { type DayKey, type Lesson } from "@/features/planner/components/types";
 import {
   buildSemesterPlanMeta,
   generateSemesterPlan,
@@ -48,7 +45,6 @@ import {
   getActiveAcademicYear,
   getCurrentAcademicTerm,
 } from "@/features/calendar/services/calendar.service";
-import type { LessonOverrideScope } from "@/features/planner/services/overrides";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils/utils";
 import type { CalculatedLessonEntry } from "@/features/planner/services/planner-engine";
@@ -71,14 +67,6 @@ export const PLANNER_NAV_ITEMS: ReadonlyArray<{ view: PlannerView; label: string
   { view: "semester", label: "خطة الفصل" },
 ];
 
-const DAY_MAP: Record<number, DayKey> = {
-  0: "sun",
-  1: "mon",
-  2: "tue",
-  3: "wed",
-  4: "thu",
-};
-
 function formatUpdatedAt(value: string | null | undefined): string {
   if (!value) return "—";
   try {
@@ -92,11 +80,7 @@ function formatUpdatedAt(value: string | null | undefined): string {
 }
 
 export default function PlannerPage() {
-  const isMobile = useIsMobile();
   const [view, setView] = useState<PlannerView>("semester");
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishTarget, setPublishTarget] = useState("madrasati");
   const [printOpen, setPrintOpen] = useState(false);
   const [includeSchoolLogo, setIncludeSchoolLogo] = useState(false);
   const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
@@ -136,27 +120,6 @@ export default function PlannerPage() {
       ),
     [metaBase, subject, grade, entries, plan],
   );
-
-  const { weekStart, weekEnd } = useMemo(() => {
-    const todayDate = new Date();
-    const wStart = new Date(todayDate);
-    wStart.setDate(todayDate.getDate() - todayDate.getDay() + weekOffset * 7);
-
-    const wEnd = new Date(wStart);
-    wEnd.setDate(wStart.getDate() + 4);
-
-    return { weekStart: wStart, weekEnd: wEnd };
-  }, [weekOffset]);
-
-  const weekDates = useMemo(() => {
-    const dates: string[] = [];
-    for (let i = 0; i < 5; i++) {
-      const d = new Date(weekStart);
-      d.setDate(weekStart.getDate() + i);
-      dates.push(d.toISOString().slice(0, 10));
-    }
-    return dates;
-  }, [weekStart]);
 
   useEffect(() => {
     async function loadData() {
@@ -219,49 +182,6 @@ export default function PlannerPage() {
         const loaded = await loadOrGeneratePlan(activeSubject, activeGrade);
         setPlan(loaded.plan);
         setEntries(loaded.entries);
-
-        // افتح تلقائياً أول أسبوع فعلي في الخطة إذا كان الأسبوع الحالي فارغاً.
-        if (loaded.entries.length > 0) {
-          const DAY_MS = 24 * 60 * 60 * 1000;
-          const WEEK_MS = 7 * DAY_MS;
-
-          const getWeekStart = (date: Date) => {
-            const start = new Date(date);
-            start.setHours(0, 0, 0, 0);
-            start.setDate(start.getDate() - start.getDay());
-            return start;
-          };
-
-          const currentWeekStart = getWeekStart(new Date());
-
-          const hasCurrentWeekEntries = loaded.entries.some((entry) => {
-            const entryDate = new Date(`${entry.suggestedDate}T00:00:00`);
-            return getWeekStart(entryDate).getTime() === currentWeekStart.getTime();
-          });
-
-          if (!hasCurrentWeekEntries) {
-            const currentWeekISO = currentWeekStart.toISOString().slice(0, 10);
-
-            const futureEntries = loaded.entries
-              .filter((entry) => entry.suggestedDate >= currentWeekISO)
-              .sort((a, b) => a.suggestedDate.localeCompare(b.suggestedDate));
-
-            const targetEntry =
-              futureEntries[0] ??
-              [...loaded.entries].sort((a, b) => b.suggestedDate.localeCompare(a.suggestedDate))[0];
-            if (targetEntry) {
-              const targetWeekStart = getWeekStart(
-                new Date(`${targetEntry.suggestedDate}T00:00:00`),
-              );
-
-              const offset = Math.round(
-                (targetWeekStart.getTime() - currentWeekStart.getTime()) / WEEK_MS,
-              );
-
-              setWeekOffset(offset);
-            }
-          }
-        }
       } catch (err) {
         console.error("Error loading planner:", err);
         toast.error("تعذر تحميل الخطة الدراسية");
@@ -271,54 +191,6 @@ export default function PlannerPage() {
     }
     void loadData();
   }, []);
-
-  const lessons: Lesson[] = useMemo(() => {
-    return entries
-      .filter((e) => weekDates.includes(e.suggestedDate))
-      .map((e) => {
-        const dateObj = new Date(e.suggestedDate);
-        return {
-          id: e.id,
-          day: DAY_MAP[dateObj.getDay()] || "sun",
-          period: e.period,
-          grade: grade,
-          klass: e.className || "أ",
-          title: e.lessonTitle || "بدون عنوان",
-        };
-      });
-  }, [entries, weekDates, grade]);
-
-  const lessonAt = (day: DayKey, period: number) => {
-    return lessons.find((l) => l.day === day && l.period === period);
-  };
-
-  const onChangeLesson = (_lesson: Lesson, _newTitle: string, _scope: LessonOverrideScope) => {
-    toast.info("جاري حفظ التعديل...");
-  };
-
-  const onComingSoon = (feature: string) => {
-    toast.info(`${feature} قريباً!`);
-  };
-
-  const weekLayoutProps = {
-    weekOffset,
-    setWeekOffset,
-    weekStart,
-    weekEnd,
-    onComingSoon,
-    onPublishClick: () => setPublishOpen(true),
-    lessons,
-    lessonAt,
-    onChangeLesson,
-    publishOpen,
-    setPublishOpen,
-    publishTarget,
-    setPublishTarget,
-    onConfirmPublish: () => {
-      toast.success("تم النشر بنجاح!");
-      setPublishOpen(false);
-    },
-  };
 
   const runGenerate = async () => {
     if (!actions.canGenerate) {
@@ -611,10 +483,8 @@ export default function PlannerPage() {
           onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
           onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
         />
-      ) : isMobile ? (
-        <PlannerMobileLayout {...weekLayoutProps} />
       ) : (
-        <PlannerDesktopLayout {...weekLayoutProps} />
+        <FilledWeeklyTimetable />
       )}
 
       <SemesterPlanPrintDialog

@@ -134,32 +134,34 @@ export function TeacherTimetableLessonCard({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-2 border-t border-border/50 px-3 py-2">
-            {onEdit ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-11 flex-1 gap-1"
-                onClick={onEdit}
-              >
-                <Pencil className="h-4 w-4" />
-                تعديل
-              </Button>
-            ) : null}
-            {onDelete ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-11 flex-1 gap-1 text-destructive"
-                onClick={onDelete}
-              >
-                <Trash2 className="h-4 w-4" />
-                حذف
-              </Button>
-            ) : null}
-          </div>
+          {onEdit || onDelete ? (
+            <div className="flex flex-wrap gap-2 border-t border-border/50 px-3 py-2">
+              {onEdit ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 flex-1 gap-1"
+                  onClick={onEdit}
+                >
+                  <Pencil className="h-4 w-4" />
+                  تعديل
+                </Button>
+              ) : null}
+              {onDelete ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 flex-1 gap-1 text-destructive"
+                  onClick={onDelete}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  حذف
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* السطر الثالث: أيقونات الإضافات — صف واحد داخل حدود البطاقة */}
           {lessonSession ? (

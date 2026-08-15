@@ -11,14 +11,15 @@ function readSrc(relativeFromThisFile: string): string {
   return readFileSync(path.join(here, relativeFromThisFile), "utf8");
 }
 
-describe("TASK 25.14 superseded: TeacherWeeklyTimetable is not the weekly planner", () => {
+describe("TASK 25.14 superseded: slot-CRUD TeacherWeeklyTimetable is not the weekly planner", () => {
   const planner = readSrc("../../../routes/_authenticated/planner.tsx");
   const bottomNav = readSrc("../../../components/layout/bottom-nav.tsx");
 
-  it("does not mount TeacherWeeklyTimetable as the weekly planner view", () => {
-    assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
-    assert.match(planner, /PlannerMobileLayout/);
-    assert.match(planner, /PlannerDesktopLayout/);
+  it("does not mount slot-CRUD TeacherWeeklyTimetable as the weekly planner view", () => {
+    assert.match(planner, /FilledWeeklyTimetable/);
+    assert.doesNotMatch(planner, /import \{ TeacherWeeklyTimetable \}/);
+    assert.doesNotMatch(planner, /<TeacherWeeklyTimetable[\s/>]/);
+    assert.doesNotMatch(planner, /PlannerDesktopGrid/);
     assert.match(planner, /SemesterPlanTable/);
   });
 

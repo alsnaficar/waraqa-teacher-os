@@ -11,18 +11,19 @@ function readSrc(relativeFromThisFile: string): string {
   return readFileSync(path.join(here, relativeFromThisFile), "utf8");
 }
 
-describe("TASK 25.15 restore historical weekly planner layout", () => {
+describe("TASK 25.15 superseded: historical PlannerDesktopGrid is not the weekly body", () => {
   const planner = readSrc("../../../routes/_authenticated/planner.tsx");
   const toolbar = readSrc("../components/planner-toolbar.tsx");
   const bottomNav = readSrc("../../../components/layout/bottom-nav.tsx");
 
-  it("weekly view uses historical planner layouts, not TeacherWeeklyTimetable", () => {
-    assert.match(planner, /PlannerMobileLayout/);
-    assert.match(planner, /PlannerDesktopLayout/);
-    assert.match(planner, /weekLayoutProps/);
+  it("weekly view does not mount historical planner layouts or slot-CRUD timetable", () => {
+    assert.match(planner, /FilledWeeklyTimetable/);
+    assert.doesNotMatch(planner, /PlannerMobileLayout/);
+    assert.doesNotMatch(planner, /PlannerDesktopLayout/);
+    assert.doesNotMatch(planner, /weekLayoutProps/);
     assert.match(planner, /SemesterPlanTable/);
-    assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
-    assert.doesNotMatch(planner, /TeacherWeeklyTimetableMobile/);
+    assert.doesNotMatch(planner, /import \{ TeacherWeeklyTimetable \}/);
+    assert.doesNotMatch(planner, /<TeacherWeeklyTimetable[\s/>]/);
   });
 
   it("top nav keeps الجدول الأسبوعي and خطة الفصل only", () => {
