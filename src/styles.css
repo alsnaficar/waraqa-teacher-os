@@ -175,11 +175,14 @@
   }
 
   #semester-plan-print,
-  #semester-plan-print * {
+  #semester-plan-print *,
+  #reports-hub-print,
+  #reports-hub-print * {
     visibility: visible !important;
   }
 
-  #semester-plan-print {
+  #semester-plan-print,
+  #reports-hub-print {
     display: block !important;
     position: absolute;
     inset: 0;
@@ -191,5 +194,6 @@
 
   @page {
     margin: 12mm;
+    size: A4;
   }
 }

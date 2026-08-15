@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { BarChart3, CalendarRange, Lock, Unlock } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { BarChart3, CalendarRange, Lock, Printer, Unlock } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/shared/components/empty-state";
@@ -12,6 +12,7 @@ import { Label } from "@/shared/ui/label";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { cn } from "@/shared/utils/utils";
 
+import { ReportsHubPrintDocument } from "./reports-hub-print";
 import { useReportsHub } from "../hooks/useReportsHub";
 import type { ReportSessionWithTitle } from "../services/enrich-report-with-lesson-titles";
 import type { ReportsDateFilter } from "../services/reports.service";
@@ -32,6 +33,10 @@ import {
   type HubDomainResult,
   type ReportsHubSnapshot,
 } from "../services/reports-hub.logic";
+import {
+  buildReportsHubPrintView,
+  REPORTS_HUB_PRINT_BUTTON_LABEL,
+} from "../services/reports-hub-print.logic";
 import {
   buildReportSummaryItems,
   buildReportsDateFilter,
@@ -68,6 +73,21 @@ export function ReportsPageContent() {
 
   const query = useReportsHub(appliedFilter);
   const snapshot = query.data;
+  const [printStamp, setPrintStamp] = useState(() => new Date());
+
+  const printView = useMemo(
+    () => (snapshot ? buildReportsHubPrintView(snapshot, printStamp) : null),
+    [snapshot, printStamp],
+  );
+
+  function handlePrint() {
+    if (!snapshot) {
+      toast.error("لا يوجد تقرير جاهز للطباعة.");
+      return;
+    }
+    setPrintStamp(new Date());
+    window.setTimeout(() => window.print(), 250);
+  }
 
   function applyPreset(nextKind: ReportsFilterKind) {
     setKind(nextKind);
@@ -98,19 +118,30 @@ export function ReportsPageContent() {
     <div className="min-w-0 space-y-4" dir="rtl">
       <Card>
         <CardContent className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/15 text-primary">
-              <BarChart3 className="h-5 w-5" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/15 text-primary">
+                <BarChart3 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold">التقارير</h1>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  ملخص موحّد لحصصك وواجباتك واختباراتك حسب الفترة.
+                </p>
+                {rangeLabel ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{rangeLabel}</p>
+                ) : null}
+              </div>
             </div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold">التقارير</h1>
-              <p className="mt-1 text-xs text-muted-foreground">
-                ملخص موحّد لحصصك وواجباتك واختباراتك حسب الفترة.
-              </p>
-              {rangeLabel ? (
-                <p className="mt-1 text-[11px] text-muted-foreground">{rangeLabel}</p>
-              ) : null}
-            </div>
+            <Button
+              type="button"
+              className="min-h-11 gap-2"
+              disabled={!snapshot || query.isPending || query.isError}
+              onClick={handlePrint}
+            >
+              <Printer className="h-4 w-4" />
+              {REPORTS_HUB_PRINT_BUTTON_LABEL}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -224,6 +255,8 @@ export function ReportsPageContent() {
           <LessonSessionsHubSection snapshot={snapshot} onRetry={() => void query.refetch()} />
         </>
       ) : null}
+
+      <ReportsHubPrintDocument view={printView} />
     </div>
   );
 }
