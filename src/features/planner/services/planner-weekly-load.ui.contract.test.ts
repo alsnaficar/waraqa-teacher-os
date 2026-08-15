@@ -113,3 +113,49 @@ describe("TASK 25.29 week spinner only for uncached week transition", () => {
     assert.match(weekly, /staleTime: 30_000/);
   });
 });
+
+describe("TASK 25.30 adjacent week session prefetch", () => {
+  const weekly = readSrc("../components/filled-weekly-timetable.tsx");
+
+  it("prefetches previous and next week with getSessionsByDates only", () => {
+    const prefetchStart = weekly.indexOf("queryClient.prefetchQuery");
+    assert.notEqual(prefetchStart, -1);
+
+    const prefetchBlock = weekly.slice(
+      weekly.indexOf("useEffect(() => {"),
+      weekly.indexOf("const datesNeedingEnsure"),
+    );
+
+    assert.match(prefetchBlock, /weekOffset - 1/);
+    assert.match(prefetchBlock, /weekOffset \+ 1/);
+    assert.match(
+      prefetchBlock,
+      /queryKey: \["planner-weekly-session-slots", \.\.\.adjacentWeekDates\]/,
+    );
+    assert.match(prefetchBlock, /LessonSessionService\.getSessionsByDates\(adjacentWeekDates\)/);
+    assert.match(prefetchBlock, /staleTime: 30_000/);
+    assert.match(prefetchBlock, /isSuccess/);
+    assert.match(prefetchBlock, /isPlaceholderData/);
+    assert.doesNotMatch(prefetchBlock, /ensureSessionsForDate/);
+    assert.doesNotMatch(prefetchBlock, /generateSessionsForDate/);
+    assert.doesNotMatch(prefetchBlock, /weekOffset - 2/);
+    assert.doesNotMatch(prefetchBlock, /weekOffset \+ 2/);
+  });
+
+  it("does not recursively prefetch and keeps 25.29 spinner on isPlaceholderData only", () => {
+    assert.match(
+      weekly,
+      /for \(const adjacentOffset of \[weekOffset - 1, weekOffset \+ 1\]\)/,
+    );
+    assert.doesNotMatch(weekly, /weekOffset - 2|weekOffset \+ 2/);
+    assert.match(
+      weekly,
+      /const weekSwitchPending = existingSessionsQuery\.isPlaceholderData/,
+    );
+    const spinnerBlock = weekly.slice(
+      weekly.indexOf("const weekSwitchPending"),
+      weekly.indexOf("const sessionBySlot"),
+    );
+    assert.doesNotMatch(spinnerBlock, /isFetching/);
+  });
+});

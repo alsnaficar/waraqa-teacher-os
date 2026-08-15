@@ -2,9 +2,9 @@
  * Family C filled weekly planner (6a8687c → 9340e56).
  * Uses teacher timetable slots + lesson sessions. Not the 5db3207 slot-CRUD UI.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { useQueries, useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   BookOpen,
   CalendarDays,
@@ -64,6 +64,20 @@ function getWeekRange(weekOffset = 0) {
     gregorianStart: gregorianFormatter.format(sunday),
     gregorianEnd: gregorianFormatter.format(thursday),
   };
+}
+
+function getWeekDatesForOffset(weekOffset: number): string[] {
+  const { sunday } = getWeekRange(weekOffset);
+
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(sunday);
+    date.setDate(sunday.getDate() + index);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  });
 }
 
 function formatDayDates(date: Date) {
@@ -189,22 +203,12 @@ function TimetableWeekHeader({
 }
 
 export function FilledWeeklyTimetable() {
+  const queryClient = useQueryClient();
   const { loading, entries, error } = useTeacherTimetable();
   const [weekOffset, setWeekOffset] = useState(0);
 
   const weekRange = useMemo(() => getWeekRange(weekOffset), [weekOffset]);
-
-  const weekDates = useMemo(() => {
-    return Array.from({ length: 5 }, (_, index) => {
-      const date = new Date(weekRange.sunday);
-      date.setDate(weekRange.sunday.getDate() + index);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-
-      return `${year}-${month}-${day}`;
-    });
-  }, [weekRange.sunday]);
+  const weekDates = useMemo(() => getWeekDatesForOffset(weekOffset), [weekOffset]);
 
   const existingSessionsQuery = useQuery({
     queryKey: ["planner-weekly-session-slots", ...weekDates],
@@ -213,6 +217,27 @@ export function FilledWeeklyTimetable() {
     placeholderData: keepPreviousData,
     queryFn: () => LessonSessionService.getSessionsByDates(weekDates),
   });
+
+  useEffect(() => {
+    if (!existingSessionsQuery.isSuccess || existingSessionsQuery.isPlaceholderData) {
+      return;
+    }
+
+    for (const adjacentOffset of [weekOffset - 1, weekOffset + 1]) {
+      const adjacentWeekDates = getWeekDatesForOffset(adjacentOffset);
+
+      void queryClient.prefetchQuery({
+        queryKey: ["planner-weekly-session-slots", ...adjacentWeekDates],
+        staleTime: 30_000,
+        queryFn: () => LessonSessionService.getSessionsByDates(adjacentWeekDates),
+      });
+    }
+  }, [
+    queryClient,
+    weekOffset,
+    existingSessionsQuery.isSuccess,
+    existingSessionsQuery.isPlaceholderData,
+  ]);
 
   const datesNeedingEnsure = useMemo(() => {
     if (
