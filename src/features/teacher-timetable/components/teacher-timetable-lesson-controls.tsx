@@ -248,7 +248,7 @@ export function LessonActions({
         <FlaskConical className={`${iconClass} text-purple-500`} />
       </span>
 
-      <span className={buttonClass} aria-label="ورقة عمل">
+      <span className={buttonClass} aria-label="النشاط">
         <Lightbulb className={`${iconClass} text-orange-500`} />
       </span>
 

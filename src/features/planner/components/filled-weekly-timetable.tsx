@@ -90,7 +90,7 @@ function PlannerLegend() {
     { icon: BookOpen, label: "تحضير الدرس", className: "text-emerald-600" },
     { icon: FileCheck2, label: "واجب", className: "text-cyan-600" },
     { icon: FlaskConical, label: "اختبار", className: "text-purple-500" },
-    { icon: Lightbulb, label: "ورقة عمل", className: "text-orange-500" },
+    { icon: Lightbulb, label: "النشاط", className: "text-orange-500" },
     { icon: Globe, label: "إثراء", className: "text-blue-500" },
     { icon: PlaySquare, label: "الوسائل", className: "text-indigo-500" },
     { icon: Trash2, label: "حذف", className: "text-red-500" },
