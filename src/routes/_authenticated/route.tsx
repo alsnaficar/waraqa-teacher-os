@@ -28,7 +28,7 @@ function AuthenticatedLayout() {
   return (
     <>
       <AppHeader />
-      <div className="flex-1 pb-32 w-full min-h-0">
+      <div className="authenticated-shell-offset flex-1 w-full min-h-0">
         <Outlet />
       </div>
       <BottomNav />

@@ -135,6 +135,25 @@
   --sidebar-ring: oklch(0.68 0.11 190);
 }
 
+/*
+ * Bottom navigation safe-area (TASK 25.38).
+ * Item spacing stays on the links (py-2.5). The inset is additive, with a 0px
+ * fallback when env() is unsupported so the existing visual spacing is kept.
+ * The authenticated shell keeps the existing 8rem (pb-32) spacer and adds the
+ * same inset so page content can scroll above the taller bar.
+ */
+@layer components {
+  .bottom-nav-safe-area {
+    padding-bottom: 0;
+    padding-bottom: calc(0px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .authenticated-shell-offset {
+    padding-bottom: 8rem;
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
