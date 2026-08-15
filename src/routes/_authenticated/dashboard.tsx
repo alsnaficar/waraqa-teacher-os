@@ -1,5 +1,6 @@
 import { SubscriptionBanner } from "@/features/billing/components/subscription-banner";
 import { useOpenCheckout, useSubscription } from "@/features/billing/hooks/useSubscription";
+import { useDashboardActivity } from "@/features/dashboard/hooks/useDashboardActivity";
 import { useLessonSessions } from "@/features/lesson-sessions/hooks/useLessonSessions";
 import { todayIso } from "@/features/lesson-sessions/services/lesson-session.service";
 import { resolveTodayLessonDisplay } from "@/features/lesson-sessions/services/today-lessons-display";
@@ -55,6 +56,14 @@ function HomePage() {
   const { sessions: todaySessions } = useLessonSessions(todayDate);
 
   const {
+    pending,
+    activity,
+    loading: activityLoading,
+    error: activityError,
+    refresh: refreshActivity,
+  } = useDashboardActivity();
+
+  const {
     state: subscriptionState,
     access: subscriptionAccess,
     daysRemaining: subscriptionDaysRemaining,
@@ -104,13 +113,23 @@ function HomePage() {
           remainingLessons={remainingToday}
         />
 
-        <DashboardNotifications />
+        <DashboardNotifications
+          items={activity}
+          loading={activityLoading}
+          error={activityError instanceof Error ? activityError : null}
+          onRetry={refreshActivity}
+        />
 
         <TodayLessonsSection lessons={normalizedTodayLessons} />
 
         <QuickActions />
 
-        <PendingTasks />
+        <PendingTasks
+          tasks={pending}
+          loading={activityLoading}
+          error={activityError instanceof Error ? activityError : null}
+          onRetry={refreshActivity}
+        />
       </div>
     </PageShell>
   );
