@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_authenticated/reports")({
       { title: "التقارير | ورقة" },
       {
         name: "description",
-        content: "تقارير أداء الحصص في منصة ورقة.",
+        content: "مركز التقارير الموحّد للحصص والواجبات والاختبارات في منصة ورقة.",
       },
     ],
   }),

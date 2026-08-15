@@ -1,5 +1,6 @@
+import { Link } from "@tanstack/react-router";
 import { BarChart3, CalendarRange, Lock, Unlock } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/shared/components/empty-state";
@@ -11,9 +12,26 @@ import { Label } from "@/shared/ui/label";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { cn } from "@/shared/utils/utils";
 
-import { useLessonSessionReport } from "../hooks/useLessonSessionReport";
+import { useReportsHub } from "../hooks/useReportsHub";
 import type { ReportSessionWithTitle } from "../services/enrich-report-with-lesson-titles";
 import type { ReportsDateFilter } from "../services/reports.service";
+import {
+  compactHomeworkMetrics,
+  compactLessonMetrics,
+  compactTestMetrics,
+  isHomeworkHubEmpty,
+  isLessonHubEmpty,
+  isTestHubEmpty,
+  REPORTS_HUB_DEFAULT_FILTER,
+  REPORTS_HUB_HOMEWORK_CTA,
+  REPORTS_HUB_HOMEWORK_TITLE,
+  REPORTS_HUB_LESSONS_TITLE,
+  REPORTS_HUB_TESTS_CTA,
+  REPORTS_HUB_TESTS_TITLE,
+  type CompactReportMetric,
+  type HubDomainResult,
+  type ReportsHubSnapshot,
+} from "../services/reports-hub.logic";
 import {
   buildReportSummaryItems,
   buildReportsDateFilter,
@@ -41,27 +59,22 @@ function formatDisplayDate(iso: string): string {
 }
 
 export function ReportsPageContent() {
-  const [kind, setKind] = useState<ReportsFilterKind>("week");
+  const [kind, setKind] = useState<ReportsFilterKind>(
+    REPORTS_HUB_DEFAULT_FILTER.kind === "custom" ? "custom" : REPORTS_HUB_DEFAULT_FILTER.kind,
+  );
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [appliedFilter, setAppliedFilter] = useState<ReportsDateFilter>(() =>
-    buildReportsDateFilter("week"),
-  );
+  const [appliedFilter, setAppliedFilter] = useState<ReportsDateFilter>(REPORTS_HUB_DEFAULT_FILTER);
 
-  const query = useLessonSessionReport(appliedFilter);
-
-  const summaryItems = useMemo(
-    () => (query.data ? buildReportSummaryItems(query.data.stats) : []),
-    [query.data],
-  );
+  const query = useReportsHub(appliedFilter);
+  const snapshot = query.data;
 
   function applyPreset(nextKind: ReportsFilterKind) {
     setKind(nextKind);
     if (nextKind === "custom") return;
 
     try {
-      const filter = buildReportsDateFilter(nextKind);
-      setAppliedFilter(filter);
+      setAppliedFilter(buildReportsDateFilter(nextKind));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "تعذر تطبيق التصفية.");
     }
@@ -77,8 +90,8 @@ export function ReportsPageContent() {
     }
   }
 
-  const rangeLabel = query.data
-    ? `${formatDisplayDate(query.data.range.from)} — ${formatDisplayDate(query.data.range.to)}`
+  const rangeLabel = snapshot
+    ? `${formatDisplayDate(snapshot.range.from)} — ${formatDisplayDate(snapshot.range.to)}`
     : null;
 
   return (
@@ -92,7 +105,7 @@ export function ReportsPageContent() {
             <div className="min-w-0">
               <h1 className="text-xl font-bold">التقارير</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                ملخص حصصك الدرسية حسب الحالة ونسبة الإنجاز.
+                ملخص موحّد لحصصك وواجباتك واختباراتك حسب الفترة.
               </p>
               {rangeLabel ? (
                 <p className="mt-1 text-[11px] text-muted-foreground">{rangeLabel}</p>
@@ -145,7 +158,7 @@ export function ReportsPageContent() {
               </div>
               <div className="flex items-end">
                 <Button type="button" className="min-h-11 w-full sm:w-auto" onClick={applyCustomRange}>
-                  عرض
+                  تطبيق
                 </Button>
               </div>
             </div>
@@ -155,9 +168,9 @@ export function ReportsPageContent() {
 
       {query.isPending ? (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            {Array.from({ length: 7 }, (_, index) => (
-              <Skeleton key={index} className="h-20 w-full rounded-xl" />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <Skeleton key={index} className="h-36 w-full rounded-xl" />
             ))}
           </div>
           <Skeleton className="h-48 w-full rounded-xl" />
@@ -175,31 +188,135 @@ export function ReportsPageContent() {
             </Button>
           }
         />
-      ) : (
+      ) : snapshot ? (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            {summaryItems.map((item) => (
-              <Card key={item.key}>
-                <CardContent className="p-3">
-                  <p className="truncate text-[11px] text-muted-foreground">{item.label}</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums">{item.value}</p>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <HubDomainCard
+              title={REPORTS_HUB_LESSONS_TITLE}
+              domain={snapshot.lessons}
+              metricsOf={(data) => compactLessonMetrics(data.stats)}
+              isEmpty={isLessonHubEmpty}
+            />
+            <HubDomainCard
+              title={REPORTS_HUB_HOMEWORK_TITLE}
+              domain={snapshot.homework}
+              metricsOf={(data) => compactHomeworkMetrics(data.summary)}
+              isEmpty={isHomeworkHubEmpty}
+              action={
+                <Button asChild variant="outline" size="sm" className="min-h-11 w-full">
+                  <Link to="/homework">{REPORTS_HUB_HOMEWORK_CTA}</Link>
+                </Button>
+              }
+            />
+            <HubDomainCard
+              title={REPORTS_HUB_TESTS_TITLE}
+              domain={snapshot.tests}
+              metricsOf={(data) => compactTestMetrics(data.summary)}
+              isEmpty={isTestHubEmpty}
+              action={
+                <Button asChild variant="outline" size="sm" className="min-h-11 w-full">
+                  <Link to="/tests">{REPORTS_HUB_TESTS_CTA}</Link>
+                </Button>
+              }
+            />
           </div>
 
-          {!query.data || query.data.sessions.length === 0 ? (
-            <EmptyState
-              icon={CalendarRange}
-              title={REPORTS_EMPTY_TITLE}
-              description={REPORTS_EMPTY_DESCRIPTION}
-            />
-          ) : (
-            <ReportsSessionsDetail sessions={query.data.sessions} />
-          )}
+          <LessonSessionsHubSection snapshot={snapshot} onRetry={() => void query.refetch()} />
         </>
-      )}
+      ) : null}
     </div>
+  );
+}
+
+function HubDomainCard<T>({
+  title,
+  domain,
+  metricsOf,
+  isEmpty,
+  action,
+}: {
+  title: string;
+  domain: HubDomainResult<T>;
+  metricsOf: (data: T) => CompactReportMetric[];
+  isEmpty: (data: T) => boolean;
+  action?: ReactNode;
+}) {
+  return (
+    <Card className="min-w-0">
+      <CardContent className="space-y-3 p-4">
+        <p className="text-sm font-semibold">{title}</p>
+        {domain.status === "error" ? (
+          <p className="text-xs text-destructive">{domain.message}</p>
+        ) : isEmpty(domain.data) ? (
+          <p className="text-xs text-muted-foreground">لا توجد بيانات في هذه الفترة</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {metricsOf(domain.data).map((metric) => (
+              <li
+                key={metric.label}
+                className="flex min-h-[28px] items-center justify-between gap-2 text-xs"
+              >
+                <span className="truncate text-muted-foreground">{metric.label}</span>
+                <span className="font-semibold tabular-nums">{metric.value}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {action}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LessonSessionsHubSection({
+  snapshot,
+  onRetry,
+}: {
+  snapshot: ReportsHubSnapshot;
+  onRetry: () => void;
+}) {
+  const lessons = snapshot.lessons;
+  const summaryItems =
+    lessons.status === "ok" ? buildReportSummaryItems(lessons.data.stats) : [];
+
+  if (lessons.status === "error") {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title={REPORTS_ERROR_TITLE}
+        description={lessons.message}
+        action={
+          <Button className="min-h-11" onClick={onRetry}>
+            إعادة المحاولة
+          </Button>
+        }
+      />
+    );
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        {summaryItems.map((item) => (
+          <Card key={item.key}>
+            <CardContent className="p-3">
+              <p className="truncate text-[11px] text-muted-foreground">{item.label}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">{item.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {isLessonHubEmpty(lessons.data) ? (
+        <EmptyState
+          icon={CalendarRange}
+          title={REPORTS_EMPTY_TITLE}
+          description={REPORTS_EMPTY_DESCRIPTION}
+        />
+      ) : (
+        <ReportsSessionsDetail sessions={lessons.data.sessions} />
+      )}
+    </>
   );
 }
 
@@ -210,7 +327,6 @@ function ReportsSessionsDetail({ sessions }: { sessions: ReportSessionWithTitle[
         <CardTitle className="text-base">تفاصيل الحصص</CardTitle>
       </CardHeader>
       <CardContent className="min-w-0 p-0">
-        {/* Mobile cards */}
         <div className="space-y-2 p-3 lg:hidden">
           {sessions.map((session) => (
             <article
@@ -248,7 +364,6 @@ function ReportsSessionsDetail({ sessions }: { sessions: ReportSessionWithTitle[
           ))}
         </div>
 
-        {/* Desktop table */}
         <div className="hidden min-w-0 overflow-x-auto lg:block">
           <table className="w-full min-w-[720px] border-collapse text-right" dir="rtl">
             <thead>

@@ -118,6 +118,7 @@ describe("TASK 19.4 security — no client teacher_id override", () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const files = [
       path.join(here, "../hooks/useLessonSessionReport.ts"),
+      path.join(here, "../hooks/useReportsHub.ts"),
       path.join(here, "../components/reports-page-content.tsx"),
       path.join(here, "../../../routes/_authenticated/reports.tsx"),
     ];

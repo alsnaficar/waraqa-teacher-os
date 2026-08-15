@@ -7,6 +7,7 @@ import { resolveTodayLessonDisplay } from "@/features/lesson-sessions/services/t
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardSummary } from "@/components/dashboard/dashboard-summary";
 import { DashboardNotifications } from "@/components/dashboard/dashboard-notifications";
+import { DashboardReports } from "@/components/dashboard/dashboard-reports";
 import { TodayLessonsSection } from "@/components/dashboard/today-lessons-section";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { PendingTasks } from "@/components/dashboard/pending-tasks";
@@ -14,9 +15,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 import { PageShell } from "@/components/layout/page-shell";
+import { useReportsHub } from "@/features/reports/hooks/useReportsHub";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
 import { supabase } from "@/platform/database/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatHijriFull } from "@/shared/utils/date";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -24,9 +26,15 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function HomePage() {
+  const queryClient = useQueryClient();
   const today = useMemo(() => new Date(), []);
   const todayDate = useMemo(() => todayIso(), []);
   const hijri = useMemo(() => formatHijriFull(today), [today]);
+
+  const reportsQuery = useReportsHub();
+  const refreshReports = () => {
+    void queryClient.invalidateQueries({ queryKey: ["reports", "hub"] });
+  };
 
   const { data: profile } = useQuery({
     queryKey: ["home-profile"],
@@ -111,6 +119,13 @@ function HomePage() {
           weekLessons={weekSlotCount}
           completedLessons={preparedToday}
           remainingLessons={remainingToday}
+        />
+
+        <DashboardReports
+          snapshot={reportsQuery.data}
+          loading={reportsQuery.isPending}
+          error={reportsQuery.error instanceof Error ? reportsQuery.error : null}
+          onRetry={refreshReports}
         />
 
         <DashboardNotifications
