@@ -39,6 +39,7 @@ export function StudentFormDialog({
   initial,
   classes,
   grades,
+  defaults,
   onOpenChange,
   onSubmit,
   busy,
@@ -48,6 +49,8 @@ export function StudentFormDialog({
   initial?: Student | null;
   classes: TeacherCatalogItem[];
   grades: TeacherCatalogItem[];
+  /** Prefill for create mode (e.g. current class filter). */
+  defaults?: Partial<StudentFormState>;
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: StudentCreateInput) => Promise<void>;
   busy?: boolean;
@@ -60,8 +63,17 @@ export function StudentFormDialog({
       setForm(studentToFormState(initial));
       return;
     }
-    setForm(emptyStudentForm());
-  }, [open, mode, initial?.id]);
+    setForm(emptyStudentForm(defaults));
+  }, [open, mode, initial?.id, defaults?.classId, defaults?.gradeId]);
+
+  function applyClass(classId: string) {
+    const selected = classes.find((item) => item.id === classId);
+    setForm((f) => ({
+      ...f,
+      classId,
+      gradeId: selected?.gradeId?.trim() ? selected.gradeId : f.gradeId,
+    }));
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -116,9 +128,13 @@ export function StudentFormDialog({
               <Label htmlFor="st-class">الفصل</Label>
               <Select
                 value={form.classId || NONE}
-                onValueChange={(value) =>
-                  setForm((f) => ({ ...f, classId: value === NONE ? "" : value }))
-                }
+                onValueChange={(value) => {
+                  if (value === NONE) {
+                    setForm((f) => ({ ...f, classId: "" }));
+                    return;
+                  }
+                  applyClass(value);
+                }}
               >
                 <SelectTrigger id="st-class" className="min-h-11">
                   <SelectValue placeholder="بدون فصل" />

@@ -3,6 +3,8 @@ import { resolveUserContext, type SupabaseUserContext } from "@/platform/databas
 export type TeacherCatalogItem = {
   id: string;
   name: string;
+  /** Present for classes only — optional grade binding. */
+  gradeId?: string | null;
 };
 
 /**
@@ -16,12 +18,16 @@ export class TeacherCatalogService {
 
     const { data, error } = await resolved.client
       .from("classes")
-      .select("id, name")
+      .select("id, name, grade_id")
       .eq("user_id", resolved.userId)
       .order("name");
 
     if (error) throw error;
-    return (data ?? []).map((row) => ({ id: row.id, name: row.name }));
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      gradeId: row.grade_id,
+    }));
   }
 
   static async listGrades(context?: SupabaseUserContext): Promise<TeacherCatalogItem[]> {

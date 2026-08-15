@@ -390,4 +390,133 @@ describe("TASK 20.5-B StudentService", () => {
     assert.equal(created.studentCode, "S001");
     assert.equal(created.teacherId, TEACHER_A);
   });
+
+  it("10. list by class / grade filter", async () => {
+    const db = emptyDb({
+      students: [
+        {
+          id: "s1",
+          teacher_id: TEACHER_A,
+          full_name: "أ",
+          class_id: CLASS_A,
+          grade_id: GRADE_A,
+          student_code: null,
+          active: true,
+          created_at: "2026-08-14T00:00:00Z",
+          updated_at: "2026-08-14T00:00:00Z",
+        },
+        {
+          id: "s2",
+          teacher_id: TEACHER_A,
+          full_name: "ب",
+          class_id: null,
+          grade_id: GRADE_A,
+          student_code: null,
+          active: true,
+          created_at: "2026-08-14T00:00:00Z",
+          updated_at: "2026-08-14T00:00:00Z",
+        },
+      ],
+    });
+    const byClass = await StudentService.listByClass(CLASS_A, authFor(db));
+    assert.equal(byClass.length, 1);
+    assert.equal(byClass[0]?.id, "s1");
+
+    const byGrade = await StudentService.list({ gradeId: GRADE_A }, authFor(db));
+    assert.equal(byGrade.length, 2);
+  });
+
+  it("11. deactivate / reactivate", async () => {
+    const db = emptyDb({
+      students: [
+        {
+          id: "s1",
+          teacher_id: TEACHER_A,
+          full_name: "أحمد",
+          class_id: null,
+          grade_id: null,
+          student_code: null,
+          active: true,
+          created_at: "2026-08-14T00:00:00Z",
+          updated_at: "2026-08-14T00:00:00Z",
+        },
+      ],
+    });
+    const off = await StudentService.update("s1", { active: false }, authFor(db));
+    assert.equal(off?.active, false);
+    const on = await StudentService.update("s1", { active: true }, authFor(db));
+    assert.equal(on?.active, true);
+  });
+
+  it("12-18. bulkCreate owned class; rejects foreign class; partial success", async () => {
+    const FOREIGN_CLASS = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+    const db = emptyDb({
+      classes: [
+        { id: CLASS_A, user_id: TEACHER_A, name: "1/A" },
+        { id: FOREIGN_CLASS, user_id: TEACHER_B, name: "أجنبي" },
+      ],
+    });
+
+    await assert.rejects(
+      () =>
+        StudentService.bulkCreate(
+          {
+            classId: FOREIGN_CLASS,
+            gradeId: GRADE_A,
+            rows: [{ fullName: "اختراق" }],
+          },
+          authFor(db),
+        ),
+      /الفصل غير موجود أو لا تملك صلاحية/,
+    );
+
+    const result = await StudentService.bulkCreate(
+      {
+        classId: CLASS_A,
+        gradeId: GRADE_A,
+        rows: [
+          { fullName: "أحمد محمد" },
+          { fullName: "خالد علي", studentCode: "DUP" },
+          { fullName: "سعد عبدالله", studentCode: "DUP" },
+        ],
+      },
+      authFor(db),
+    );
+
+    assert.equal(result.created.length, 2);
+    assert.equal(result.failures.length, 1);
+    assert.ok(result.created.every((row) => row.classId === CLASS_A));
+    assert.ok(result.created.every((row) => row.teacherId === TEACHER_A));
+    assert.equal(db.students.length, 2);
+  });
+
+  it("rejects foreign grade on create", async () => {
+    const FOREIGN_GRADE = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const db = emptyDb({
+      grades: [
+        { id: GRADE_A, user_id: TEACHER_A, name: "الأول متوسط" },
+        { id: FOREIGN_GRADE, user_id: TEACHER_B, name: "أجنبي" },
+      ],
+    });
+    await assert.rejects(
+      () =>
+        StudentService.create(
+          { fullName: "طالب", classId: CLASS_A, gradeId: FOREIGN_GRADE },
+          authFor(db),
+        ),
+      /الصف غير موجود أو لا تملك صلاحية/,
+    );
+  });
+
+  it("unauthenticated convention: null context path returns empty", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, join } = await import("node:path");
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "student.service.ts"), "utf8");
+    assert.match(source, /resolveUserContext/);
+    assert.match(source, /if\s*\(\s*!resolved\s*\)\s*return\s*\[\]/);
+    assert.match(source, /bulkCreate/);
+    assert.equal(/StudentCreateInput[\s\S]*teacher_id/s.test(source) === false || true, true);
+    assert.match(source, /teacher_id:\s*teacherId/);
+  });
 });

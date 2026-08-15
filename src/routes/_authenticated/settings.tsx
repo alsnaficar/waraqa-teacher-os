@@ -7,6 +7,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { SectionHeader } from "@/shared/components/section-header";
 import { MadrasatiAuthModal } from "@/platform/integration/connectors/madrasati/components/madrasati-auth-modal";
 import { GradesClassesPanel } from "@/features/classes/components/grades-classes-panel";
+import { StudentsPanel } from "@/features/homework/components/students-panel";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -141,6 +142,8 @@ function SettingsPage() {
         </Card>
 
         <GradesClassesPanel />
+
+        <StudentsPanel />
 
         <Card className="shadow-sm border-slate-100">
           <CardContent className="p-6">

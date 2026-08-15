@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2, UserRound } from "lucide-react";
+import { ClipboardPaste, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -34,36 +34,41 @@ import {
   STUDENTS_EMPTY_DESCRIPTION,
   STUDENTS_EMPTY_TITLE,
   STUDENTS_ERROR_TITLE,
+  STUDENTS_SELECT_CLASS_HINT,
   toStudentListItemView,
 } from "../services/students-ui.logic";
+import { StudentBulkImportDialog } from "./student-bulk-import-dialog";
 import { StudentFormDialog } from "./student-form-dialog";
 
 const ALL = "all";
 
 export function StudentsPanel() {
   const [search, setSearch] = useState("");
+  const [gradeFilter, setGradeFilter] = useState<string>(ALL);
   const [classFilter, setClassFilter] = useState<string>(ALL);
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 
   const serviceFilter = useMemo(
     () => ({
       ...(classFilter !== ALL ? { classId: classFilter } : {}),
+      ...(gradeFilter !== ALL && classFilter === ALL ? { gradeId: gradeFilter } : {}),
       ...(activeFilter === "active"
         ? { active: true }
         : activeFilter === "inactive"
           ? { active: false }
           : {}),
     }),
-    [classFilter, activeFilter],
+    [classFilter, gradeFilter, activeFilter],
   );
 
-  const { items, loading, error, refresh, classes, grades, create, update, remove } =
+  const { items, loading, error, refresh, classes, grades, create, update, remove, bulkCreate } =
     useStudents(serviceFilter);
 
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editing, setEditing] = useState<Student | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const classNameById = useMemo(
     () => new Map(classes.map((item) => [item.id, item.name])),
@@ -74,12 +79,40 @@ export function StudentsPanel() {
     [grades],
   );
 
+  const classesForGrade = useMemo(() => {
+    if (gradeFilter === ALL) return classes;
+    return classes.filter((item) => item.gradeId === gradeFilter);
+  }, [classes, gradeFilter]);
+
+  const selectedClass = classes.find((item) => item.id === classFilter) ?? null;
+  const selectedGradeId =
+    selectedClass?.gradeId ?? (gradeFilter !== ALL ? gradeFilter : null);
+
   const filtered = useMemo(
-    () => filterStudents(items, { search, classId: classFilter, active: activeFilter }),
-    [items, search, classFilter, activeFilter],
+    () =>
+      filterStudents(items, {
+        search,
+        classId: classFilter,
+        gradeId: gradeFilter,
+        active: activeFilter,
+      }),
+    [items, search, classFilter, gradeFilter, activeFilter],
   );
   const views = filtered.map((student) =>
     toStudentListItemView(student, { classNameById, gradeNameById }),
+  );
+
+  const existingInSelectedClass = useMemo(
+    () => (classFilter === ALL ? [] : items.filter((student) => student.classId === classFilter)),
+    [items, classFilter],
+  );
+
+  const createDefaults = useMemo(
+    () => ({
+      classId: classFilter !== ALL ? classFilter : "",
+      gradeId: selectedGradeId ?? "",
+    }),
+    [classFilter, selectedGradeId],
   );
 
   function openCreate() {
@@ -103,6 +136,17 @@ export function StudentsPanel() {
     }
   }
 
+  function handleGradeChange(value: string) {
+    setGradeFilter(value);
+    if (value === ALL) return;
+    if (classFilter !== ALL) {
+      const current = classes.find((item) => item.id === classFilter);
+      if (current && current.gradeId !== value) {
+        setClassFilter(ALL);
+      }
+    }
+  }
+
   return (
     <div className="min-w-0 space-y-4" dir="rtl">
       <Card>
@@ -112,16 +156,29 @@ export function StudentsPanel() {
               <UserRound className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold">إدارة الطلاب</h2>
+              <h2 className="text-lg font-bold">الطلاب</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                قائمة طلابك للربط مع تسليمات الواجبات. لا تعرض معرّف المعلم للتعديل.
+                قائمة طلابك حسب الصف والفصل. استخدم اللصق لإضافة عدة أسماء دفعة واحدة.
               </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{STUDENTS_SELECT_CLASS_HINT}</p>
             </div>
           </div>
-          <Button type="button" className="min-h-11 gap-1" onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            إضافة طالب
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 gap-1"
+              disabled={classFilter === ALL}
+              onClick={() => setBulkOpen(true)}
+            >
+              <ClipboardPaste className="h-4 w-4" />
+              لصق قائمة
+            </Button>
+            <Button type="button" className="min-h-11 gap-1" onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              إضافة طالب
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -133,13 +190,29 @@ export function StudentsPanel() {
           onChange={(e) => setSearch(e.target.value)}
           aria-label="بحث عن طالب"
         />
-        <Select value={classFilter} onValueChange={setClassFilter}>
+        <Select value={gradeFilter} onValueChange={handleGradeChange}>
+          <SelectTrigger className="min-h-11 w-full sm:w-48" aria-label="تصفية حسب الصف">
+            <SelectValue placeholder="كل الصفوف" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>كل الصفوف</SelectItem>
+            {grades.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={classFilter}
+          onValueChange={setClassFilter}
+        >
           <SelectTrigger className="min-h-11 w-full sm:w-48" aria-label="تصفية حسب الفصل">
             <SelectValue placeholder="كل الفصول" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>كل الفصول</SelectItem>
-            {classes.map((item) => (
+            {classesForGrade.map((item) => (
               <SelectItem key={item.id} value={item.id}>
                 {item.name}
               </SelectItem>
@@ -195,15 +268,25 @@ export function StudentsPanel() {
           title={STUDENTS_EMPTY_TITLE}
           description={STUDENTS_EMPTY_DESCRIPTION}
           action={
-            <Button className="min-h-11 gap-1" onClick={openCreate}>
-              <Plus className="h-4 w-4" />
-              إضافة طالب
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button className="min-h-11 gap-1" onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                إضافة طالب
+              </Button>
+              <Button
+                variant="outline"
+                className="min-h-11 gap-1"
+                disabled={classFilter === ALL}
+                onClick={() => setBulkOpen(true)}
+              >
+                <ClipboardPaste className="h-4 w-4" />
+                لصق قائمة
+              </Button>
+            </div>
           }
         />
       ) : (
         <>
-          {/* Desktop table */}
           <div className="hidden overflow-x-auto rounded-xl border md:block">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
@@ -265,7 +348,6 @@ export function StudentsPanel() {
             </table>
           </div>
 
-          {/* Mobile cards */}
           <div className="space-y-3 md:hidden">
             {filtered.map((student, index) => {
               const view = views[index]!;
@@ -323,6 +405,7 @@ export function StudentsPanel() {
         open={formOpen}
         mode={formMode}
         initial={editing}
+        defaults={createDefaults}
         classes={classes}
         grades={grades}
         busy={create.isPending || update.isPending}
@@ -339,6 +422,17 @@ export function StudentsPanel() {
         }}
       />
 
+      <StudentBulkImportDialog
+        open={bulkOpen}
+        classId={classFilter !== ALL ? classFilter : ""}
+        classLabel={selectedClass?.name ?? "—"}
+        gradeId={selectedGradeId}
+        existingInClass={existingInSelectedClass}
+        busy={bulkCreate.isPending}
+        onOpenChange={setBulkOpen}
+        onImport={(input) => bulkCreate.mutateAsync(input)}
+      />
+
       <AlertDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
@@ -350,7 +444,7 @@ export function StudentsPanel() {
             <AlertDialogTitle>حذف الطالب؟</AlertDialogTitle>
             <AlertDialogDescription>
               سيتم حذف «{deleteTarget?.fullName}» إن سمحت سياسة قاعدة البيانات بذلك. التسليمات
-              المرتبطة قد تمنع الحذف.
+              المرتبطة قد تمنع الحذف. يُفضّل الإيقاف بدلاً من الحذف عند الحاجة.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-col">

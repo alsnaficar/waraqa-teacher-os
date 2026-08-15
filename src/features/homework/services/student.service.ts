@@ -44,6 +44,7 @@ export type StudentUpdateInput = Partial<StudentCreateInput>;
 
 export type StudentListFilter = {
   classId?: string;
+  gradeId?: string;
   active?: boolean;
 };
 
@@ -103,6 +104,7 @@ export class StudentService {
       .order("full_name");
 
     if (filter.classId) query = query.eq("class_id", filter.classId);
+    if (filter.gradeId) query = query.eq("grade_id", filter.gradeId);
     if (filter.active !== undefined) query = query.eq("active", filter.active);
 
     const { data, error } = await query;
@@ -213,6 +215,65 @@ export class StudentService {
 
     if (error) throw error;
     return Boolean(data);
+  }
+
+  /**
+   * Bulk-create students into an owned class.
+   * Ownership of class/grade is verified once; each create still uses teacher context.
+   * Partial success: valid rows are inserted even if later rows fail (e.g. code conflict).
+   */
+  static async bulkCreate(
+    input: {
+      classId: string;
+      gradeId?: string | null;
+      rows: Array<{ fullName: string; studentCode?: string | null }>;
+    },
+    context?: SupabaseUserContext,
+  ): Promise<{
+    created: Student[];
+    failures: Array<{ fullName: string; message: string }>;
+  }> {
+    const resolved = await resolveUserContext(context);
+    if (!resolved) {
+      return { created: [], failures: [] };
+    }
+
+    if (!input.classId?.trim()) {
+      throw new Error("يجب اختيار فصل قبل الاستيراد.");
+    }
+
+    if (!Array.isArray(input.rows) || input.rows.length === 0) {
+      return { created: [], failures: [] };
+    }
+
+    await assertOwnedClassAndGrade(resolved, input.classId, input.gradeId ?? null);
+
+    const created: Student[] = [];
+    const failures: Array<{ fullName: string; message: string }> = [];
+
+    for (const row of input.rows) {
+      try {
+        const student = await this.create(
+          {
+            fullName: row.fullName,
+            studentCode: row.studentCode ?? null,
+            classId: input.classId,
+            gradeId: input.gradeId ?? null,
+            active: true,
+          },
+          resolved,
+        );
+        if (student) created.push(student);
+        else failures.push({ fullName: row.fullName, message: "تعذر إنشاء الطالب." });
+      } catch (error) {
+        failures.push({
+          fullName: row.fullName,
+          message: error instanceof Error ? error.message : "تعذر إنشاء الطالب.",
+        });
+      }
+    }
+
+    return { created, failures };
   }
 }
 

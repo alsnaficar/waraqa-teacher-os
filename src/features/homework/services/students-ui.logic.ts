@@ -12,8 +12,10 @@ export const SUBMISSION_STATUS_HINT =
 
 export const STUDENTS_EMPTY_TITLE = "لا يوجد طلاب بعد";
 export const STUDENTS_EMPTY_DESCRIPTION =
-  "أضف طلابك هنا لربطهم بتسليمات الواجبات لاحقاً. يمكنك الاستيراد لاحقاً دون تغيير بنية التسليمات.";
+  "أضف طلابك يدوياً أو الصق قائمة أسماء بعد اختيار الفصل. الطلاب سجلات يملكها المعلم وليست حسابات دخول.";
 export const STUDENTS_ERROR_TITLE = "تعذر تحميل الطلاب";
+export const STUDENTS_SELECT_CLASS_HINT =
+  "اختر الصف ثم الفصل لعرض الطلاب أو استيراد قائمة.";
 export const SUBMISSIONS_EMPTY_TITLE = "لا توجد تسليمات لهذا الواجب";
 export const SUBMISSIONS_EMPTY_DESCRIPTION =
   "أنشئ سجلات تسليم للطلاب، أو اختر واجباً آخر. يمكنك تصحيح التسليمات المُسلَّمة يدوياً.";
@@ -114,12 +116,16 @@ export function filterStudents(
   options: {
     search?: string;
     classId?: string | "all";
+    gradeId?: string | "all";
     active?: "all" | "active" | "inactive";
   },
 ): Student[] {
   const search = options.search?.trim().toLowerCase() ?? "";
   return students.filter((student) => {
     if (options.classId && options.classId !== "all" && student.classId !== options.classId) {
+      return false;
+    }
+    if (options.gradeId && options.gradeId !== "all" && student.gradeId !== options.gradeId) {
       return false;
     }
     if (options.active === "active" && !student.active) return false;

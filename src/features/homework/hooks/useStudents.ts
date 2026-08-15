@@ -9,7 +9,12 @@ import {
 import { TeacherCatalogService } from "../services/teacher-catalog.service";
 
 export function studentsQueryKey(filter: StudentListFilter = {}) {
-  return ["students", filter.classId ?? "all", String(filter.active ?? "any")] as const;
+  return [
+    "students",
+    filter.classId ?? "all",
+    filter.gradeId ?? "any",
+    String(filter.active ?? "any"),
+  ] as const;
 }
 
 export function useStudents(filter: StudentListFilter = {}) {
@@ -33,7 +38,9 @@ export function useStudents(filter: StudentListFilter = {}) {
     },
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["students"] });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["students"] });
+  };
 
   const create = useMutation({
     mutationFn: (input: StudentCreateInput) => StudentService.create(input),
@@ -51,6 +58,15 @@ export function useStudents(filter: StudentListFilter = {}) {
     onSuccess: invalidate,
   });
 
+  const bulkCreate = useMutation({
+    mutationFn: (input: {
+      classId: string;
+      gradeId?: string | null;
+      rows: Array<{ fullName: string; studentCode?: string | null }>;
+    }) => StudentService.bulkCreate(input),
+    onSuccess: invalidate,
+  });
+
   return {
     items: query.data ?? [],
     loading: query.isPending,
@@ -62,5 +78,6 @@ export function useStudents(filter: StudentListFilter = {}) {
     create,
     update,
     remove,
+    bulkCreate,
   };
 }
