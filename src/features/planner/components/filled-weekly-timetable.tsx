@@ -238,55 +238,67 @@ function TimetableWeekHeader({
           ) : null}
         </div>
 
-        <div className="mt-3 flex min-w-0 w-full max-w-full flex-col items-center">
-          <span className="text-xs font-semibold text-foreground">نشر الخطة</span>
-          <div className="mt-1.5 grid min-w-0 w-full grid-cols-2 gap-2 sm:gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className={`${weekHeaderActionBtnClass} border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900 dark:border-emerald-800/30 dark:bg-emerald-900/20 dark:text-emerald-400`}
-              onClick={() => onComingSoon("منصة مدرستي")}
-            >
-              <School className="h-3.5 w-3.5 shrink-0" />
-              منصة مدرستي
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className={`${weekHeaderActionBtnClass} border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 hover:text-teal-900 dark:border-teal-800/30 dark:bg-teal-900/20 dark:text-teal-400`}
-              onClick={() => onComingSoon("المدير وولي الأمر")}
-            >
-              <Users className="h-3.5 w-3.5 shrink-0" />
-              المدير وولي الأمر
-            </Button>
-          </div>
+        <div className="mt-3 flex w-full min-w-0 max-w-full flex-col items-center">
+          <div className="flex w-full min-w-0 max-w-[21rem] flex-col items-center">
+            <span className="text-xs font-semibold text-foreground">نشر الخطة</span>
+            <div className="mt-1.5 w-full min-w-0 overflow-hidden rounded-xl border border-border/70">
+              <div className="grid min-w-0 w-full grid-cols-2 items-stretch">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`${weekHeaderActionBtnClass} rounded-none border-0 shadow-none bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-400`}
+                  onClick={() => onComingSoon("منصة مدرستي")}
+                >
+                  <School className="h-3.5 w-3.5 shrink-0" />
+                  منصة مدرستي
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`${weekHeaderActionBtnClass} rounded-none border-0 shadow-none border-s border-border/70 bg-teal-50 text-teal-800 hover:bg-teal-100 hover:text-teal-900 dark:bg-teal-900/20 dark:text-teal-400`}
+                  onClick={() => onComingSoon("المدير وولي الأمر")}
+                >
+                  <Users className="h-3.5 w-3.5 shrink-0" />
+                  المدير وولي الأمر
+                </Button>
+              </div>
 
-          <RadioGroup
-            dir="rtl"
-            value={attendanceMode}
-            onValueChange={(value) =>
-              setAttendanceMode(value === "remote" ? "remote" : "in_person")
-            }
-            className="mt-3 grid min-w-0 w-full grid-cols-2 gap-2 sm:gap-3"
-            aria-label="نمط الحضور"
-          >
-            <label
-              htmlFor="weekly-attendance-in-person"
-              dir="ltr"
-              className="inline-flex min-h-[44px] min-w-0 items-center justify-start gap-2"
-            >
-              <RadioGroupItem id="weekly-attendance-in-person" value="in_person" />
-              <span className="text-sm leading-tight whitespace-normal">حضوري</span>
-            </label>
-            <label
-              htmlFor="weekly-attendance-remote"
-              dir="ltr"
-              className="inline-flex min-h-[44px] min-w-0 items-center justify-start gap-2"
-            >
-              <RadioGroupItem id="weekly-attendance-remote" value="remote" />
-              <span className="text-sm leading-tight whitespace-normal">عن بعد</span>
-            </label>
-          </RadioGroup>
+              <RadioGroup
+                dir="rtl"
+                value={attendanceMode}
+                onValueChange={(value) =>
+                  setAttendanceMode(value === "remote" ? "remote" : "in_person")
+                }
+                className="grid min-w-0 w-full grid-cols-2 items-stretch gap-0 border-t border-border/70"
+                aria-label="نمط الحضور"
+              >
+                <label
+                  htmlFor="weekly-attendance-in-person"
+                  dir="ltr"
+                  className="inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 px-1.5"
+                >
+                  <RadioGroupItem
+                    id="weekly-attendance-in-person"
+                    value="in_person"
+                    className="border-teal-600 text-teal-700"
+                  />
+                  <span className="text-sm leading-tight whitespace-normal">حضوري</span>
+                </label>
+                <label
+                  htmlFor="weekly-attendance-remote"
+                  dir="ltr"
+                  className="inline-flex min-h-[44px] min-w-0 items-center justify-center gap-2 border-s border-border/70 px-1.5"
+                >
+                  <RadioGroupItem
+                    id="weekly-attendance-remote"
+                    value="remote"
+                    className="border-teal-600 text-teal-700"
+                  />
+                  <span className="text-sm leading-tight whitespace-normal">عن بعد</span>
+                </label>
+              </RadioGroup>
+            </div>
+          </div>
         </div>
       </div>
 

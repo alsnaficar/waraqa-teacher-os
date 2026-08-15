@@ -128,7 +128,7 @@ describe("TASK 25.32 weekly plan publish UI in Family C header", () => {
   it("keeps equal-width wrapping publish buttons without 320px overflow widths", () => {
     assert.match(
       publishBlock,
-      /grid min-w-0 w-full grid-cols-2 gap-2 sm:gap-3/,
+      /grid min-w-0 w-full grid-cols-2 items-stretch/,
     );
     assert.match(header, /flex min-w-0 w-full max-w-full flex-col gap-3 overflow-x-hidden/);
     assert.match(header, /h-11 min-h-\[44px\] w-full min-w-0/);
@@ -197,7 +197,7 @@ describe("TASK 25.33 weekly header attendance selector", () => {
     assert.ok(remote.indexOf("<RadioGroupItem") < remote.indexOf("عن بعد"));
     assert.doesNotMatch(inPerson, /حضوري[\s\S]*<RadioGroupItem/);
     assert.doesNotMatch(remote, /عن بعد[\s\S]*<RadioGroupItem/);
-    assert.match(attendanceBlock, /grid min-w-0 w-full grid-cols-2/);
+    assert.match(attendanceBlock, /grid min-w-0 w-full grid-cols-2 items-stretch gap-0/);
     assert.doesNotMatch(attendanceBlock, /flex-row-reverse/);
     assert.doesNotMatch(header, /w-\[3(2|6)0px\]/);
   });
@@ -215,5 +215,64 @@ describe("TASK 25.33 weekly header attendance selector", () => {
     assert.match(weekly, /placeholderData: keepPreviousData/);
     assert.match(weekly, /queryClient\.prefetchQuery/);
     assert.match(weekly, /const weekSwitchPending = existingSessionsQuery\.isPlaceholderData/);
+  });
+});
+
+describe("TASK 25.34 weekly header publish/attendance alignment", () => {
+  const weekly = readSrc("../components/filled-weekly-timetable.tsx");
+  const headerStart = weekly.indexOf("const weekHeaderActionBtnClass");
+  const headerEnd = weekly.indexOf("export function FilledWeeklyTimetable");
+  const header = weekly.slice(headerStart, headerEnd);
+  const countIdx = header.indexOf("{entriesCount} حصص");
+  const publishIdx = header.indexOf("نشر الخطة");
+  const attendanceIdx = header.indexOf('aria-label="نمط الحضور"');
+  const prepIdx = header.indexOf("order-2 grid min-w-0 w-full grid-cols-2 gap-3 md:contents");
+  const block = header.slice(publishIdx, prepIdx);
+
+  it("keeps one centered publish block under the lesson count", () => {
+    assert.ok(countIdx !== -1 && publishIdx !== -1 && attendanceIdx !== -1);
+    assert.ok(countIdx < publishIdx && publishIdx < attendanceIdx && attendanceIdx < prepIdx);
+    assert.match(header, /flex w-full min-w-0 max-w-\[21rem\] flex-col items-center/);
+    assert.match(block, /overflow-hidden rounded-xl border border-border\/70/);
+    assert.match(
+      header,
+      /order-1 flex min-w-0 w-full flex-col items-center md:order-2/,
+    );
+  });
+
+  it("aligns equal publish columns above equal attendance columns with a divider", () => {
+    assert.match(block, /grid min-w-0 w-full grid-cols-2 items-stretch/);
+    assert.match(block, /border-t border-border\/70/);
+    assert.match(block, /border-s border-border\/70/);
+    assert.match(block, /منصة مدرستي/);
+    assert.match(block, /المدير وولي الأمر/);
+    assert.ok(block.indexOf("منصة مدرستي") < block.indexOf("المدير وولي الأمر"));
+    assert.ok(block.indexOf("المدير وولي الأمر") < block.indexOf("حضوري"));
+    assert.ok(block.indexOf("حضوري") < block.indexOf("عن بعد"));
+  });
+
+  it("keeps RTL radio-before-label order, in_person default, and exclusive RadioGroup", () => {
+    assert.match(header, /useState<"in_person" \| "remote">\("in_person"\)/);
+    assert.match(block, /value=\{attendanceMode\}/);
+    assert.match(block, /setAttendanceMode\(value === "remote" \? "remote" : "in_person"\)/);
+    assert.match(block, /<School className=/);
+    assert.match(block, /<Users className=/);
+    assert.match(block, /border-teal-600 text-teal-700/);
+    const inPerson = block.slice(
+      block.indexOf("weekly-attendance-in-person"),
+      block.indexOf("weekly-attendance-remote"),
+    );
+    const remote = block.slice(block.indexOf("weekly-attendance-remote"));
+    assert.match(inPerson, /dir="ltr"/);
+    assert.match(remote, /dir="ltr"/);
+    assert.ok(inPerson.indexOf("<RadioGroupItem") < inPerson.indexOf("حضوري"));
+    assert.ok(remote.indexOf("<RadioGroupItem") < remote.indexOf("عن بعد"));
+    assert.doesNotMatch(header, /w-\[3(2|6)0px\]/);
+    assert.doesNotMatch(header, /min-w-\[(320|360|390|430)px\]/);
+    assert.match(header, /overflow-x-hidden/);
+    assert.match(weekly, /TeacherWeeklyTimetableMobile/);
+    assert.match(weekly, /placeholderData: keepPreviousData/);
+    assert.match(weekly, /queryClient\.prefetchQuery/);
+    assert.doesNotMatch(weekly, /PublishModal/);
   });
 });
