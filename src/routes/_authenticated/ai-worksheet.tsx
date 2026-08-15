@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { getLessonContext } from "@/features/lesson-context/services/context-engine";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { ArrowRight, FileText, RefreshCw } from "lucide-react";
+import { ArrowRight, ClipboardList, FileText, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 import { PageShell } from "@/components/layout/page-shell";
 import { SectionHeader } from "@/shared/components/section-header";
@@ -17,6 +18,7 @@ import { AIGenerationForm } from "@/features/ai/components/ai-generation-form";
 import { AILoadingState } from "@/features/ai/components/ai-loading-state";
 import { AIExportPanel } from "@/features/ai/components/ai-export-panel";
 import { SessionBindingRequiredGate } from "@/features/ai/components/session-binding-required-gate";
+import { useHomeworkAiImport } from "@/features/homework/hooks/useHomeworkAiImport";
 
 const SearchSchema = z.object({
   lessonSessionId: z.string().uuid().optional(),
@@ -86,6 +88,8 @@ function WorksheetPage() {
   const generate = useServerFn(generateWorksheet);
   const search = Route.useSearch();
   const lessonSessionId = search.lessonSessionId;
+  const navigate = useNavigate();
+  const { createDraftFromWorksheetGeneration } = useHomeworkAiImport();
 
   const mutation = useMutation({
     mutationFn: (input: z.input<typeof FormSchema>) => {
@@ -131,6 +135,26 @@ function WorksheetPage() {
 
   const { copy, copied } = useAIClipboard();
   const { downloadDocx, exporting } = useAIExport();
+
+  const generationId = mutation.data?.id as string | undefined;
+  const importPending = createDraftFromWorksheetGeneration.isPending;
+
+  async function handleCreateDraftHomework() {
+    if (!generationId) {
+      toast.error("لا يوجد توليد جاهز لاستيراد الواجب.");
+      return;
+    }
+    try {
+      const result = await createDraftFromWorksheetGeneration.mutateAsync(generationId);
+      toast.success("تم إنشاء مسودة الواجب.");
+      await navigate({
+        to: "/homework",
+        search: { homeworkId: result.homework.id },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر إنشاء مسودة الواجب.");
+    }
+  }
 
   useEffect(() => {
     if (search.title) return;
@@ -227,20 +251,47 @@ function WorksheetPage() {
                 description="يقوم الذكاء الاصطناعي بصياغة الأسئلة، تنظيم مفتاح الإجابات وتنسيق محتوى الدرس."
               />
             ) : mutation.data ? (
-              <AIExportPanel
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-                content={editedContent}
-                onContentChange={setEditedContent}
-                onCopy={handleCopy}
-                onDownload={handleDownload}
-                onRegenerate={() => {
-                  void validateAndGenerate();
-                }}
-                isPending={mutation.isPending}
-                copied={copied}
-                exporting={exporting}
-              />
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      className="min-h-11 h-11"
+                      disabled={!generationId || importPending}
+                      onClick={() => {
+                        void handleCreateDraftHomework();
+                      }}
+                    >
+                      {importPending ? (
+                        <Loader2 className="ml-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ClipboardList className="ml-1.5 h-3.5 w-3.5" />
+                      )}
+                      إنشاء واجب مسودة
+                    </Button>
+                  </div>
+                  <p className="text-xs leading-relaxed text-slate-500">
+                    سيتم إنشاء واجب مسودة يمكنك مراجعته وتعديله قبل إسناده.
+                  </p>
+                </div>
+
+                <AIExportPanel
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                  content={editedContent}
+                  onContentChange={setEditedContent}
+                  onCopy={handleCopy}
+                  onDownload={handleDownload}
+                  onRegenerate={() => {
+                    void validateAndGenerate();
+                  }}
+                  isPending={mutation.isPending}
+                  copied={copied}
+                  exporting={exporting}
+                />
+              </div>
             ) : mutation.isError ? (
               <div className="flex min-h-[450px] flex-col items-center justify-center gap-4 text-center p-8">
                 <div className="p-3 bg-red-50 text-red-600 rounded-full">
