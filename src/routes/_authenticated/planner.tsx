@@ -15,8 +15,9 @@ import {
 import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { TeacherWeeklyTimetable } from "@/features/teacher-timetable/components/teacher-weekly-timetable";
 import { TimetablePreparationActions } from "@/features/teacher-timetable/components/timetable-preparation-actions";
+import { PlannerDesktopLayout } from "@/features/planner/components/planner-desktop-layout";
+import { PlannerMobileLayout } from "@/features/planner/components/planner-mobile-layout";
 import { SemesterPlanCalendarField } from "@/features/planner/components/semester-plan-calendar-field";
 import { SemesterPlanTable } from "@/features/planner/components/semester-plan-table";
 import { SemesterPlanPrintDocument } from "@/features/planner/components/semester-plan-print";
@@ -65,6 +66,11 @@ type Assignment = {
 };
 
 type PlannerView = "week" | "semester";
+
+export const PLANNER_NAV_ITEMS: ReadonlyArray<{ view: PlannerView; label: string }> = [
+  { view: "week", label: "الجدول الأسبوعي" },
+  { view: "semester", label: "خطة الفصل" },
+];
 
 const DAY_MAP: Record<number, DayKey> = {
   0: "sun",
@@ -295,6 +301,26 @@ export default function PlannerPage() {
     toast.info(`${feature} قريباً!`);
   };
 
+  const weekLayoutProps = {
+    weekOffset,
+    setWeekOffset,
+    weekStart,
+    weekEnd,
+    onComingSoon,
+    onPublishClick: () => setPublishOpen(true),
+    lessons,
+    lessonAt,
+    onChangeLesson,
+    publishOpen,
+    setPublishOpen,
+    publishTarget,
+    setPublishTarget,
+    onConfirmPublish: () => {
+      toast.success("تم النشر بنجاح!");
+      setPublishOpen(false);
+    },
+  };
+
   const runGenerate = async () => {
     if (!actions.canGenerate) {
       toast.error("التوليد متاح للمسودة فقط — أنشئ إصداراً جديداً أولاً");
@@ -405,24 +431,22 @@ export default function PlannerPage() {
         <TimetablePreparationActions />
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant={view === "semester" ? "default" : "outline"}
-            className="h-11"
-            onClick={() => setView("semester")}
-          >
-            <CalendarRange className="ml-2 h-4 w-4" />
-            خطة الفصل
-          </Button>
-          <Button
-            type="button"
-            variant={view === "week" ? "default" : "outline"}
-            className="h-11"
-            onClick={() => setView("week")}
-          >
-            <Table2 className="ml-2 h-4 w-4" />
-            الجدول الأسبوعي
-          </Button>
+          {PLANNER_NAV_ITEMS.map((item) => (
+            <Button
+              key={item.view}
+              type="button"
+              variant={view === item.view ? "default" : "outline"}
+              className="h-11"
+              onClick={() => setView(item.view)}
+            >
+              {item.view === "semester" ? (
+                <CalendarRange className="ml-2 h-4 w-4" />
+              ) : (
+                <Table2 className="ml-2 h-4 w-4" />
+              )}
+              {item.label}
+            </Button>
+          ))}
         </div>
 
         {view === "semester" ? (
@@ -590,8 +614,10 @@ export default function PlannerPage() {
           onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
           onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
         />
+      ) : isMobile ? (
+        <PlannerMobileLayout {...weekLayoutProps} />
       ) : (
-        <TeacherWeeklyTimetable />
+        <PlannerDesktopLayout {...weekLayoutProps} />
       )}
 
       <SemesterPlanPrintDialog
