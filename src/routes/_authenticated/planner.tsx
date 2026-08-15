@@ -14,7 +14,9 @@ import {
 
 import { supabase } from "@/platform/database/supabase/client";
 import { PageShell } from "@/components/layout/page-shell";
-import { TeacherWeeklyTimetable } from "@/features/teacher-timetable/components/teacher-weekly-timetable";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { PlannerDesktopLayout } from "@/features/planner/components/planner-desktop-layout";
+import { PlannerMobileLayout } from "@/features/planner/components/planner-mobile-layout";
 import { SemesterPlanCalendarField } from "@/features/planner/components/semester-plan-calendar-field";
 import { SemesterPlanTable } from "@/features/planner/components/semester-plan-table";
 import { SemesterPlanPrintDocument } from "@/features/planner/components/semester-plan-print";
@@ -90,8 +92,11 @@ function formatUpdatedAt(value: string | null | undefined): string {
 }
 
 export default function PlannerPage() {
+  const isMobile = useIsMobile();
   const [view, setView] = useState<PlannerView>("semester");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishTarget, setPublishTarget] = useState("madrasati");
   const [printOpen, setPrintOpen] = useState(false);
   const [includeSchoolLogo, setIncludeSchoolLogo] = useState(false);
   const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
@@ -289,6 +294,30 @@ export default function PlannerPage() {
 
   const onChangeLesson = (_lesson: Lesson, _newTitle: string, _scope: LessonOverrideScope) => {
     toast.info("جاري حفظ التعديل...");
+  };
+
+  const onComingSoon = (feature: string) => {
+    toast.info(`${feature} قريباً!`);
+  };
+
+  const weekLayoutProps = {
+    weekOffset,
+    setWeekOffset,
+    weekStart,
+    weekEnd,
+    onComingSoon,
+    onPublishClick: () => setPublishOpen(true),
+    lessons,
+    lessonAt,
+    onChangeLesson,
+    publishOpen,
+    setPublishOpen,
+    publishTarget,
+    setPublishTarget,
+    onConfirmPublish: () => {
+      toast.success("تم النشر بنجاح!");
+      setPublishOpen(false);
+    },
   };
 
   const runGenerate = async () => {
@@ -582,8 +611,10 @@ export default function PlannerPage() {
           onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
           onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
         />
+      ) : isMobile ? (
+        <PlannerMobileLayout {...weekLayoutProps} />
       ) : (
-        <TeacherWeeklyTimetable />
+        <PlannerDesktopLayout {...weekLayoutProps} />
       )}
 
       <SemesterPlanPrintDialog

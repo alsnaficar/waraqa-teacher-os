@@ -34,7 +34,7 @@ describe("TASK 25.12 planner navigation contract", () => {
     assert.match(navBlock, /الجدول الأسبوعي/);
     assert.match(navBlock, /خطة الفصل/);
     assert.equal((navBlock.match(/view: "/g) ?? []).length, 2);
-    assert.match(planner, /<TeacherWeeklyTimetable \/>/);
+    assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
     assert.doesNotMatch(planner, /إدارة الجدول/);
   });
 
@@ -51,11 +51,9 @@ describe("TASK 25.12 planner navigation contract", () => {
   });
 
   it("keeps weekly grid, legend, and timetable routes without deleting them", () => {
-    assert.match(planner, /<TeacherWeeklyTimetable \/>/);
-    assert.match(
-      readSrc("../../teacher-timetable/components/teacher-weekly-timetable.tsx"),
-      /TeacherWeeklyTimetableMobile/,
-    );
+    assert.match(planner, /PlannerMobileLayout/);
+    assert.match(planner, /PlannerDesktopLayout/);
+    assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
     assert.match(readSrc("../components/planner-legend.tsx"), /export function PlannerLegend/);
     assert.equal(
       existsSync(

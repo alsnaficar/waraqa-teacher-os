@@ -11,57 +11,28 @@ function readSrc(relativeFromThisFile: string): string {
   return readFileSync(path.join(here, relativeFromThisFile), "utf8");
 }
 
-describe("TASK 25.14 restore responsive weekly timetable mount", () => {
+describe("TASK 25.14 superseded: TeacherWeeklyTimetable is not the weekly planner", () => {
   const planner = readSrc("../../../routes/_authenticated/planner.tsx");
-  const timetable = readSrc(
-    "../../teacher-timetable/components/teacher-weekly-timetable.tsx",
-  );
-  const mobile = readSrc(
-    "../../teacher-timetable/components/teacher-weekly-timetable-mobile.tsx",
-  );
   const bottomNav = readSrc("../../../components/layout/bottom-nav.tsx");
 
-  it("weekly view mounts TeacherWeeklyTimetable and keeps semester plan", () => {
-    assert.match(planner, /<TeacherWeeklyTimetable \/>/);
-    assert.match(planner, /view === "semester"/);
+  it("does not mount TeacherWeeklyTimetable as the weekly planner view", () => {
+    assert.doesNotMatch(planner, /TeacherWeeklyTimetable/);
+    assert.match(planner, /PlannerMobileLayout/);
+    assert.match(planner, /PlannerDesktopLayout/);
     assert.match(planner, /SemesterPlanTable/);
-    assert.match(planner, /الجدول الأسبوعي/);
-    assert.match(planner, /خطة الفصل/);
-    assert.doesNotMatch(planner, /إدارة الجدول/);
-    assert.doesNotMatch(planner, /TimetablePreparationActions/);
   });
 
-  it("top navigation does not include preparation buttons", () => {
-    const top = planner.slice(
-      planner.indexOf("الخطة والجدول الدراسي"),
-      planner.indexOf('view === "semester"'),
-    );
-    assert.doesNotMatch(top, /تحضير اليوم/);
-    assert.doesNotMatch(top, /تحضير الأسبوع/);
-  });
-
-  it("responsive timetable components remain used without rewriting CSS", () => {
-    assert.match(timetable, /TeacherWeeklyTimetableMobile/);
-    assert.match(timetable, /lg:hidden/);
-    assert.match(timetable, /hidden min-w-0 lg:block/);
-    assert.match(timetable, /min-w-\[920px\]/);
-    assert.match(mobile, /lg:hidden/);
-    assert.match(mobile, /min-h-11/);
+  it("keeps TeacherWeeklyTimetable in the repository without using it on /planner", () => {
     assert.equal(
       existsSync(
         path.join(
           repoRoot,
-          "src/features/teacher-timetable/components/teacher-weekly-timetable-mobile.tsx",
+          "src/features/teacher-timetable/components/teacher-weekly-timetable.tsx",
         ),
       ),
       true,
     );
-  });
-
-  it("planner UI does not introduce client teacher_id or direct Supabase writes", () => {
-    assert.doesNotMatch(planner, /teacher_id/);
-    assert.doesNotMatch(planner, /\.insert\(|\.update\(|\.delete\(/);
     assert.match(bottomNav, /التقارير/);
-    assert.doesNotMatch(bottomNav, /التحضير/);
+    assert.doesNotMatch(planner, /teacher_id/);
   });
 });
