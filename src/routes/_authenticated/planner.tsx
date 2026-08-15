@@ -80,7 +80,7 @@ function formatUpdatedAt(value: string | null | undefined): string {
 }
 
 export default function PlannerPage() {
-  const [view, setView] = useState<PlannerView>("semester");
+  const [view, setView] = useState<PlannerView>("week");
   const [printOpen, setPrintOpen] = useState(false);
   const [includeSchoolLogo, setIncludeSchoolLogo] = useState(false);
   const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
@@ -278,17 +278,6 @@ export default function PlannerPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <PageShell className="px-3 md:px-6">
-        <div className="flex min-h-[400px] flex-col items-center justify-center">
-          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
-          <p className="text-muted-foreground">جاري تحميل الخطة...</p>
-        </div>
-      </PageShell>
-    );
-  }
-
   return (
     <PageShell className="px-3 md:px-6">
       <div className="mb-4 space-y-3">
@@ -476,13 +465,20 @@ export default function PlannerPage() {
       </div>
 
       {view === "semester" ? (
-        <SemesterPlanTable
-          entries={entries}
-          busy={busy}
-          readOnly={actions.isReadOnly}
-          onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
-          onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
-        />
+        loading ? (
+          <div className="flex min-h-[400px] flex-col items-center justify-center">
+            <div className="mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+            <p className="text-muted-foreground">جاري تحميل الخطة...</p>
+          </div>
+        ) : (
+          <SemesterPlanTable
+            entries={entries}
+            busy={busy}
+            readOnly={actions.isReadOnly}
+            onMoveDate={(lessonId, date, period) => void onMoveDate(lessonId, date, period)}
+            onShiftOrder={(lessonId, direction) => void onShiftOrder(lessonId, direction)}
+          />
+        )
       ) : (
         <FilledWeeklyTimetable />
       )}

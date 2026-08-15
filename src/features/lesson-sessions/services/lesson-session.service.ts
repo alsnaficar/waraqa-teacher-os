@@ -106,6 +106,34 @@ export class LessonSessionService {
     return (data ?? []).map(toSession);
   }
 
+  /**
+   * Loads sessions for several local YYYY-MM-DD dates in one round trip.
+   * Used by the weekly planner so Sun–Thu does not need five sequential reads.
+   */
+  static async getSessionsByDates(
+    dates: string[],
+    context?: SupabaseUserContext,
+  ): Promise<LessonSession[]> {
+    const uniqueDates = [...new Set(dates.filter(Boolean))];
+    if (uniqueDates.length === 0) return [];
+
+    const resolved = await resolveUserContext(context);
+
+    if (!resolved) return [];
+
+    const { data, error } = await resolved.client
+      .from("lesson_sessions")
+      .select("*")
+      .eq("teacher_id", resolved.userId)
+      .in("session_date", uniqueDates)
+      .order("session_date")
+      .order("period_number");
+
+    if (error) throw error;
+
+    return (data ?? []).map(toSession);
+  }
+
   static async getTodaySessions(context?: SupabaseUserContext): Promise<LessonSession[]> {
     return this.getSessionsByDate(todayIso(), context);
   }

@@ -17,6 +17,7 @@ import { useMemo } from "react";
 import { PageShell } from "@/components/layout/page-shell";
 import { useReportsHub } from "@/features/reports/hooks/useReportsHub";
 import { TeacherTimetableService } from "@/features/teacher-timetable/services/teacher-timetable.service";
+import { teacherTimetableQueryKey } from "@/features/teacher-timetable/hooks/useTeacherTimetable";
 import { supabase } from "@/platform/database/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatHijriFull } from "@/shared/utils/date";
@@ -55,7 +56,7 @@ function HomePage() {
 
   // Weekly timetable remains the authority for weekly slot display / week count.
   const { data: teacherTimetable = [] } = useQuery({
-    queryKey: ["dashboard-teacher-timetable"],
+    queryKey: teacherTimetableQueryKey,
     staleTime: 30_000,
     queryFn: () => TeacherTimetableService.getTimetable(),
   });

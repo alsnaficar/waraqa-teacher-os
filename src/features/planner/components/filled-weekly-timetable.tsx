@@ -2,9 +2,9 @@
  * Family C filled weekly planner (6a8687c → 9340e56).
  * Uses teacher timetable slots + lesson sessions. Not the 5db3207 slot-CRUD UI.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
   CalendarDays,
@@ -183,33 +183,75 @@ export function FilledWeeklyTimetable() {
   const { loading, entries, error } = useTeacherTimetable();
   const [weekOffset, setWeekOffset] = useState(0);
 
-  const weekRange = getWeekRange(weekOffset);
+  const weekRange = useMemo(() => getWeekRange(weekOffset), [weekOffset]);
 
-  const weekDates = Array.from({ length: 5 }, (_, index) => {
-    const date = new Date(weekRange.sunday);
-    date.setDate(weekRange.sunday.getDate() + index);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+  const weekDates = useMemo(() => {
+    return Array.from({ length: 5 }, (_, index) => {
+      const date = new Date(weekRange.sunday);
+      date.setDate(weekRange.sunday.getDate() + index);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
 
-    return `${year}-${month}-${day}`;
+      return `${year}-${month}-${day}`;
+    });
+  }, [weekRange.sunday]);
+
+  const existingSessionsQuery = useQuery({
+    queryKey: ["planner-weekly-session-slots", ...weekDates],
+    staleTime: 30_000,
+    enabled: loading || entries.length > 0,
+    queryFn: () => LessonSessionService.getSessionsByDates(weekDates),
   });
 
-  const sessionQueries = useQueries({
-    queries: weekDates.map((date) => ({
-      queryKey: ["lesson-sessions", date],
-      queryFn: () => LessonSessionService.ensureSessionsForDate(date),
+  const datesNeedingEnsure = useMemo(() => {
+    if (loading || existingSessionsQuery.isPending || !existingSessionsQuery.data) {
+      return [];
+    }
+
+    const datesWithSessions = new Set(
+      existingSessionsQuery.data.map((session) => session.sessionDate),
+    );
+    const daysWithSlots = new Set(entries.map((entry) => entry.dayOfWeek));
+
+    return weekDates.filter((date, index) => {
+      const dayOfWeek = TIMETABLE_DAYS[index]?.value;
+      return (
+        dayOfWeek !== undefined &&
+        daysWithSlots.has(dayOfWeek) &&
+        !datesWithSessions.has(date)
+      );
+    });
+  }, [
+    loading,
+    existingSessionsQuery.isPending,
+    existingSessionsQuery.data,
+    entries,
+    weekDates,
+  ]);
+
+  const ensureQueries = useQueries({
+    queries: datesNeedingEnsure.map((date) => ({
+      queryKey: ["planner-weekly-session-ensure", date],
       staleTime: 30_000,
+      queryFn: () => LessonSessionService.ensureSessionsForDate(date),
     })),
   });
 
-  const sessions = sessionQueries.flatMap((query) => query.data?.sessions ?? []);
+  const sessions = [
+    ...(existingSessionsQuery.data ?? []),
+    ...ensureQueries.flatMap((query) => query.data?.sessions ?? []),
+  ];
+  const sessionsPending =
+    existingSessionsQuery.isPending || ensureQueries.some((query) => query.isPending);
 
   const sessionBySlot = new Map(
     sessions.map((session) => [`${session.dayOfWeek}-${session.periodNumber}`, session]),
   );
 
-  if (loading) {
+  const showLoading = loading || (entries.length > 0 && sessionsPending);
+
+  if (showLoading) {
     return (
       <div className="min-w-0 w-full max-w-[100dvw] space-y-3">
         <div className="lg:hidden space-y-3 px-1">
@@ -248,7 +290,7 @@ export function FilledWeeklyTimetable() {
     );
   }
 
-  if (entries.length === 0) {
+  if (!loading && entries.length === 0) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">

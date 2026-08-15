@@ -39,6 +39,7 @@ describe("TASK 25.16 Family C filled weekly planner", () => {
   it("loads timetable slots and lesson sessions with local YYYY-MM-DD week dates", () => {
     assert.match(weekly, /useTeacherTimetable/);
     assert.match(hook, /TeacherTimetableService\.getTimetable\(\)/);
+    assert.match(weekly, /LessonSessionService\.getSessionsByDates\(weekDates\)/);
     assert.match(weekly, /LessonSessionService\.ensureSessionsForDate\(date\)/);
     assert.match(weekly, /date\.getFullYear\(\)/);
     assert.match(weekly, /date\.getMonth\(\)/);

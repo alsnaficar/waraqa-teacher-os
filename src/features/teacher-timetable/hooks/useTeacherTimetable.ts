@@ -1,35 +1,28 @@
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TeacherTimetableService } from "../services/teacher-timetable.service";
-import type { TeacherTimetableEntry } from "../types";
+
+export const teacherTimetableQueryKey = ["teacher-timetable"] as const;
 
 export function useTeacherTimetable() {
-  const [loading, setLoading] = useState(true);
-  const [entries, setEntries] = useState<TeacherTimetableEntry[]>([]);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
 
-  async function refresh() {
-    setError(null);
-
-    try {
-      const timetable = await TeacherTimetableService.getTimetable();
-      setEntries(timetable);
-    } catch (err) {
-      console.error("Failed to load teacher timetable:", err);
-      setEntries([]);
-      setError(err instanceof Error ? err : new Error("تعذر تحميل الجدول الأسبوعي"));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
+  const query = useQuery({
+    queryKey: teacherTimetableQueryKey,
+    staleTime: 30_000,
+    queryFn: async () => {
+      try {
+        return await TeacherTimetableService.getTimetable();
+      } catch (err) {
+        console.error("Failed to load teacher timetable:", err);
+        throw err instanceof Error ? err : new Error("تعذر تحميل الجدول الأسبوعي");
+      }
+    },
+  });
 
   return {
-    loading,
-    entries,
-    error,
-    refresh,
+    loading: query.isPending,
+    entries: query.data ?? [],
+    error: query.error instanceof Error ? query.error : query.error ? new Error("تعذر تحميل الجدول الأسبوعي") : null,
+    refresh: () => queryClient.invalidateQueries({ queryKey: teacherTimetableQueryKey }),
   };
 }
