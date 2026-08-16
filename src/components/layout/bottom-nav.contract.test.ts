@@ -178,7 +178,7 @@ describe("TASK 25.38 mobile bottom navigation safe area", () => {
   });
 });
 
-describe("TASK 25.38C Android/Honor mobile bottom-nav floor", () => {
+describe("TASK 25.38G touch-device bottom-nav floor", () => {
   const source = readFileSync(path.join(here, "bottom-nav.tsx"), "utf8");
   const styles = readFileSync(path.join(here, "../../styles.css"), "utf8");
   const shell = readFileSync(
@@ -187,19 +187,20 @@ describe("TASK 25.38C Android/Honor mobile bottom-nav floor", () => {
   );
   const root = readFileSync(path.join(here, "../../routes/__root.tsx"), "utf8");
 
-  const mobileBlock = styles.slice(
-    styles.indexOf("@media (max-width: 767px)"),
+  const coarseBlock = styles.slice(
+    styles.indexOf("@media (pointer: coarse)"),
     styles.indexOf("@layer base"),
   );
 
-  it("uses a mobile-only 32px max() floor and keeps env(safe-area-inset-bottom)", () => {
-    assert.match(styles, /@media \(max-width: 767px\)/);
+  it("uses a pointer:coarse 32px max() floor and keeps env(safe-area-inset-bottom)", () => {
+    assert.match(styles, /@media \(pointer: coarse\)/);
+    assert.doesNotMatch(styles, /@media \(max-width: 767px\)/);
     assert.match(
-      mobileBlock,
+      coarseBlock,
       /padding-bottom:\s*max\(32px,\s*env\(safe-area-inset-bottom,\s*0px\)\)/,
     );
     assert.match(
-      mobileBlock,
+      coarseBlock,
       /padding-bottom:\s*calc\(8rem \+ max\(32px,\s*env\(safe-area-inset-bottom,\s*0px\)\)\)/,
     );
     assert.match(root, /viewport-fit=cover/);
@@ -207,10 +208,10 @@ describe("TASK 25.38C Android/Honor mobile bottom-nav floor", () => {
     assert.match(shell, /authenticated-shell-offset/);
   });
 
-  it("does not apply the 32px floor to desktop/tablet rules", () => {
+  it("does not apply the 32px floor to fine-pointer desktop base rules", () => {
     const desktopNav = styles.slice(
       styles.indexOf(".bottom-nav-safe-area"),
-      styles.indexOf("@media (max-width: 767px)"),
+      styles.indexOf("@media (pointer: coarse)"),
     );
     assert.match(
       desktopNav,
@@ -223,6 +224,8 @@ describe("TASK 25.38C Android/Honor mobile bottom-nav floor", () => {
     assert.doesNotMatch(desktopNav, /max\(32px/);
     assert.doesNotMatch(source, /md:hidden|lg:hidden|sm:hidden/);
     assert.doesNotMatch(source, /translate-y|translateY/);
+    assert.doesNotMatch(source, /navigator\.userAgent|userAgent/);
+    assert.doesNotMatch(source, /visualViewport/);
   });
 
   it("keeps seven destinations and does not change routes or item metrics", () => {
