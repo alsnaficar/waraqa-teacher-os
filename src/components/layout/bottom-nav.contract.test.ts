@@ -178,7 +178,7 @@ describe("TASK 25.38 mobile bottom navigation safe area", () => {
   });
 });
 
-describe("TASK 25.38G touch-device bottom-nav floor", () => {
+describe("TASK 25.38I touch-device bottom-nav 48px floor", () => {
   const source = readFileSync(path.join(here, "bottom-nav.tsx"), "utf8");
   const styles = readFileSync(path.join(here, "../../styles.css"), "utf8");
   const shell = readFileSync(
@@ -192,23 +192,24 @@ describe("TASK 25.38G touch-device bottom-nav floor", () => {
     styles.indexOf("@layer base"),
   );
 
-  it("uses a pointer:coarse 32px max() floor and keeps env(safe-area-inset-bottom)", () => {
+  it("uses a pointer:coarse 48px max() floor and keeps env(safe-area-inset-bottom)", () => {
     assert.match(styles, /@media \(pointer: coarse\)/);
     assert.doesNotMatch(styles, /@media \(max-width: 767px\)/);
     assert.match(
       coarseBlock,
-      /padding-bottom:\s*max\(32px,\s*env\(safe-area-inset-bottom,\s*0px\)\)/,
+      /padding-bottom:\s*max\(48px,\s*env\(safe-area-inset-bottom,\s*0px\)\)/,
     );
     assert.match(
       coarseBlock,
-      /padding-bottom:\s*calc\(8rem \+ max\(32px,\s*env\(safe-area-inset-bottom,\s*0px\)\)\)/,
+      /padding-bottom:\s*calc\(8rem \+ max\(48px,\s*env\(safe-area-inset-bottom,\s*0px\)\)\)/,
     );
+    assert.doesNotMatch(coarseBlock, /max\(32px/);
     assert.match(root, /viewport-fit=cover/);
     assert.match(source, /bottom-nav-safe-area/);
     assert.match(shell, /authenticated-shell-offset/);
   });
 
-  it("does not apply the 32px floor to fine-pointer desktop base rules", () => {
+  it("does not apply the 48px floor to fine-pointer desktop base rules", () => {
     const desktopNav = styles.slice(
       styles.indexOf(".bottom-nav-safe-area"),
       styles.indexOf("@media (pointer: coarse)"),
@@ -221,6 +222,7 @@ describe("TASK 25.38G touch-device bottom-nav floor", () => {
       desktopNav,
       /padding-bottom:\s*calc\(8rem \+ env\(safe-area-inset-bottom,\s*0px\)\)/,
     );
+    assert.doesNotMatch(desktopNav, /max\(48px/);
     assert.doesNotMatch(desktopNav, /max\(32px/);
     assert.doesNotMatch(source, /md:hidden|lg:hidden|sm:hidden/);
     assert.doesNotMatch(source, /translate-y|translateY/);

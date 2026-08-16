@@ -136,10 +136,10 @@
 }
 
 /*
- * Bottom navigation safe-area (TASK 25.38 / 25.38C / 25.38G).
+ * Bottom navigation safe-area (TASK 25.38 / 25.38G / 25.38I).
  * Item spacing stays on the links (py-2.5). Fine-pointer (mouse) desktops
  * use env() only (typically 0). Touch devices (pointer: coarse) use
- * max(32px, env()) so Honor/Android still get a floor when Desktop Site
+ * max(48px, env()) so Honor/Android still get a floor when Desktop Site
  * reports a wide CSS viewport and env() is 0. A larger iOS inset still wins.
  * The shell spacer keeps 8rem and adds the same touch floor.
  */
@@ -156,13 +156,13 @@
 
   @media (pointer: coarse) {
     .bottom-nav-safe-area {
-      padding-bottom: 32px;
-      padding-bottom: max(32px, env(safe-area-inset-bottom, 0px));
+      padding-bottom: 48px;
+      padding-bottom: max(48px, env(safe-area-inset-bottom, 0px));
     }
 
     .authenticated-shell-offset {
-      padding-bottom: calc(8rem + 32px);
-      padding-bottom: calc(8rem + max(32px, env(safe-area-inset-bottom, 0px)));
+      padding-bottom: calc(8rem + 48px);
+      padding-bottom: calc(8rem + max(48px, env(safe-area-inset-bottom, 0px)));
     }
   }
 }
