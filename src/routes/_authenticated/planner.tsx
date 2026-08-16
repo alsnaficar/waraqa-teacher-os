@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { BottomNavHonorDebugPanel } from "@/components/layout/bottom-nav-honor-debug-panel";
 import { toast } from "sonner";
 import {
   Archive,
@@ -280,9 +279,7 @@ export default function PlannerPage() {
   };
 
   return (
-    <>
-      <BottomNavHonorDebugPanel />
-      <PageShell className="px-3 md:px-6">
+    <PageShell className="px-3 md:px-6">
       <div className="mb-4 space-y-3">
         <div>
           <h1 className="text-2xl font-black tracking-tight">الخطة والجدول الدراسي</h1>
@@ -508,7 +505,6 @@ export default function PlannerPage() {
         schoolLogoUrl={schoolLogoUrl}
         includeQr={includeQr}
       />
-      </PageShell>
-    </>
+    </PageShell>
   );
 }
