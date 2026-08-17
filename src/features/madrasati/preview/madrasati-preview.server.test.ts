@@ -68,6 +68,28 @@ describe("Madrasati authenticated dry-run preview", () => {
     assert.match(source, /runAuthenticatedMadrasatiDryRunPreview\(context\.userId\)/);
   });
 
+  it("server-side Madrasati keyboard input has a strict allowlist", () => {
+    const authServerFile =
+      "src/platform/integration/connectors/madrasati/madrasati-auth.server.ts";
+    const source = readFileSync(join(ROOT, authServerFile), "utf8");
+
+    assert.match(source, /const allowedKeys = new Set\(\[/);
+    assert.match(source, /"Enter"/);
+    assert.match(source, /"Tab"/);
+    assert.match(source, /"Backspace"/);
+    assert.match(source, /"Delete"/);
+    assert.match(source, /"Escape"/);
+    assert.match(source, /"ArrowLeft"/);
+    assert.match(source, /"ArrowRight"/);
+    assert.match(source, /"ArrowUp"/);
+    assert.match(source, /"ArrowDown"/);
+    assert.match(
+      source,
+      /if \(!normalizedKey \|\| !allowedKeys\.has\(normalizedKey\)\)/,
+    );
+    assert.match(source, /Unsupported Madrasati browser key/);
+  });
+
   it("preview core uses mock mode and never browser adapter / DB writes / network", () => {
     const core = readFileSync(join(ROOT, PREVIEW_CORE_FILE), "utf8");
     assert.match(core, /mode:\s*"mock"/);

@@ -102,6 +102,61 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     return this.requirePage(page).locator("body").innerText();
   }
 
+  async getPageScreenshot(page: BrowserPageHandle): Promise<Uint8Array> {
+    const buffer = await this.requirePage(page).screenshot({
+      type: "png",
+      fullPage: false,
+    });
+
+    return new Uint8Array(buffer);
+  }
+
+  async clickPage(
+    page: BrowserPageHandle,
+    x: number,
+    y: number,
+  ): Promise<void> {
+    const pageObject = this.requirePage(page);
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error("Browser click coordinates must be finite numbers.");
+    }
+
+    if (x < 0 || y < 0) {
+      throw new Error("Browser click coordinates cannot be negative.");
+    }
+
+    await pageObject.mouse.click(x, y);
+  }
+
+  async typePage(
+    page: BrowserPageHandle,
+    text: string,
+  ): Promise<void> {
+    const pageObject = this.requirePage(page);
+
+    if (typeof text !== "string") {
+      throw new Error("Browser text input must be a string.");
+    }
+
+    await pageObject.keyboard.insertText(text);
+  }
+
+  async pressPageKey(
+    page: BrowserPageHandle,
+    key: string,
+  ): Promise<void> {
+    const pageObject = this.requirePage(page);
+
+    const normalizedKey = key?.trim();
+
+    if (!normalizedKey) {
+      throw new Error("Browser key is required.");
+    }
+
+    await pageObject.keyboard.press(normalizedKey);
+  }
+
   async close(): Promise<void> {
     const sessions = [...this.sessions.keys()];
 

@@ -57,6 +57,26 @@ class FakeBrowserAutomation implements BrowserAutomation {
   async getPageText(_page: BrowserPageHandle): Promise<string> {
     return "مدرستي";
   }
+
+  async getPageScreenshot(_page: BrowserPageHandle): Promise<Uint8Array> {
+    return new Uint8Array([137, 80, 78, 71]);
+  }
+
+  async clickPage(
+    _page: BrowserPageHandle,
+    _x: number,
+    _y: number,
+  ): Promise<void> {}
+
+  async typePage(
+    _page: BrowserPageHandle,
+    _text: string,
+  ): Promise<void> {}
+
+  async pressPageKey(
+    _page: BrowserPageHandle,
+    _key: string,
+  ): Promise<void> {}
 }
 
 test("MadrasatiBrowserAdapter — reports browser availability without opening a session", async () => {

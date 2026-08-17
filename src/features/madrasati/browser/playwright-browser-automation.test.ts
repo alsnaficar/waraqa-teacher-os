@@ -156,6 +156,30 @@ test("PlaywrightBrowserAutomation — browser can navigate inside a session", as
   await automation.close();
 });
 
+test("PlaywrightBrowserAutomation — captures a page screenshot", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+
+  const session = await automation.openSession();
+  const page = await automation.openPage(session);
+
+  await automation.goto(page, "https://example.com", {
+    waitUntil: "domcontentloaded",
+  });
+
+  const screenshot = await automation.getPageScreenshot(page);
+
+  assert.ok(screenshot instanceof Uint8Array);
+  assert.ok(screenshot.length > 100);
+
+  // PNG signature.
+  assert.deepEqual(
+    [...screenshot.slice(0, 8)],
+    [137, 80, 78, 71, 13, 10, 26, 10],
+  );
+
+  await automation.close();
+});
+
 test("PlaywrightBrowserAutomation — kind is playwright", () => {
   const automation = new PlaywrightBrowserAutomation();
 

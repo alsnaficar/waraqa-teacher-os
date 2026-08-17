@@ -132,6 +132,40 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
     };
   }
 
+  async getAuthenticationScreenshot(): Promise<Uint8Array> {
+    this.requireReadySession();
+
+    return this.automation.getPageScreenshot(this.page!);
+  }
+
+  async clickAuthentication(
+    x: number,
+    y: number,
+  ): Promise<void> {
+    this.requireReadySession();
+    await this.automation.clickPage(this.page!, x, y);
+  }
+
+  async typeAuthentication(text: string): Promise<void> {
+    this.requireReadySession();
+
+    if (!text || typeof text !== "string") {
+      throw new Error("Authentication text is required.");
+    }
+
+    await this.automation.typePage(this.page!, text);
+  }
+
+  async pressAuthenticationKey(key: string): Promise<void> {
+    this.requireReadySession();
+
+    if (!key || typeof key !== "string" || !key.trim()) {
+      throw new Error("Authentication key is required.");
+    }
+
+    await this.automation.pressPageKey(this.page!, key.trim());
+  }
+
   async disconnect(): Promise<MadrasatiConnectionStatus> {
     const page = this.page;
     const session = this.session;

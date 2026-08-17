@@ -63,6 +63,28 @@ export interface BrowserAutomation {
   getPageTitle(page: BrowserPageHandle): Promise<string>;
 
   getPageText(page: BrowserPageHandle): Promise<string>;
+
+  /**
+   * Returns a PNG screenshot of the current server-side page.
+   *
+   * Browser/page objects and cookies remain server-side.
+   */
+  getPageScreenshot(page: BrowserPageHandle): Promise<Uint8Array>;
+  clickPage(
+    page: BrowserPageHandle,
+    x: number,
+    y: number,
+  ): Promise<void>;
+
+  typePage(
+    page: BrowserPageHandle,
+    text: string,
+  ): Promise<void>;
+
+  pressPageKey(
+    page: BrowserPageHandle,
+    key: string,
+  ): Promise<void>;
 }
 
 /**
@@ -118,5 +140,32 @@ export class UnavailableBrowserAutomation implements BrowserAutomation {
   async getPageText(_page: BrowserPageHandle): Promise<string> {
     await this.assertAvailable();
     return "";
+  }
+
+  async getPageScreenshot(_page: BrowserPageHandle): Promise<Uint8Array> {
+    await this.assertAvailable();
+    return new Uint8Array();
+  }
+
+  async clickPage(
+    _page: BrowserPageHandle,
+    _x: number,
+    _y: number,
+  ): Promise<void> {
+    await this.assertAvailable();
+  }
+
+  async typePage(
+    _page: BrowserPageHandle,
+    _text: string,
+  ): Promise<void> {
+    await this.assertAvailable();
+  }
+
+  async pressPageKey(
+    _page: BrowserPageHandle,
+    _key: string,
+  ): Promise<void> {
+    await this.assertAvailable();
   }
 }

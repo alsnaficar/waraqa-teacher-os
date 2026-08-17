@@ -43,6 +43,26 @@ class InspectionAutomation implements BrowserAutomation {
   async getPageText(): Promise<string> {
     return "لوحة التحكم الرئيسية";
   }
+
+  async getPageScreenshot(): Promise<Uint8Array> {
+    return new Uint8Array([137, 80, 78, 71]);
+  }
+
+  async clickPage(
+    _page: BrowserPageHandle,
+    _x: number,
+    _y: number,
+  ): Promise<void> {}
+
+  async typePage(
+    _page: BrowserPageHandle,
+    _text: string,
+  ): Promise<void> {}
+
+  async pressPageKey(
+    _page: BrowserPageHandle,
+    _key: string,
+  ): Promise<void> {}
 }
 
 describe("Madrasati browser authentication inspection", () => {
