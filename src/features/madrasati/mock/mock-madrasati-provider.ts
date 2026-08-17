@@ -51,6 +51,22 @@ export class MockMadrasatiProvider implements MadrasatiProvider {
     );
   }
 
+  async beginAuthentication(): Promise<MadrasatiConnectionStatus> {
+    this.requireConnected();
+
+    return this.status("connected", "مصادقة مدرستي التجريبية جاهزة للاختبار.");
+  }
+
+  async inspectAuthenticationPage() {
+    this.requireConnected();
+
+    return {
+      url: "mock://madrasati/auth/sign-in",
+      title: "Madrasati Mock Sign-In",
+      text: "Mock Madrasati authentication page.",
+    };
+  }
+
   async disconnect(): Promise<MadrasatiConnectionStatus> {
     this.connected = false;
     return this.status("disconnected", "تم قطع اتصال مزود مدرستي التجريبي.");
@@ -98,6 +114,7 @@ export class MockMadrasatiProvider implements MadrasatiProvider {
   ): MadrasatiConnectionStatus {
     return {
       state,
+      authenticationState: "authenticated",
       message,
       isMock: true,
       browserAutomationAvailable: false,

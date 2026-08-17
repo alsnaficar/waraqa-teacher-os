@@ -82,6 +82,8 @@ function failingTimetableProvider(): MadrasatiProvider {
   const base = new MockMadrasatiProvider();
   return {
     connect: () => base.connect(),
+    inspectAuthenticationPage: () => base.inspectAuthenticationPage(),
+    beginAuthentication: () => base.beginAuthentication(),
     disconnect: () => base.disconnect(),
     getConnectionStatus: () => base.getConnectionStatus(),
     getTeacherProfile: () => base.getTeacherProfile(),

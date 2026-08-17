@@ -8,8 +8,11 @@
 export type MadrasatiConnectionState =
   "disconnected" | "connected" | "unavailable" | "not_implemented";
 
+export type MadrasatiAuthenticationState = "not_authenticated" | "authenticated";
+
 export interface MadrasatiConnectionStatus {
   state: MadrasatiConnectionState;
+  authenticationState: MadrasatiAuthenticationState;
   /** Human-readable Arabic/English status for UI / dry-run reports. */
   message: string;
   /** True only when a mock/dev provider is active — never claim live Madrasati. */

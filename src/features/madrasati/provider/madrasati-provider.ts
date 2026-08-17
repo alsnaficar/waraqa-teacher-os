@@ -16,8 +16,16 @@ import type {
  * - MockMadrasatiProvider (dev/test fixtures)
  * - MadrasatiBrowserAdapter (future real browser sync; not live yet)
  */
+export interface MadrasatiAuthenticationPage {
+  url: string;
+  title: string;
+  text: string;
+}
+
 export interface MadrasatiProvider {
   connect(): Promise<MadrasatiConnectionStatus>;
+  beginAuthentication(): Promise<MadrasatiConnectionStatus>;
+  inspectAuthenticationPage(): Promise<MadrasatiAuthenticationPage>;
   disconnect(): Promise<MadrasatiConnectionStatus>;
   getConnectionStatus(): Promise<MadrasatiConnectionStatus>;
   getTeacherProfile(): Promise<MadrasatiTeacher>;

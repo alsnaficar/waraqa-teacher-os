@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
-import {
-  chromium,
-  type Browser,
-  type BrowserContext,
-  type Page,
-} from "playwright";
+import { lookup } from "node:dns/promises";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import type {
   BrowserAutomation,
   BrowserPageHandle,
@@ -49,16 +45,12 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
 
     this.sessions.delete(session.id);
 
-    await Promise.allSettled(
-      [...record.pages.values()].map((page) => page.close()),
-    );
+    await Promise.allSettled([...record.pages.values()].map((page) => page.close()));
 
     await record.context.close();
   }
 
-  async openPage(
-    session: BrowserSessionHandle,
-  ): Promise<BrowserPageHandle> {
+  async openPage(session: BrowserSessionHandle): Promise<BrowserPageHandle> {
     const record = this.requireSession(session);
 
     const page = await record.context.newPage();
@@ -113,11 +105,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
   async close(): Promise<void> {
     const sessions = [...this.sessions.keys()];
 
-    await Promise.allSettled(
-      sessions.map((id) =>
-        this.closeSession(Object.freeze({ id })),
-      ),
-    );
+    await Promise.allSettled(sessions.map((id) => this.closeSession(Object.freeze({ id }))));
 
     if (this.browser) {
       await this.browser.close();
@@ -128,23 +116,44 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
   private async ensureBrowser(): Promise<void> {
     if (this.browser) return;
 
-    const resolverIp = process.env.MADRASATI_ENDPOINT_IP?.trim();
+    const resolverIp = await this.resolveMadrasatiEndpoint();
 
     this.browser = await chromium.launch({
       headless: true,
-      ...(resolverIp
-        ? {
-            args: [
-              `--host-resolver-rules=MAP schools.madrasati.sa ${resolverIp}`,
-            ],
-          }
-        : {}),
+      args: [`--host-resolver-rules=MAP schools.madrasati.sa ${resolverIp}`],
     });
   }
 
-  private requireSession(
-    session: BrowserSessionHandle,
-  ): SessionRecord {
+  private async resolveMadrasatiEndpoint(): Promise<string> {
+    const configuredIp = process.env.MADRASATI_ENDPOINT_IP?.trim();
+
+    if (configuredIp) {
+      return configuredIp;
+    }
+
+    const endpointHosts = [
+      "uaenemadrasatiw03.uaenorth.cloudapp.azure.com",
+      "uaenemadrasatiw10.uaenorth.cloudapp.azure.com",
+    ];
+
+    for (const hostname of endpointHosts) {
+      try {
+        const result = await lookup(hostname, {
+          family: 4,
+        });
+
+        if (result.address) {
+          return result.address;
+        }
+      } catch {
+        // Try the next known Madrasati endpoint.
+      }
+    }
+
+    throw new Error("تعذر اكتشاف عنوان خادم منصة مدرستي تلقائيًا.");
+  }
+
+  private requireSession(session: BrowserSessionHandle): SessionRecord {
     const record = this.sessions.get(session.id);
 
     if (!record) {
@@ -154,9 +163,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     return record;
   }
 
-  private requirePage(
-    page: BrowserPageHandle,
-  ): Page {
+  private requirePage(page: BrowserPageHandle): Page {
     const found = this.findPage(page);
 
     if (!found) {
@@ -166,9 +173,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     return found.pageObject;
   }
 
-  private findPage(
-    page: BrowserPageHandle,
-  ): {
+  private findPage(page: BrowserPageHandle): {
     session: SessionRecord;
     pageObject: Page;
   } | null {

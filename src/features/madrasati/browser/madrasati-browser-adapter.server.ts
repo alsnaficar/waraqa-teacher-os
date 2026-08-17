@@ -36,6 +36,7 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
       if (this.session && this.page) {
         return {
           state: "connected",
+          authenticationState: "not_authenticated",
           message: "جلسة متصفح مدرستي مفتوحة.",
           isMock: false,
           browserAutomationAvailable: true,
@@ -58,7 +59,9 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
           return {
             state: "connected",
-            message: "تم فتح جلسة متصفح الخادم والوصول إلى منصة مدرستي. لم يتم تنفيذ تسجيل الدخول أو مزامنة البيانات بعد.",
+            authenticationState: "not_authenticated",
+            message:
+              "تم فتح جلسة متصفح الخادم والوصول إلى منصة مدرستي. لم يتم تنفيذ تسجيل الدخول أو مزامنة البيانات بعد.",
             isMock: false,
             browserAutomationAvailable: true,
           };
@@ -74,6 +77,7 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
       if (error instanceof BrowserAutomationUnavailableError) {
         return {
           state: "unavailable",
+          authenticationState: "not_authenticated",
           message: error.message,
           isMock: false,
           browserAutomationAvailable: false,
@@ -84,6 +88,37 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
       this.page = null;
       throw error;
     }
+  }
+
+  async beginAuthentication(): Promise<MadrasatiConnectionStatus> {
+    this.requireReadySession();
+
+    await this.automation.goto(this.page!, "https://schools.madrasati.sa/Auth/SignIn", {
+      timeoutMs: 30000,
+      waitUntil: "domcontentloaded",
+    });
+
+    const currentUrl = await this.automation.getPageUrl(this.page!);
+
+    return {
+      state: "connected",
+      authenticationState: "not_authenticated",
+      message: currentUrl.includes("login.microsoftonline.com")
+        ? "تم فتح بوابة تسجيل الدخول الموحد لمدرستي. لم يتم إدخال بيانات الاعتماد أو تنفيذ تسجيل الدخول بعد."
+        : "تم فتح صفحة تسجيل الدخول في جلسة متصفح مدرستي. لم يتم تنفيذ تسجيل الدخول بعد.",
+      isMock: false,
+      browserAutomationAvailable: true,
+    };
+  }
+
+  async inspectAuthenticationPage() {
+    this.requireReadySession();
+
+    return {
+      url: await this.automation.getPageUrl(this.page!),
+      title: await this.automation.getPageTitle(this.page!),
+      text: await this.automation.getPageText(this.page!),
+    };
   }
 
   async disconnect(): Promise<MadrasatiConnectionStatus> {
@@ -103,6 +138,7 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
     return {
       state: "disconnected",
+      authenticationState: "not_authenticated",
       message: "تم قطع جلسة متصفح مدرستي.",
       isMock: false,
       browserAutomationAvailable: this.automation.kind !== "none",
@@ -113,6 +149,7 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
     if (this.automation.kind === "none") {
       return {
         state: "unavailable",
+        authenticationState: "not_authenticated",
         message: "أتمتة المتصفح غير مثبتة — مزامنة مدرستي الحية غير متاحة.",
         isMock: false,
         browserAutomationAvailable: false,
@@ -121,6 +158,7 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
     return {
       state: this.session && this.page ? "connected" : "not_implemented",
+      authenticationState: "not_authenticated",
       message:
         this.session && this.page
           ? "جلسة متصفح مدرستي مفتوحة."
@@ -139,30 +177,22 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
   async getTimetable(): Promise<MadrasatiTimetableEntry[]> {
     this.requireReadySession();
-    throw new MadrasatiBrowserNotReadyError(
-      "تم فتح جلسة مدرستي، لكن قراءة الجدول لم تُنفّذ بعد.",
-    );
+    throw new MadrasatiBrowserNotReadyError("تم فتح جلسة مدرستي، لكن قراءة الجدول لم تُنفّذ بعد.");
   }
 
   async getClasses(): Promise<MadrasatiClass[]> {
     this.requireReadySession();
-    throw new MadrasatiBrowserNotReadyError(
-      "تم فتح جلسة مدرستي، لكن قراءة الفصول لم تُنفّذ بعد.",
-    );
+    throw new MadrasatiBrowserNotReadyError("تم فتح جلسة مدرستي، لكن قراءة الفصول لم تُنفّذ بعد.");
   }
 
   async getSubjects(): Promise<MadrasatiSubject[]> {
     this.requireReadySession();
-    throw new MadrasatiBrowserNotReadyError(
-      "تم فتح جلسة مدرستي، لكن قراءة المواد لم تُنفّذ بعد.",
-    );
+    throw new MadrasatiBrowserNotReadyError("تم فتح جلسة مدرستي، لكن قراءة المواد لم تُنفّذ بعد.");
   }
 
   private requireReadySession(): void {
     if (!this.session || !this.page) {
-      throw new MadrasatiNotConnectedError(
-        "محوّل متصفح مدرستي غير متصل.",
-      );
+      throw new MadrasatiNotConnectedError("محوّل متصفح مدرستي غير متصل.");
     }
   }
 }
