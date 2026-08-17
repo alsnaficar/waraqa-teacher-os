@@ -5,6 +5,8 @@ import {
   type BrowserSessionHandle,
   UnavailableBrowserAutomation,
 } from "./browser-automation.ts";
+import { detectMadrasatiAuthenticationState } from "../auth/authentication-state.ts";
+
 import type {
   MadrasatiClass,
   MadrasatiConnectionStatus,
@@ -114,10 +116,19 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
   async inspectAuthenticationPage() {
     this.requireReadySession();
 
+    const url = await this.automation.getPageUrl(this.page!);
+    const title = await this.automation.getPageTitle(this.page!);
+    const text = await this.automation.getPageText(this.page!);
+
     return {
-      url: await this.automation.getPageUrl(this.page!),
-      title: await this.automation.getPageTitle(this.page!),
-      text: await this.automation.getPageText(this.page!),
+      url,
+      title,
+      text,
+      authenticationState: detectMadrasatiAuthenticationState({
+        url,
+        title,
+        text,
+      }),
     };
   }
 

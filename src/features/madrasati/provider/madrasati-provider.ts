@@ -1,3 +1,5 @@
+import type { MadrasatiAuthenticationState } from "./models.ts";
+
 import type {
   MadrasatiClass,
   MadrasatiConnectionStatus,
@@ -20,6 +22,7 @@ export interface MadrasatiAuthenticationPage {
   url: string;
   title: string;
   text: string;
+  authenticationState: MadrasatiAuthenticationState;
 }
 
 export interface MadrasatiProvider {

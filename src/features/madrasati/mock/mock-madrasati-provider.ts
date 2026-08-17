@@ -7,6 +7,7 @@ import type {
 } from "../provider/models.ts";
 import {
   MadrasatiNotConnectedError,
+  type MadrasatiAuthenticationPage,
   type MadrasatiProvider,
 } from "../provider/madrasati-provider.ts";
 import {
@@ -57,13 +58,14 @@ export class MockMadrasatiProvider implements MadrasatiProvider {
     return this.status("connected", "مصادقة مدرستي التجريبية جاهزة للاختبار.");
   }
 
-  async inspectAuthenticationPage() {
+  async inspectAuthenticationPage(): Promise<MadrasatiAuthenticationPage> {
     this.requireConnected();
 
     return {
       url: "mock://madrasati/auth/sign-in",
       title: "Madrasati Mock Sign-In",
       text: "Mock Madrasati authentication page.",
+      authenticationState: "not_authenticated",
     };
   }
 
