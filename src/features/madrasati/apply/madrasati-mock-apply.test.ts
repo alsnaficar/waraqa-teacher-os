@@ -9,7 +9,7 @@ import {
   MOCK_MADRASATI_TIMETABLE,
   MOCK_MADRASATI_TIMETABLE_WITH_ISSUES,
 } from "../mock/fixtures.ts";
-import { MadrasatiBrowserAdapter } from "../browser/madrasati-browser-adapter.ts";
+import { MadrasatiBrowserAdapter } from "../browser/madrasati-browser-adapter.server.ts";
 import { UnavailableBrowserAutomation } from "../browser/browser-automation.ts";
 import { mapMadrasatiTimetableToTeacherDrafts } from "../sync/map-to-teacher-timetable.ts";
 import type { TeacherTimetableDraft } from "../sync/map-to-teacher-timetable.ts";

@@ -8,7 +8,7 @@ import {
   MadrasatiOAuthService,
   MADRASATI_CONNECTION_UNAVAILABLE_MESSAGE,
 } from "../auth/oauth.service.ts";
-import { createMadrasatiProvider } from "../provider/create-madrasati-provider.ts";
+import { createMadrasatiProvider } from "../provider/create-madrasati-provider.server.ts";
 import { MadrasatiSyncService } from "../sync/madrasati-sync.service.ts";
 import {
   MADRASATI_BROWSER_SYNC_NOT_READY_CODE,

@@ -4,14 +4,14 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MadrasatiBrowserAdapter } from "../browser/madrasati-browser-adapter.ts";
+import { MadrasatiBrowserAdapter } from "../browser/madrasati-browser-adapter.server.ts";
 import { UnavailableBrowserAutomation } from "../browser/browser-automation.ts";
 import {
   MOCK_MADRASATI_TIMETABLE,
   MOCK_MADRASATI_TIMETABLE_WITH_ISSUES,
 } from "../mock/fixtures.ts";
 import { MockMadrasatiProvider } from "../mock/mock-madrasati-provider.ts";
-import { createMadrasatiProvider } from "../provider/create-madrasati-provider.ts";
+import { createMadrasatiProvider } from "../provider/create-madrasati-provider.server.ts";
 import type { MadrasatiProvider } from "../provider/madrasati-provider.ts";
 import { MadrasatiNotConnectedError } from "../provider/madrasati-provider.ts";
 import { MadrasatiSyncService } from "../sync/madrasati-sync.service.ts";
@@ -128,12 +128,13 @@ describe("Madrasati foundation — sync service", () => {
 });
 
 describe("Madrasati foundation — browser adapter boundary", () => {
-  it("does not require a real browser package for unit tests", async () => {
+  it("uses the real Playwright backend when browser mode is selected", async () => {
     const provider = createMadrasatiProvider({ mode: "browser" });
     assert.ok(provider instanceof MadrasatiBrowserAdapter);
     const status = await provider.getConnectionStatus();
-    assert.equal(status.state, "unavailable");
-    assert.equal(status.browserAutomationAvailable, false);
+    assert.equal(status.state, "not_implemented");
+    assert.equal(status.browserAutomationAvailable, true);
+    assert.equal(status.isMock, false);
   });
 
   it("UnavailableBrowserAutomation fails closed without network I/O", async () => {
@@ -149,7 +150,7 @@ describe("Madrasati foundation — security invariants in source", () => {
       "src/features/madrasati/provider/models.ts",
       "src/features/madrasati/mock/mock-madrasati-provider.ts",
       "src/features/madrasati/sync/madrasati-sync.service.ts",
-      "src/features/madrasati/browser/madrasati-browser-adapter.ts",
+      "src/features/madrasati/browser/madrasati-browser-adapter.server.ts",
       "src/features/madrasati/browser/browser-automation.ts",
     ];
 
@@ -168,7 +169,6 @@ describe("Madrasati foundation — security invariants in source", () => {
     const files = [
       "src/features/madrasati/mock/mock-madrasati-provider.ts",
       "src/features/madrasati/sync/madrasati-sync.service.ts",
-      "src/features/madrasati/browser/madrasati-browser-adapter.ts",
       "src/features/madrasati/browser/browser-automation.ts",
     ];
 
@@ -177,8 +177,13 @@ describe("Madrasati foundation — security invariants in source", () => {
       assert.equal(
         /schools\.madrasati\.sa|login\.microsoftonline|graph\.microsoft/i.test(source),
         false,
+        `${relative} must not contain live Madrasati or Microsoft endpoints`,
       );
-      assert.equal(/\bfetch\s*\(/.test(source), false);
+      assert.equal(
+        /\bfetch\s*\(/.test(source),
+        false,
+        `${relative} must not perform direct network requests`,
+      );
     }
   });
 });

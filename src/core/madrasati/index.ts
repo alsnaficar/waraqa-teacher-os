@@ -23,7 +23,6 @@ export {
   MadrasatiProviderError,
 } from "@/features/madrasati/provider/madrasati-provider.ts";
 
-export { createMadrasatiProvider } from "@/features/madrasati/provider/create-madrasati-provider.ts";
 export { MadrasatiSyncService } from "@/features/madrasati/sync/madrasati-sync.service.ts";
 export type {
   MadrasatiSyncPreviewCounts,

@@ -5,7 +5,7 @@
  * Never touches lesson_sessions. Never calls live Madrasati / browser automation.
  */
 
-import { createMadrasatiProvider } from "../../../../features/madrasati/provider/create-madrasati-provider.ts";
+import { createMadrasatiProvider } from "../../../../features/madrasati/provider/create-madrasati-provider.server.ts";
 import {
   MadrasatiSyncService,
   type MadrasatiApplyAuthContext,

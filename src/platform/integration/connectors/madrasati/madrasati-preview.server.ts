@@ -5,17 +5,13 @@
  * Madrasati / browser automation calls.
  */
 
-import { createMadrasatiProvider } from "../../../../features/madrasati/provider/create-madrasati-provider.ts";
+import { createMadrasatiProvider } from "../../../../features/madrasati/provider/create-madrasati-provider.server.ts";
 import { MadrasatiSyncService } from "../../../../features/madrasati/sync/madrasati-sync.service.ts";
-import type { MadrasatiSyncResult } from "../../../../features/madrasati/sync/madrasati-sync.service.ts";
+import type { MadrasatiDryRunPreviewResult } from "./madrasati-preview.contract.ts";
+import { MADRASATI_DRY_RUN_DISCLAIMER } from "./madrasati-preview.contract.ts";
 
-export const MADRASATI_DRY_RUN_DISCLAIMER =
-  "هذه معاينة تجريبية باستخدام بيانات اختبار، وليست مزامنة فعلية مع منصة مدرستي.";
-
-export type MadrasatiDryRunPreviewResult = MadrasatiSyncResult & {
-  isMockPreview: true;
-  disclaimer: string;
-};
+export { MADRASATI_DRY_RUN_DISCLAIMER } from "./madrasati-preview.contract.ts";
+export type { MadrasatiDryRunPreviewResult } from "./madrasati-preview.contract.ts";
 
 /**
  * Runs a mock dry-run preview owned by the authenticated Waraqa user.

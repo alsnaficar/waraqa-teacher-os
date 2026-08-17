@@ -1,0 +1,188 @@
+import { randomUUID } from "node:crypto";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from "playwright";
+import type {
+  BrowserAutomation,
+  BrowserPageHandle,
+  BrowserSessionHandle,
+} from "./browser-automation.ts";
+
+type SessionRecord = {
+  readonly context: BrowserContext;
+  readonly pages: Map<string, Page>;
+};
+
+export class PlaywrightBrowserAutomation implements BrowserAutomation {
+  readonly kind = "playwright" as const;
+
+  private browser: Browser | null = null;
+
+  private readonly sessions = new Map<string, SessionRecord>();
+
+  async assertAvailable(): Promise<void> {
+    await this.ensureBrowser();
+  }
+
+  async openSession(): Promise<BrowserSessionHandle> {
+    await this.ensureBrowser();
+
+    const context = await this.browser!.newContext();
+
+    const id = randomUUID();
+
+    this.sessions.set(id, {
+      context,
+      pages: new Map(),
+    });
+
+    return Object.freeze({ id });
+  }
+
+  async closeSession(session: BrowserSessionHandle): Promise<void> {
+    const record = this.sessions.get(session.id);
+
+    if (!record) return;
+
+    this.sessions.delete(session.id);
+
+    await Promise.allSettled(
+      [...record.pages.values()].map((page) => page.close()),
+    );
+
+    await record.context.close();
+  }
+
+  async openPage(
+    session: BrowserSessionHandle,
+  ): Promise<BrowserPageHandle> {
+    const record = this.requireSession(session);
+
+    const page = await record.context.newPage();
+
+    const id = randomUUID();
+
+    record.pages.set(id, page);
+
+    return Object.freeze({ id });
+  }
+
+  async closePage(page: BrowserPageHandle): Promise<void> {
+    const record = this.findPage(page);
+
+    if (!record) return;
+
+    const { session, pageObject } = record;
+
+    session.pages.delete(page.id);
+
+    await pageObject.close();
+  }
+
+  async goto(
+    page: BrowserPageHandle,
+    url: string,
+    options: {
+      timeoutMs?: number;
+      waitUntil?: "load" | "domcontentloaded" | "networkidle";
+    } = {},
+  ): Promise<void> {
+    const pageObject = this.requirePage(page);
+
+    await pageObject.goto(url, {
+      timeout: options.timeoutMs ?? 30000,
+      waitUntil: options.waitUntil ?? "domcontentloaded",
+    });
+  }
+
+  async getPageUrl(page: BrowserPageHandle): Promise<string> {
+    return this.requirePage(page).url();
+  }
+
+  async getPageTitle(page: BrowserPageHandle): Promise<string> {
+    return this.requirePage(page).title();
+  }
+
+  async getPageText(page: BrowserPageHandle): Promise<string> {
+    return this.requirePage(page).locator("body").innerText();
+  }
+
+  async close(): Promise<void> {
+    const sessions = [...this.sessions.keys()];
+
+    await Promise.allSettled(
+      sessions.map((id) =>
+        this.closeSession(Object.freeze({ id })),
+      ),
+    );
+
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+    }
+  }
+
+  private async ensureBrowser(): Promise<void> {
+    if (this.browser) return;
+
+    const resolverIp = process.env.MADRASATI_ENDPOINT_IP?.trim();
+
+    this.browser = await chromium.launch({
+      headless: true,
+      ...(resolverIp
+        ? {
+            args: [
+              `--host-resolver-rules=MAP schools.madrasati.sa ${resolverIp}`,
+            ],
+          }
+        : {}),
+    });
+  }
+
+  private requireSession(
+    session: BrowserSessionHandle,
+  ): SessionRecord {
+    const record = this.sessions.get(session.id);
+
+    if (!record) {
+      throw new Error(`Unknown browser session: ${session.id}`);
+    }
+
+    return record;
+  }
+
+  private requirePage(
+    page: BrowserPageHandle,
+  ): Page {
+    const found = this.findPage(page);
+
+    if (!found) {
+      throw new Error(`Unknown browser page: ${page.id}`);
+    }
+
+    return found.pageObject;
+  }
+
+  private findPage(
+    page: BrowserPageHandle,
+  ): {
+    session: SessionRecord;
+    pageObject: Page;
+  } | null {
+    for (const session of this.sessions.values()) {
+      const pageObject = session.pages.get(page.id);
+
+      if (pageObject) {
+        return {
+          session,
+          pageObject,
+        };
+      }
+    }
+
+    return null;
+  }
+}

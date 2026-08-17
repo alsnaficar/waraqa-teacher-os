@@ -1,12 +1,8 @@
 /**
  * Browser automation boundary.
  *
- * The rest of Waraqa must never import Playwright/Puppeteer types.
- * When a real browser package is approved and installed later, implement
- * this interface inside the Madrasati browser adapter package only.
- *
- * Playwright and Puppeteer are NOT installed in this repository today.
- * Do not invent DOM selectors or navigate to Madrasati from this module.
+ * Playwright/Puppeteer types must never escape this boundary.
+ * Cookies, browser contexts and pages remain server-side.
  */
 
 export type BrowserAutomationKind = "none" | "playwright" | "puppeteer";
@@ -16,7 +12,7 @@ export class BrowserAutomationUnavailableError extends Error {
 
   constructor(
     missingPackage = "playwright",
-    message = "Browser automation is not available. Install and wire a server-side package before enabling Madrasati browser sync.",
+    message = "Browser automation is not available.",
   ) {
     super(message);
     this.name = "BrowserAutomationUnavailableError";
@@ -26,29 +22,51 @@ export class BrowserAutomationUnavailableError extends Error {
 
 /**
  * Opaque server-side browser session handle.
- * Must never be serialized to the client or logged with cookies.
+ * Never serialize this with browser state, cookies or page objects.
  */
 export type BrowserSessionHandle = {
+  readonly id: string;
+};
+
+/**
+ * Opaque server-side page handle.
+ * Never expose Playwright Page objects outside the browser adapter.
+ */
+export type BrowserPageHandle = {
   readonly id: string;
 };
 
 export interface BrowserAutomation {
   readonly kind: BrowserAutomationKind;
 
-  /** Throws if the underlying package/binary is not available. */
   assertAvailable(): Promise<void>;
 
-  /**
-   * Opens an isolated browser context for Madrasati work.
-   * Implementations must keep cookies server-side only.
-   */
   openSession(): Promise<BrowserSessionHandle>;
 
   closeSession(session: BrowserSessionHandle): Promise<void>;
+
+  openPage(session: BrowserSessionHandle): Promise<BrowserPageHandle>;
+
+  closePage(page: BrowserPageHandle): Promise<void>;
+
+  goto(
+    page: BrowserPageHandle,
+    url: string,
+    options?: {
+      timeoutMs?: number;
+      waitUntil?: "load" | "domcontentloaded" | "networkidle";
+    },
+  ): Promise<void>;
+
+  getPageUrl(page: BrowserPageHandle): Promise<string>;
+
+  getPageTitle(page: BrowserPageHandle): Promise<string>;
+
+  getPageText(page: BrowserPageHandle): Promise<string>;
 }
 
 /**
- * Default automation backend until Playwright/Puppeteer is deliberately added.
+ * Fail-closed implementation used when no browser backend is available.
  */
 export class UnavailableBrowserAutomation implements BrowserAutomation {
   readonly kind = "none" as const;
@@ -56,7 +74,7 @@ export class UnavailableBrowserAutomation implements BrowserAutomation {
   async assertAvailable(): Promise<void> {
     throw new BrowserAutomationUnavailableError(
       "playwright",
-      "Neither Playwright nor Puppeteer is installed. Madrasati browser sync cannot run until a browser automation package is approved and installed server-side.",
+      "Browser automation is not available. Install and wire a server-side browser backend before enabling Madrasati browser sync.",
     );
   }
 
@@ -66,6 +84,39 @@ export class UnavailableBrowserAutomation implements BrowserAutomation {
   }
 
   async closeSession(_session: BrowserSessionHandle): Promise<void> {
-    // No-op when unavailable.
+    // No-op.
+  }
+
+  async openPage(
+    _session: BrowserSessionHandle,
+  ): Promise<BrowserPageHandle> {
+    await this.assertAvailable();
+    throw new BrowserAutomationUnavailableError("playwright");
+  }
+
+  async closePage(_page: BrowserPageHandle): Promise<void> {
+    // No-op.
+  }
+
+  async goto(
+    _page: BrowserPageHandle,
+    _url: string,
+  ): Promise<void> {
+    await this.assertAvailable();
+  }
+
+  async getPageUrl(_page: BrowserPageHandle): Promise<string> {
+    await this.assertAvailable();
+    return "";
+  }
+
+  async getPageTitle(_page: BrowserPageHandle): Promise<string> {
+    await this.assertAvailable();
+    return "";
+  }
+
+  async getPageText(_page: BrowserPageHandle): Promise<string> {
+    await this.assertAvailable();
+    return "";
   }
 }

@@ -19,20 +19,7 @@ export {
   MadrasatiNotConnectedError,
   MadrasatiProviderError,
 } from "./provider/madrasati-provider.ts";
-export {
-  createMadrasatiProvider,
-  type CreateMadrasatiProviderOptions,
-  type MadrasatiProviderMode,
-} from "./provider/create-madrasati-provider.ts";
 
-export {
-  UnavailableBrowserAutomation,
-  BrowserAutomationUnavailableError,
-  type BrowserAutomation,
-  type BrowserAutomationKind,
-  type BrowserSessionHandle,
-} from "./browser/browser-automation.ts";
-export { MadrasatiBrowserAdapter } from "./browser/madrasati-browser-adapter.ts";
 
 export { MockMadrasatiProvider } from "./mock/mock-madrasati-provider.ts";
 export {

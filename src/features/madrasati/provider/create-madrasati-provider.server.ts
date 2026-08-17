@@ -1,8 +1,6 @@
-import { MadrasatiBrowserAdapter } from "../browser/madrasati-browser-adapter.ts";
-import {
-  UnavailableBrowserAutomation,
-  type BrowserAutomation,
-} from "../browser/browser-automation.ts";
+import { MadrasatiBrowserAdapter } from "../browser/madrasati-browser-adapter.server.ts";
+import type { BrowserAutomation } from "../browser/browser-automation.ts";
+import { PlaywrightBrowserAutomation } from "../browser/playwright-browser-automation.server.ts";
 import { MockMadrasatiProvider } from "../mock/mock-madrasati-provider.ts";
 import type { MadrasatiProvider } from "../provider/madrasati-provider.ts";
 
@@ -25,7 +23,7 @@ export function createMadrasatiProvider(
 
   if (mode === "browser") {
     return new MadrasatiBrowserAdapter(
-      options.browserAutomation ?? new UnavailableBrowserAutomation(),
+      options.browserAutomation ?? new PlaywrightBrowserAutomation(),
     );
   }
 
