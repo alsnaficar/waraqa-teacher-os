@@ -43,7 +43,7 @@ export function BottomNav() {
       aria-label="التنقل السفلي"
       className="bottom-nav-safe-area fixed inset-x-0 bottom-0 z-40 rounded-t-[24px] border-t border-white/40 dark:border-white/10 bg-white/75 dark:bg-zinc-950/75 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] backdrop-blur-lg transform-gpu will-change-[transform,backdrop-filter]"
     >
-      <ul className="mx-auto grid max-w-3xl grid-cols-7">
+      <ul className="bottom-nav-items mx-auto grid max-w-3xl grid-cols-7">
         {BOTTOM_NAV_ITEMS.map((item) => {
           const active = pathname === item.to || pathname.startsWith(item.to + "/");
           const Icon = item.icon;

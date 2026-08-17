@@ -160,8 +160,11 @@
       padding-bottom: max(48px, env(safe-area-inset-bottom, 0px));
     }
 
+    .bottom-nav-items {
+      padding-bottom: 16px;
+    }
+
     .authenticated-shell-offset {
-      padding-bottom: calc(8rem + 48px);
       padding-bottom: calc(8rem + max(48px, env(safe-area-inset-bottom, 0px)));
     }
   }
