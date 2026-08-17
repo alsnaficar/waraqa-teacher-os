@@ -61,6 +61,30 @@ export type MadrasatiAuthenticationInspectionResult = {
     | "unknown";
 };
 
+export type MadrasatiAuthenticationLiveFrameResult = {
+  mimeType: "image/jpeg" | "image/png";
+  base64: string;
+  viewportWidth: number;
+  viewportHeight: number;
+};
+
+export type MadrasatiAuthenticationLiveFrameUpdateResult = {
+  seq: number;
+  frame: MadrasatiAuthenticationLiveFrameResult;
+};
+
+export type MadrasatiAuthenticationFocusResult = {
+  isEditable: boolean;
+  inputType:
+    | "text"
+    | "email"
+    | "search"
+    | "tel"
+    | "url"
+    | "protected"
+    | "none";
+};
+
 /**
  * @deprecated Do not call for real Madrasati sync.
  * Returns unavailable; never seeds data.
@@ -134,11 +158,6 @@ export const screenshotMadrasatiAuthentication = createServerFn({ method: "POST"
       data.sessionId,
     );
   });
-
-/**
- * Captures the current page of the authenticated user's isolated
- * Madrasati browser session.
- */
 
 /**
  * Closes the authenticated user's isolated Madrasati browser session.
@@ -248,6 +267,78 @@ export const pressMadrasatiAuthenticationKey = createServerFn({
       context.userId,
       data.sessionId,
       data.key,
+    );
+  });
+
+/**
+ * Latest live frame of the authenticated user's isolated Madrasati session.
+ */
+export const getMadrasatiAuthenticationLiveFrame = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    z.object({
+      sessionId: z.string().trim().min(1),
+    }),
+  )
+  .handler(async ({ context, data }): Promise<MadrasatiAuthenticationLiveFrameResult> => {
+    const { getAuthenticatedMadrasatiAuthenticationLiveFrame } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    return getAuthenticatedMadrasatiAuthenticationLiveFrame(
+      context.userId,
+      data.sessionId,
+    );
+  });
+
+/**
+ * Event-driven wait for the next CDP frame of an owned session.
+ */
+export const waitForMadrasatiAuthenticationLiveFrame = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    z.object({
+      sessionId: z.string().trim().min(1),
+      sinceSeq: z.number().int().min(0).max(1_000_000_000),
+    }),
+  )
+  .handler(async ({ context, data }): Promise<MadrasatiAuthenticationLiveFrameUpdateResult | null> => {
+    const { waitForAuthenticatedMadrasatiAuthenticationLiveFrame } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    return waitForAuthenticatedMadrasatiAuthenticationLiveFrame(
+      context.userId,
+      data.sessionId,
+      data.sinceSeq,
+    );
+  });
+
+/**
+ * Focus metadata for the authenticated user's Madrasati session.
+ * The control value is never returned.
+ */
+export const inspectMadrasatiAuthenticationFocus = createServerFn({
+  method: "POST",
+})
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    z.object({
+      sessionId: z.string().trim().min(1),
+    }),
+  )
+  .handler(async ({ context, data }): Promise<MadrasatiAuthenticationFocusResult> => {
+    const { inspectAuthenticatedMadrasatiAuthenticationFocus } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    return inspectAuthenticatedMadrasatiAuthenticationFocus(
+      context.userId,
+      data.sessionId,
     );
   });
 

@@ -3,6 +3,11 @@ import {
   type MadrasatiBrowserAuthenticationStart,
 } from "../../../../features/madrasati/browser/madrasati-browser-session-manager.server.ts";
 import type { MadrasatiAuthenticationPage } from "../../../../features/madrasati/provider/madrasati-provider.ts";
+import type {
+  MadrasatiFocusedControl,
+  MadrasatiLiveFrame,
+  MadrasatiLiveFrameUpdate,
+} from "../../../../features/madrasati/browser/madrasati-browser-live-session.ts";
 
 function requireAuthenticatedUserId(userId: string): string {
   if (!userId || typeof userId !== "string" || !userId.trim()) {
@@ -177,5 +182,66 @@ export async function pressAuthenticatedMadrasatiAuthenticationKey(
     userId,
     sessionId.trim(),
     normalizedKey,
+  );
+}
+
+/**
+ * Latest live JPEG/PNG frame of a session owned by the authenticated user.
+ * Cookies, credentials and Playwright objects never leave the server.
+ */
+export async function getAuthenticatedMadrasatiAuthenticationLiveFrame(
+  waraqaUserId: string,
+  sessionId: string,
+): Promise<MadrasatiLiveFrame> {
+  const userId = requireAuthenticatedUserId(waraqaUserId);
+
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    throw new Error("Madrasati browser session id is required.");
+  }
+
+  return madrasatiBrowserSessionManager.getAuthenticationLiveFrame(
+    userId,
+    sessionId.trim(),
+  );
+}
+
+/**
+ * Focus metadata only. Never includes the control value.
+ */
+export async function inspectAuthenticatedMadrasatiAuthenticationFocus(
+  waraqaUserId: string,
+  sessionId: string,
+): Promise<MadrasatiFocusedControl> {
+  const userId = requireAuthenticatedUserId(waraqaUserId);
+
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    throw new Error("Madrasati browser session id is required.");
+  }
+
+  return madrasatiBrowserSessionManager.inspectAuthenticationFocus(
+    userId,
+    sessionId.trim(),
+  );
+}
+
+/**
+ * Waits for the next CDP live frame of an owned session.
+ * This is event-driven, not a screenshot poll.
+ */
+export async function waitForAuthenticatedMadrasatiAuthenticationLiveFrame(
+  waraqaUserId: string,
+  sessionId: string,
+  sinceSeq: number,
+): Promise<MadrasatiLiveFrameUpdate | null> {
+  const userId = requireAuthenticatedUserId(waraqaUserId);
+
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    throw new Error("Madrasati browser session id is required.");
+  }
+
+  return madrasatiBrowserSessionManager.waitForAuthenticationLiveFrame(
+    userId,
+    sessionId.trim(),
+    sinceSeq,
   );
 }

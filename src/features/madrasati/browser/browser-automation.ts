@@ -5,7 +5,19 @@
  * Cookies, browser contexts and pages remain server-side.
  */
 
+import type {
+  MadrasatiFocusedControl,
+  MadrasatiLiveFrame,
+} from "./madrasati-browser-live-session.ts";
+
 export type BrowserAutomationKind = "none" | "playwright" | "puppeteer";
+
+export type BrowserSessionOpenOptions = {
+  readonly viewport?: {
+    readonly width: number;
+    readonly height: number;
+  };
+};
 
 export class BrowserAutomationUnavailableError extends Error {
   readonly missingPackage: string;
@@ -41,7 +53,9 @@ export interface BrowserAutomation {
 
   assertAvailable(): Promise<void>;
 
-  openSession(): Promise<BrowserSessionHandle>;
+  openSession(
+    options?: BrowserSessionOpenOptions,
+  ): Promise<BrowserSessionHandle>;
 
   closeSession(session: BrowserSessionHandle): Promise<void>;
 
@@ -85,6 +99,33 @@ export interface BrowserAutomation {
     page: BrowserPageHandle,
     key: string,
   ): Promise<void>;
+
+  /**
+   * Starts Chromium CDP screencast for the page when the backend supports it.
+   * Fail-soft: callers may fall back to PNG screenshots.
+   */
+  startPageLiveView(page: BrowserPageHandle): Promise<void>;
+
+  stopPageLiveView(page: BrowserPageHandle): Promise<void>;
+
+  getPageLiveFrame(page: BrowserPageHandle): Promise<MadrasatiLiveFrame>;
+
+  /**
+   * Describes the currently focused control. Must never include the value,
+   * cookies, HTML, or credentials.
+   */
+  inspectFocusedControl(
+    page: BrowserPageHandle,
+  ): Promise<MadrasatiFocusedControl>;
+
+  /**
+   * Subscribes to live JPEG frames for a page. The unsubscribe function
+   * must be called on page/session close.
+   */
+  subscribePageLiveFrame(
+    page: BrowserPageHandle,
+    listener: (frame: MadrasatiLiveFrame) => void,
+  ): () => void;
 }
 
 /**
@@ -100,7 +141,9 @@ export class UnavailableBrowserAutomation implements BrowserAutomation {
     );
   }
 
-  async openSession(): Promise<BrowserSessionHandle> {
+  async openSession(
+    _options?: BrowserSessionOpenOptions,
+  ): Promise<BrowserSessionHandle> {
     await this.assertAvailable();
     throw new BrowserAutomationUnavailableError("playwright");
   }
@@ -167,5 +210,34 @@ export class UnavailableBrowserAutomation implements BrowserAutomation {
     _key: string,
   ): Promise<void> {
     await this.assertAvailable();
+  }
+
+  async startPageLiveView(_page: BrowserPageHandle): Promise<void> {
+    await this.assertAvailable();
+  }
+
+  async stopPageLiveView(_page: BrowserPageHandle): Promise<void> {
+    // No-op.
+  }
+
+  async getPageLiveFrame(
+    _page: BrowserPageHandle,
+  ): Promise<MadrasatiLiveFrame> {
+    await this.assertAvailable();
+    throw new BrowserAutomationUnavailableError("playwright");
+  }
+
+  async inspectFocusedControl(
+    _page: BrowserPageHandle,
+  ): Promise<MadrasatiFocusedControl> {
+    await this.assertAvailable();
+    return { isEditable: false, inputType: "none" };
+  }
+
+  subscribePageLiveFrame(
+    _page: BrowserPageHandle,
+    _listener: (frame: MadrasatiLiveFrame) => void,
+  ): () => void {
+    return () => undefined;
   }
 }

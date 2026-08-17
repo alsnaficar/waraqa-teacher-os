@@ -5,9 +5,14 @@ import type {
   BrowserAutomation,
   BrowserPageHandle,
   BrowserSessionHandle,
+  BrowserSessionOpenOptions,
 } from "./browser-automation.ts";
 import { MadrasatiBrowserAdapter } from "./madrasati-browser-adapter.server.ts";
 import { PlaywrightBrowserAutomation } from "./playwright-browser-automation.server.ts";
+import type {
+  MadrasatiFocusedControl,
+  MadrasatiLiveFrame,
+} from "./madrasati-browser-live-session.ts";
 
 class FakeBrowserAutomation implements BrowserAutomation {
   readonly kind = "playwright" as const;
@@ -17,7 +22,9 @@ class FakeBrowserAutomation implements BrowserAutomation {
 
   async assertAvailable(): Promise<void> {}
 
-  async openSession(): Promise<BrowserSessionHandle> {
+  async openSession(
+    _options?: BrowserSessionOpenOptions,
+  ): Promise<BrowserSessionHandle> {
     this.sessionOpen = true;
     return Object.freeze({ id: "test-session" });
   }
@@ -43,7 +50,7 @@ class FakeBrowserAutomation implements BrowserAutomation {
     url: string,
   ): Promise<void> {
     assert.equal(this.pageOpen, true);
-    assert.equal(url, "https://schools.madrasati.sa/");
+    assert.match(url, /^https:\/\/schools\.madrasati\.sa\//);
   }
 
   async getPageUrl(_page: BrowserPageHandle): Promise<string> {
@@ -77,6 +84,32 @@ class FakeBrowserAutomation implements BrowserAutomation {
     _page: BrowserPageHandle,
     _key: string,
   ): Promise<void> {}
+
+  async startPageLiveView(_page: BrowserPageHandle): Promise<void> {}
+
+  async stopPageLiveView(_page: BrowserPageHandle): Promise<void> {}
+
+  async getPageLiveFrame(_page: BrowserPageHandle): Promise<MadrasatiLiveFrame> {
+    return {
+      mimeType: "image/jpeg",
+      base64: "AAAA",
+      viewportWidth: 390,
+      viewportHeight: 844,
+    };
+  }
+
+  async inspectFocusedControl(
+    _page: BrowserPageHandle,
+  ): Promise<MadrasatiFocusedControl> {
+    return { isEditable: false, inputType: "none" };
+  }
+
+  subscribePageLiveFrame(
+    _page: BrowserPageHandle,
+    _listener: (frame: MadrasatiLiveFrame) => void,
+  ): () => void {
+    return () => undefined;
+  }
 }
 
 test("MadrasatiBrowserAdapter — reports browser availability without opening a session", async () => {
@@ -117,6 +150,24 @@ test("MadrasatiBrowserAdapter — disconnect closes the browser session", async 
   assert.equal(disconnected.state, "disconnected");
   assert.equal(disconnected.browserAutomationAvailable, true);
   assert.equal(disconnected.isMock, false);
+});
+
+test("MadrasatiBrowserAdapter — beginAuthentication exposes sanitized live frame and focus", async () => {
+  const automation = new FakeBrowserAutomation();
+  const provider = new MadrasatiBrowserAdapter(automation);
+
+  await provider.connect();
+  const status = await provider.beginAuthentication();
+
+  assert.equal(status.state, "connected");
+  assert.equal(status.isMock, false);
+
+  const frame = await provider.getAuthenticationLiveFrame();
+  assert.equal(frame.mimeType, "image/jpeg");
+  assert.equal("cookies" in frame, false);
+
+  const focus = await provider.inspectAuthenticationFocus();
+  assert.deepEqual(Object.keys(focus).sort(), ["inputType", "isEditable"]);
 });
 
 test("Playwright boundary — page lifecycle through opaque handles", async () => {

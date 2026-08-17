@@ -6,7 +6,12 @@ import type {
   BrowserAutomation,
   BrowserPageHandle,
   BrowserSessionHandle,
+  BrowserSessionOpenOptions,
 } from "./browser-automation.ts";
+import type {
+  MadrasatiFocusedControl,
+  MadrasatiLiveFrame,
+} from "./madrasati-browser-live-session.ts";
 
 class InspectionAutomation implements BrowserAutomation {
   readonly kind = "playwright" as const;
@@ -18,7 +23,9 @@ class InspectionAutomation implements BrowserAutomation {
 
   async assertAvailable(): Promise<void> {}
 
-  async openSession(): Promise<BrowserSessionHandle> {
+  async openSession(
+    _options?: BrowserSessionOpenOptions,
+  ): Promise<BrowserSessionHandle> {
     return this.session;
   }
 
@@ -63,6 +70,32 @@ class InspectionAutomation implements BrowserAutomation {
     _page: BrowserPageHandle,
     _key: string,
   ): Promise<void> {}
+
+  async startPageLiveView(_page: BrowserPageHandle): Promise<void> {}
+
+  async stopPageLiveView(_page: BrowserPageHandle): Promise<void> {}
+
+  async getPageLiveFrame(_page: BrowserPageHandle): Promise<MadrasatiLiveFrame> {
+    return {
+      mimeType: "image/png",
+      base64: "iVBORw0KGgo=",
+      viewportWidth: 390,
+      viewportHeight: 844,
+    };
+  }
+
+  async inspectFocusedControl(
+    _page: BrowserPageHandle,
+  ): Promise<MadrasatiFocusedControl> {
+    return { isEditable: false, inputType: "none" };
+  }
+
+  subscribePageLiveFrame(
+    _page: BrowserPageHandle,
+    _listener: (frame: MadrasatiLiveFrame) => void,
+  ): () => void {
+    return () => undefined;
+  }
 }
 
 describe("Madrasati browser authentication inspection", () => {

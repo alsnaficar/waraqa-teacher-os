@@ -2,9 +2,8 @@ import {
   useEffect,
   useRef,
   useState,
-  type ChangeEvent,
   type KeyboardEvent,
-  type MouseEvent,
+  type PointerEvent,
 } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -28,14 +27,17 @@ import {
   clickMadrasatiAuthentication,
   closeMadrasatiAuthentication,
   inspectMadrasatiAuthentication,
+  inspectMadrasatiAuthenticationFocus,
   pressMadrasatiAuthenticationKey,
   previewMadrasatiSync,
-  screenshotMadrasatiAuthentication,
   startMadrasatiAuthentication,
   typeMadrasatiAuthentication,
+  waitForMadrasatiAuthenticationLiveFrame,
+  type MadrasatiAuthenticationFocusResult,
   type MadrasatiDryRunPreviewResult,
   MADRASATI_DRY_RUN_DISCLAIMER,
 } from "@/platform/integration/connectors/madrasati/madrasati.functions";
+import { consumeMadrasatiLiveFrames } from "@/platform/integration/connectors/madrasati/madrasati-live-frame-client";
 
 interface MadrasatiAuthModalProps {
   open: boolean;
@@ -45,13 +47,16 @@ interface MadrasatiAuthModalProps {
 
 type AuthenticationState = "not_authenticated" | "authenticated" | "unknown";
 
+const INSPECT_INTERVAL_MS = 3000;
+
 export function MadrasatiAuthModal({
   open,
   onOpenChange,
 }: MadrasatiAuthModalProps) {
   const startFn = useServerFn(startMadrasatiAuthentication);
   const inspectFn = useServerFn(inspectMadrasatiAuthentication);
-  const screenshotFn = useServerFn(screenshotMadrasatiAuthentication);
+  const waitFrameFn = useServerFn(waitForMadrasatiAuthenticationLiveFrame);
+  const focusFn = useServerFn(inspectMadrasatiAuthenticationFocus);
   const closeFn = useServerFn(closeMadrasatiAuthentication);
   const previewFn = useServerFn(previewMadrasatiSync);
   const clickFn = useServerFn(clickMadrasatiAuthentication);
@@ -60,12 +65,16 @@ export function MadrasatiAuthModal({
 
   const screenshotRef = useRef<HTMLImageElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const writeQueueRef = useRef(Promise.resolve());
+  const composingRef = useRef(false);
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [closing, setClosing] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [viewportWidth, setViewportWidth] = useState(390);
+  const [viewportHeight, setViewportHeight] = useState(844);
   const [url, setUrl] = useState<string | null>(null);
   const [authenticationState, setAuthenticationState] =
     useState<AuthenticationState>("unknown");
@@ -73,30 +82,57 @@ export function MadrasatiAuthModal({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [preview, setPreview] =
     useState<MadrasatiDryRunPreviewResult | null>(null);
-  const [interactionBusy, setInteractionBusy] = useState(false);
-  const [remoteInputActive, setRemoteInputActive] = useState(false);
+  const [clickBusy, setClickBusy] = useState(false);
+  const [focus, setFocus] = useState<MadrasatiAuthenticationFocusResult>({
+    isEditable: false,
+    inputType: "none",
+  });
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  function enqueueWrite(task: () => Promise<void>) {
+    writeQueueRef.current = writeQueueRef.current
+      .then(task)
+      .catch((error) => {
+        const text =
+          error instanceof Error
+            ? error.message
+            : "تعذر إرسال الإدخال إلى جلسة مدرستي.";
+
+        toast.error(text);
+      });
+  }
+
+  function focusNativeInput() {
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }
+
+  function applyLiveFrame(frame: {
+    mimeType: "image/jpeg" | "image/png";
+    base64: string;
+    viewportWidth: number;
+    viewportHeight: number;
+  }) {
+    setViewportWidth(frame.viewportWidth);
+    setViewportHeight(frame.viewportHeight);
+    setScreenshot(`data:${frame.mimeType};base64,${frame.base64}`);
+  }
 
   async function refreshSession(currentSessionId: string) {
     setRefreshing(true);
 
     try {
-      const [inspection, image] = await Promise.all([
-        inspectFn({
-          data: {
-            sessionId: currentSessionId,
-          },
-        }),
-        screenshotFn({
-          data: {
-            sessionId: currentSessionId,
-          },
-        }),
-      ]);
+      const inspection = await inspectFn({
+        data: {
+          sessionId: currentSessionId,
+        },
+      });
 
       setUrl(inspection.url);
       setAuthenticationState(inspection.authenticationState);
       setMessage(inspection.title || inspection.url);
-      setScreenshot(`data:image/png;base64,${image}`);
 
       if (inspection.authenticationState === "authenticated") {
         toast.success("تم اكتشاف تسجيل الدخول إلى منصة مدرستي.");
@@ -113,28 +149,29 @@ export function MadrasatiAuthModal({
     }
   }
 
-  async function handleScreenshotClick(
-    event: MouseEvent<HTMLImageElement>,
+  async function handleLiveViewPointer(
+    event: PointerEvent<HTMLImageElement>,
   ) {
-    if (!sessionId || !screenshotRef.current || interactionBusy) {
+    if (!sessionId || !screenshotRef.current || clickBusy) {
       return;
     }
 
     const image = screenshotRef.current;
     const rect = image.getBoundingClientRect();
 
-    if (!rect.width || !rect.height || !image.naturalWidth || !image.naturalHeight) {
+    if (!rect.width || !rect.height || !viewportWidth || !viewportHeight) {
       return;
     }
 
-    const x = ((event.clientX - rect.left) / rect.width) * image.naturalWidth;
-    const y = ((event.clientY - rect.top) / rect.height) * image.naturalHeight;
+    const x = ((event.clientX - rect.left) / rect.width) * viewportWidth;
+    const y = ((event.clientY - rect.top) / rect.height) * viewportHeight;
 
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
       return;
     }
 
-    setInteractionBusy(true);
+    setClickBusy(true);
+    focusNativeInput();
 
     try {
       await clickFn({
@@ -145,11 +182,14 @@ export function MadrasatiAuthModal({
         },
       });
 
-      setRemoteInputActive(true);
-
-      window.requestAnimationFrame(() => {
-        inputRef.current?.focus();
+      const nextFocus = await focusFn({
+        data: {
+          sessionId,
+        },
       });
+
+      setFocus(nextFocus);
+      focusNativeInput();
     } catch (error) {
       const text =
         error instanceof Error
@@ -158,52 +198,35 @@ export function MadrasatiAuthModal({
 
       toast.error(text);
     } finally {
-      setInteractionBusy(false);
+      setClickBusy(false);
+      focusNativeInput();
     }
   }
 
-  async function handleRemoteInput(
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    if (!sessionId || interactionBusy) {
+  function flushNativeInput(target: HTMLInputElement) {
+    if (!sessionId || composingRef.current) {
       return;
     }
 
-    const text = event.target.value;
+    const text = target.value;
 
     if (!text) {
       return;
     }
 
-    event.target.value = "";
-    setInteractionBusy(true);
+    target.value = "";
 
-    try {
+    enqueueWrite(async () => {
       await typeFn({
         data: {
           sessionId,
           text,
         },
       });
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "تعذر إرسال النص إلى جلسة مدرستي.";
-
-      toast.error(message);
-    } finally {
-      setInteractionBusy(false);
-
-      window.requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
-    }
+    });
   }
 
-  async function handleRemoteKey(
-    event: KeyboardEvent<HTMLInputElement>,
-  ) {
+  function handleRemoteKey(event: KeyboardEvent<HTMLInputElement>) {
     if (!sessionId) {
       return;
     }
@@ -224,35 +247,20 @@ export function MadrasatiAuthModal({
       return;
     }
 
-    event.preventDefault();
-
-    if (interactionBusy) {
+    if (event.key === "Backspace" && event.currentTarget.value) {
       return;
     }
 
-    setInteractionBusy(true);
+    event.preventDefault();
 
-    try {
+    enqueueWrite(async () => {
       await pressKeyFn({
         data: {
           sessionId,
           key: event.key,
         },
       });
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "تعذر إرسال المفتاح إلى جلسة مدرستي.";
-
-      toast.error(message);
-    } finally {
-      setInteractionBusy(false);
-
-      window.requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
-    }
+    });
   }
 
   async function handlePreview() {
@@ -283,14 +291,8 @@ export function MadrasatiAuthModal({
       setUrl(result.url);
       setAuthenticationState(result.authenticationState);
       setMessage(result.message);
-
-      const image = await screenshotFn({
-        data: {
-          sessionId: result.session.sessionId,
-        },
-      });
-
-      setScreenshot(`data:image/png;base64,${image}`);
+      setFocus({ isEditable: false, inputType: "none" });
+      focusNativeInput();
 
       toast.success("تم فتح جلسة متصفح مدرستي على الخادم.");
     } catch (error) {
@@ -325,6 +327,7 @@ export function MadrasatiAuthModal({
       setUrl(null);
       setMessage(null);
       setAuthenticationState("unknown");
+      setFocus({ isEditable: false, inputType: "none" });
 
       onOpenChange(false);
     } catch (error) {
@@ -340,16 +343,89 @@ export function MadrasatiAuthModal({
   }
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const media = window.matchMedia("(pointer: coarse)");
+    const sync = () => setCoarsePointer(media.matches);
+
+    sync();
+    media.addEventListener("change", sync);
+
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!open || !sessionId || !coarsePointer || typeof window === "undefined") {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const viewport = window.visualViewport;
+
+    if (!viewport) {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const sync = () => {
+      setKeyboardInset(
+        Math.max(0, window.innerHeight - (viewport.height + viewport.offsetTop)),
+      );
+    };
+
+    sync();
+    viewport.addEventListener("resize", sync);
+    viewport.addEventListener("scroll", sync);
+
+    return () => {
+      viewport.removeEventListener("resize", sync);
+      viewport.removeEventListener("scroll", sync);
+    };
+  }, [open, sessionId, coarsePointer]);
+
+  useEffect(() => {
     if (!open || !sessionId) {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      void refreshSession(sessionId);
-    }, 5000);
+    const controller = new AbortController();
 
-    return () => window.clearInterval(timer);
-  }, [open, sessionId]);
+    void consumeMadrasatiLiveFrames({
+      sessionId,
+      signal: controller.signal,
+      onFrame: (update) => {
+        applyLiveFrame(update.frame);
+      },
+      waitForFrame: async ({ sessionId: ownedSessionId, sinceSeq }) =>
+        waitFrameFn({
+          data: {
+            sessionId: ownedSessionId,
+            sinceSeq,
+          },
+        }),
+    }).catch(() => undefined);
+
+    const inspectTimer = window.setInterval(() => {
+      void inspectFn({
+        data: {
+          sessionId,
+        },
+      })
+        .then((inspection) => {
+          setUrl(inspection.url);
+          setAuthenticationState(inspection.authenticationState);
+          setMessage(inspection.title || inspection.url);
+        })
+        .catch(() => undefined);
+    }, INSPECT_INTERVAL_MS);
+
+    return () => {
+      controller.abort();
+      window.clearInterval(inspectTimer);
+    };
+  }, [open, sessionId, inspectFn, waitFrameFn]);
 
   useEffect(() => {
     if (open) {
@@ -361,7 +437,82 @@ export function MadrasatiAuthModal({
     setUrl(null);
     setMessage(null);
     setAuthenticationState("unknown");
+    setFocus({ isEditable: false, inputType: "none" });
+    setKeyboardInset(0);
   }, [open]);
+
+  const keyboardBar = sessionId ? (
+    <div
+      className={[
+        "space-y-3 rounded-xl border border-primary/10 bg-background p-3",
+        coarsePointer
+          ? "fixed inset-x-3 z-[60] shadow-2xl"
+          : "sticky bottom-0",
+      ].join(" ")}
+      style={
+        coarsePointer
+          ? {
+              bottom: `max(0.75rem, calc(${keyboardInset}px + env(safe-area-inset-bottom, 0px)))`,
+            }
+          : undefined
+      }
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          اضغط الحقل داخل الشاشة ثم اكتب. الأحرف تُرسل فورًا إلى المتصفح
+          المعزول ولا تُحفظ.
+        </p>
+
+        {focus.isEditable ? (
+          <span className="text-[11px] font-bold text-green-600">
+            {focus.inputType === "protected"
+              ? "حقل محمي نشط"
+              : "الحقل محدد"}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 min-h-[44px]"
+          disabled={!sessionId}
+          onClick={() => focusNativeInput()}
+        >
+          كتابة
+        </Button>
+        {[
+          ["Tab", "Tab"],
+          ["Enter", "Enter"],
+          ["⌫", "Backspace"],
+          ["Esc", "Escape"],
+        ].map(([label, key]) => (
+          <Button
+            key={key}
+            type="button"
+            variant="outline"
+            className="h-11 min-h-[44px]"
+            disabled={!sessionId}
+            onClick={() => {
+              focusNativeInput();
+
+              enqueueWrite(async () => {
+                await pressKeyFn({
+                  data: {
+                    sessionId: sessionId!,
+                    key,
+                  },
+                });
+              });
+            }}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <Dialog
@@ -377,11 +528,11 @@ export function MadrasatiAuthModal({
     >
       <DialogContent
         dir="rtl"
-        className="max-w-3xl max-h-[92vh] overflow-y-auto p-6 rounded-2xl border-primary/10 shadow-xl"
+        className="max-h-[92dvh] w-[calc(100vw-16px)] max-w-3xl overflow-y-auto rounded-2xl border-primary/10 p-4 shadow-xl sm:p-6"
       >
-        <DialogHeader className="text-right pb-4 border-b border-muted">
-          <div className="flex items-center gap-2.5 mb-1.5">
-            <div className="h-10 w-10 shrink-0 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center dark:bg-amber-950/30 dark:text-amber-400">
+        <DialogHeader className="border-b border-muted pb-4 text-right">
+          <div className="mb-1.5 flex items-center gap-2.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
               <School className="h-5 w-5" />
             </div>
 
@@ -390,17 +541,22 @@ export function MadrasatiAuthModal({
                 تسجيل الدخول إلى منصة مدرستي
               </DialogTitle>
 
-              <DialogDescription className="text-xs text-muted-foreground mt-0.5 font-medium">
+              <DialogDescription className="mt-0.5 text-xs font-medium text-muted-foreground">
                 جلسة متصفح آمنة تعمل على خادم ورقة
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 pt-4">
-          <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 space-y-3 text-blue-900 dark:bg-blue-950/20 dark:border-blue-900/40 dark:text-blue-300">
+        <div
+          className={[
+            "space-y-4 pt-4",
+            sessionId && coarsePointer ? "pb-52" : "",
+          ].join(" ")}
+        >
+          <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300">
             <div className="flex items-start gap-2.5">
-              <Info className="h-5 w-5 shrink-0 mt-0.5" />
+              <Info className="mt-0.5 h-5 w-5 shrink-0" />
 
               <div className="space-y-1.5 text-xs leading-relaxed">
                 <p className="font-bold">معاينة مزامنة مدرستي</p>
@@ -411,7 +567,7 @@ export function MadrasatiAuthModal({
             <Button
               type="button"
               variant="outline"
-              className="w-full h-10 font-bold text-sm gap-2 bg-background"
+              className="h-11 w-full gap-2 bg-background text-sm font-bold"
               disabled={previewLoading}
               onClick={() => void handlePreview()}
             >
@@ -422,7 +578,7 @@ export function MadrasatiAuthModal({
             </Button>
 
             {preview ? (
-              <div className="rounded-lg border bg-background/70 p-3 space-y-2 text-xs">
+              <div className="space-y-2 rounded-lg border bg-background/70 p-3 text-xs">
                 <p className="font-bold">{preview.disclaimer}</p>
                 <p>
                   اكتشف {preview.counts.discovered} · مقبول{" "}
@@ -433,10 +589,10 @@ export function MadrasatiAuthModal({
             ) : null}
           </div>
 
-          <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4 flex gap-2.5 text-amber-900 dark:bg-amber-950/20 dark:border-amber-900/40 dark:text-amber-300">
-            <Info className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="flex gap-2.5 rounded-xl border border-amber-100 bg-amber-50/60 p-4 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
+            <Info className="mt-0.5 h-5 w-5 shrink-0" />
 
-            <div className="space-y-2 text-xs leading-relaxed font-medium">
+            <div className="space-y-2 text-xs font-medium leading-relaxed">
               <p>
                 تسجيل الدخول يتم داخل جلسة المتصفح الموجودة على خادم ورقة.
               </p>
@@ -446,7 +602,8 @@ export function MadrasatiAuthModal({
               </p>
 
               <p>
-                هذه المرحلة تعرض جلسة المتصفح وحالتها فقط.
+                الصفحة المعروضة هي بث حي من المتصفح المعزول، وليست iframe لصفحة
+                Microsoft.
               </p>
             </div>
           </div>
@@ -454,7 +611,7 @@ export function MadrasatiAuthModal({
           {!sessionId ? (
             <Button
               type="button"
-              className="w-full h-11 font-bold text-sm gap-2"
+              className="h-11 w-full gap-2 text-sm font-bold"
               disabled={loading}
               onClick={() => void handleStart()}
             >
@@ -465,7 +622,7 @@ export function MadrasatiAuthModal({
             </Button>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 px-4 py-3">
                 <div className="flex items-center gap-2 text-sm font-bold">
                   {authenticationState === "authenticated" ? (
                     <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -483,7 +640,7 @@ export function MadrasatiAuthModal({
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
+                  className="h-11 min-h-[44px]"
                   disabled={refreshing}
                   onClick={() => void refreshSession(sessionId)}
                 >
@@ -497,9 +654,8 @@ export function MadrasatiAuthModal({
               </div>
 
               {url ? (
-                <div className="rounded-lg border bg-muted/20 px-3 py-2 text-xs break-all">
-                  <span className="font-bold">العنوان الحالي:</span>{" "}
-                  {url}
+                <div className="break-all rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+                  <span className="font-bold">العنوان الحالي:</span> {url}
                 </div>
               ) : null}
 
@@ -510,131 +666,80 @@ export function MadrasatiAuthModal({
               ) : null}
 
               {screenshot ? (
-                <>
-                  <div
-                    className={[
-                      "relative rounded-xl border overflow-hidden bg-black",
-                      interactionBusy
-                        ? "cursor-wait"
-                        : "cursor-crosshair",
-                    ].join(" ")}
-                  >
-                    <img
-                      ref={screenshotRef}
-                      src={screenshot}
-                      alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
-                      className="block w-full h-auto select-none"
-                      draggable={false}
-                      onClick={(event) => void handleScreenshotClick(event)}
-                    />
+                <div
+                  className={[
+                    "relative overflow-hidden rounded-xl border bg-black",
+                    clickBusy ? "cursor-wait" : "cursor-crosshair",
+                  ].join(" ")}
+                >
+                  <img
+                    ref={screenshotRef}
+                    src={screenshot}
+                    alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
+                    className="block h-auto w-full select-none"
+                    draggable={false}
+                    onPointerUp={(event) => void handleLiveViewPointer(event)}
+                  />
 
-                    {interactionBusy ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                        <div className="rounded-full bg-background/90 p-3 shadow-lg">
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        </div>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    inputMode={focus.inputType === "email" ? "email" : "text"}
+                    enterKeyHint="next"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    aria-label="إدخال إلى متصفح مدرستي"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-12 min-h-[48px] w-full caret-transparent opacity-[0.02] text-base"
+                    disabled={!sessionId}
+                    onCompositionStart={() => {
+                      composingRef.current = true;
+                    }}
+                    onCompositionEnd={(event) => {
+                      composingRef.current = false;
+                      flushNativeInput(event.currentTarget);
+                    }}
+                    onInput={(event) => {
+                      flushNativeInput(event.currentTarget);
+                    }}
+                    onKeyDown={(event) => handleRemoteKey(event)}
+                  />
+
+                  {clickBusy ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <div className="rounded-full bg-background/90 p-3 shadow-lg">
+                        <Loader2 className="h-5 w-5 animate-spin" />
                       </div>
-                    ) : null}
-                  </div>
-
-                  <div className="rounded-xl border border-primary/10 bg-muted/30 p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold">
-                          التحكم في المتصفح
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          اضغط على الحقل داخل الشاشة أولًا، ثم اكتب من لوحة مفاتيح جوالك.
-                        </p>
-                      </div>
-
-                      {remoteInputActive ? (
-                        <span className="text-[11px] font-bold text-green-600">
-                          الحقل محدد
-                        </span>
-                      ) : null}
                     </div>
-
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      inputMode="text"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck={false}
-                      aria-label="إدخال إلى متصفح مدرستي"
-                      placeholder="اضغط على حقل في الشاشة ثم اكتب هنا..."
-                      className="w-full h-11 rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-                      disabled={!sessionId || interactionBusy}
-                      onChange={(event) => void handleRemoteInput(event)}
-                      onKeyDown={(event) => void handleRemoteKey(event)}
-                    />
-
-                    <div className="grid grid-cols-4 gap-2">
-                      {[
-                        ["Tab", "Tab"],
-                        ["Enter", "Enter"],
-                        ["⌫", "Backspace"],
-                        ["Esc", "Escape"],
-                      ].map(([label, key]) => (
-                        <Button
-                          key={key}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={!sessionId || interactionBusy}
-                          onClick={() => {
-                            inputRef.current?.focus();
-
-                            void pressKeyFn({
-                              data: {
-                                sessionId: sessionId!,
-                                key,
-                              },
-                            }).catch((error) => {
-                              const text =
-                                error instanceof Error
-                                  ? error.message
-                                  : "تعذر إرسال المفتاح إلى جلسة مدرستي.";
-
-                              toast.error(text);
-                            });
-                          }}
-                        >
-                          {label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </>
+                  ) : null}
+                </div>
               ) : (
-                <div className="rounded-xl border bg-muted/20 min-h-64 flex items-center justify-center">
+                <div className="flex min-h-64 items-center justify-center rounded-xl border bg-muted/20">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               )}
 
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-xs leading-relaxed text-blue-900 dark:bg-blue-950/20 dark:border-blue-900/40 dark:text-blue-300">
-                <p className="font-bold mb-1">
-                  طريقة الاستخدام
-                </p>
+              {!coarsePointer ? keyboardBar : null}
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-xs leading-relaxed text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300">
+                <p className="mb-1 font-bold">طريقة الاستخدام</p>
                 <p>
-                  اضغط مباشرة على الحقل المطلوب داخل شاشة
-                  مدرستي، ثم اكتب في مربع الإدخال أسفل الشاشة. الإدخال يُرسل
-                  إلى جلسة المتصفح الموجودة على خادم ورقة ولا يتم حفظه في قاعدة
-                  بيانات ورقة.
+                  اضغط مباشرة على الحقل المطلوب داخل الشاشة الحية، ثم اكتب من
+                  لوحة مفاتيح جوالك. ورقة لا تعرض صفحة Microsoft داخل iframe
+                  ولا تحتفظ بما تكتبه.
                 </p>
               </div>
 
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-11 font-bold text-sm"
+                className="h-11 w-full text-sm font-bold"
                 disabled={closing}
                 onClick={() => void handleCloseSession()}
               >
                 {closing ? (
-                  <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                 ) : null}
                 إغلاق جلسة مدرستي
               </Button>
@@ -645,13 +750,15 @@ export function MadrasatiAuthModal({
             <Button
               type="button"
               variant="outline"
-              className="w-full h-11 font-bold text-sm"
+              className="h-11 w-full text-sm font-bold"
               onClick={() => onOpenChange(false)}
             >
               إغلاق
             </Button>
           ) : null}
         </div>
+
+        {coarsePointer ? keyboardBar : null}
       </DialogContent>
     </Dialog>
   );

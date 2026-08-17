@@ -16,6 +16,7 @@ import { Route as ConnectSchoolRouteImport } from './routes/connect-school'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as ApiMadrasatiLiveSessionRouteImport } from './routes/api/madrasati/live-session'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedAiRouteImport } from './routes/_authenticated/ai'
 import { Route as AuthenticatedAiActivityIdeasRouteImport } from './routes/_authenticated/ai-activity-ideas'
@@ -76,6 +77,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMadrasatiLiveSessionRoute = ApiMadrasatiLiveSessionRouteImport.update({
+  id: '/api/madrasati/live-session',
+  path: '/api/madrasati/live-session',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
@@ -236,6 +242,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/api/madrasati/live-session': typeof ApiMadrasatiLiveSessionRoute
   '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/ai': typeof AuthenticatedAiRoute
   '/ai-activity-ideas': typeof AuthenticatedAiActivityIdeasRoute
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/api/madrasati/live-session': typeof ApiMadrasatiLiveSessionRoute
   '/ai': typeof AuthenticatedAiRoute
   '/ai-activity-ideas': typeof AuthenticatedAiActivityIdeasRoute
   '/ai-enrichment': typeof AuthenticatedAiEnrichmentRoute
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/api/madrasati/live-session': typeof ApiMadrasatiLiveSessionRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/ai': typeof AuthenticatedAiRoute
   '/_authenticated/ai-activity-ideas': typeof AuthenticatedAiActivityIdeasRoute
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
+    | '/api/madrasati/live-session'
     | '/admin'
     | '/ai'
     | '/ai-activity-ideas'
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
+    | '/api/madrasati/live-session'
     | '/ai'
     | '/ai-activity-ideas'
     | '/ai-enrichment'
@@ -414,6 +425,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/reset-password'
     | '/sitemap.xml'
+    | '/api/madrasati/live-session'
     | '/_authenticated/admin'
     | '/_authenticated/ai'
     | '/_authenticated/ai-activity-ideas'
@@ -451,6 +463,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  ApiMadrasatiLiveSessionRoute: typeof ApiMadrasatiLiveSessionRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -502,6 +515,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/madrasati/live-session': {
+      id: '/api/madrasati/live-session'
+      path: '/api/madrasati/live-session'
+      fullPath: '/api/madrasati/live-session'
+      preLoaderRoute: typeof ApiMadrasatiLiveSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin': {
@@ -782,6 +802,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  ApiMadrasatiLiveSessionRoute: ApiMadrasatiLiveSessionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
