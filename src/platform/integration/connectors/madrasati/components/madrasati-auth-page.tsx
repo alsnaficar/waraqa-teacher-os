@@ -90,9 +90,7 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
   }
 
   function focusNativeInput() {
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
+    inputRef.current?.focus();
   }
 
   function applyLiveFrame(frame: {
@@ -107,7 +105,7 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
   }
 
   async function handleLiveViewPointer(
-    event: PointerEvent<HTMLImageElement>,
+    event: PointerEvent<HTMLElement>,
   ) {
     if (!sessionId || !screenshotRef.current || clickBusy) {
       return;
@@ -127,8 +125,8 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
       return;
     }
 
-    setClickBusy(true);
     focusNativeInput();
+    setClickBusy(true);
 
     try {
       await clickFn({
@@ -568,39 +566,47 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
                 clickBusy ? "cursor-wait" : "cursor-crosshair",
               ].join(" ")}
             >
-              <img
-                ref={screenshotRef}
-                src={screenshot}
-                alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
-                className="mx-auto block h-auto max-h-full max-w-full w-auto object-contain select-none md:max-h-[min(100%,820px)]"
-                draggable={false}
-                onPointerUp={(event) => void handleLiveViewPointer(event)}
-              />
+              <div className="relative z-10 inline-block max-h-full max-w-full">
+                <img
+                  ref={screenshotRef}
+                  src={screenshot}
+                  alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
+                  className="mx-auto block h-auto max-h-full max-w-full w-auto object-contain select-none md:max-h-[min(100%,820px)]"
+                  draggable={false}
+                  onPointerUp={(event) => void handleLiveViewPointer(event)}
+                />
 
-              <input
-                ref={inputRef}
-                type="text"
-                inputMode={focus.inputType === "email" ? "email" : "text"}
-                enterKeyHint="next"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                aria-label="إدخال إلى متصفح مدرستي"
-                className="pointer-events-none absolute inset-x-0 bottom-0 h-12 min-h-[48px] w-full caret-transparent opacity-[0.02] text-base"
-                disabled={!sessionId}
-                onCompositionStart={() => {
-                  composingRef.current = true;
-                }}
-                onCompositionEnd={(event) => {
-                  composingRef.current = false;
-                  flushNativeInput(event.currentTarget);
-                }}
-                onInput={(event) => {
-                  flushNativeInput(event.currentTarget);
-                }}
-                onKeyDown={(event) => handleRemoteKey(event)}
-              />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  inputMode={focus.inputType === "email" ? "email" : "text"}
+                  enterKeyHint="next"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  aria-label="إدخال إلى متصفح مدرستي"
+                  className="absolute inset-0 z-10 h-full min-h-[44px] w-full bg-transparent text-base text-transparent caret-transparent outline-none"
+                  disabled={!sessionId}
+                  onPointerDown={() => {
+                    focusNativeInput();
+                  }}
+                  onPointerUp={(event) => {
+                    void handleLiveViewPointer(event);
+                  }}
+                  onCompositionStart={() => {
+                    composingRef.current = true;
+                  }}
+                  onCompositionEnd={(event) => {
+                    composingRef.current = false;
+                    flushNativeInput(event.currentTarget);
+                  }}
+                  onInput={(event) => {
+                    flushNativeInput(event.currentTarget);
+                  }}
+                  onKeyDown={(event) => handleRemoteKey(event)}
+                />
+              </div>
 
               {clickBusy ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/20">
@@ -611,7 +617,7 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
               ) : null}
 
               {returningHome ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/85 p-4 text-center text-sm font-semibold">
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 p-4 text-center text-sm font-semibold">
                   {RETURNING_HOME_MESSAGE}
                 </div>
               ) : null}
