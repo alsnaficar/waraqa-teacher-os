@@ -93,6 +93,18 @@ class FakeInteractiveAdapter {
     return [{ name: "الرياضيات" }, { name: "العلوم" }];
   }
 
+  async getTimetable() {
+    return [
+      {
+        dayOfWeek: 0,
+        period: 1,
+        subject: "الرياضيات",
+        grade: "الصف الأول المتوسط",
+        className: "1",
+      },
+    ];
+  }
+
   async clickAuthentication(x: number, y: number) {
     this.clicks.push({ x, y });
   }
@@ -364,6 +376,26 @@ describe("Madrasati browser session manager — lifecycle and ownership", () => 
     assert.equal("html" in (subjects[0] ?? {}), false);
     assert.equal("cookies" in (subjects[0] ?? {}), false);
     await assert.rejects(() => manager.readSubjects(USER_B), /not found|expired/i);
+    assert.equal(adapter.disconnectCalls, 0);
+  });
+
+  it("owner can read the timetable without HTML or cookies", async () => {
+    const { adapter, manager } = createManager();
+
+    await assert.rejects(() => manager.readTimetable(USER_A), /not found|expired/i);
+
+    await manager.startAuthentication(USER_A);
+    const timetable = await manager.readTimetable(USER_A);
+
+    assert.equal(timetable.length, 1);
+    assert.equal(timetable[0]?.dayOfWeek, 0);
+    assert.equal(timetable[0]?.period, 1);
+    assert.equal(timetable[0]?.subject, "الرياضيات");
+    assert.equal(timetable[0]?.grade, "الصف الأول المتوسط");
+    assert.equal(timetable[0]?.className, "1");
+    assert.equal("html" in (timetable[0] ?? {}), false);
+    assert.equal("cookies" in (timetable[0] ?? {}), false);
+    await assert.rejects(() => manager.readTimetable(USER_B), /not found|expired/i);
     assert.equal(adapter.disconnectCalls, 0);
   });
 
