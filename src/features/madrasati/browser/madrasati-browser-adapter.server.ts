@@ -29,6 +29,11 @@ import {
   MADRASATI_TEACHER_PROFILE_UNAVAILABLE_CODE,
   MADRASATI_TEACHER_PROFILE_UNAVAILABLE_MESSAGE,
 } from "./madrasati-teacher-profile.ts";
+import {
+  extractMadrasatiClasses,
+  MADRASATI_CLASSES_UNAVAILABLE_CODE,
+  MADRASATI_CLASSES_UNAVAILABLE_MESSAGE,
+} from "./madrasati-classes.ts";
 
 const MADRASATI_URL = "https://schools.madrasati.sa/";
 
@@ -322,7 +327,65 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
   async getClasses(): Promise<MadrasatiClass[]> {
     this.requireReadySession();
-    throw new MadrasatiBrowserNotReadyError("تم فتح جلسة مدرستي، لكن قراءة الفصول لم تُنفّذ بعد.");
+
+    const inspection = await this.inspectAuthenticationPage();
+
+    if (inspection.authenticationState !== "authenticated") {
+      throw new MadrasatiProviderError(
+        "NOT_AUTHENTICATED",
+        "لا يمكن قراءة الفصول قبل اكتمال تسجيل الدخول إلى مدرستي.",
+      );
+    }
+
+    const fromCurrent = extractMadrasatiClasses(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    if (fromCurrent.status === "found") {
+      return [...fromCurrent.classes];
+    }
+
+    if (fromCurrent.status === "empty") {
+      return [];
+    }
+
+    await this.automation.clickControlByAccessibleName(this.page!, [
+      "المقررات والمصادر",
+      "المقررات",
+    ]);
+    await this.automation.clickControlByAccessibleName(this.page!, ["مقرراتي"]);
+    await this.waitForClassCatalog();
+
+    const fromCourses = extractMadrasatiClasses(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    await this.automation.clickControlByAccessibleName(this.page!, [
+      "الرئيسية",
+      "الصفحة الرئيسية",
+    ]);
+
+    const after = await this.inspectAuthenticationPage();
+
+    if (after.authenticationState !== "authenticated") {
+      throw new MadrasatiProviderError(
+        "NOT_AUTHENTICATED",
+        "انتهت جلسة مدرستي أثناء قراءة الفصول.",
+      );
+    }
+
+    if (fromCourses.status === "found") {
+      return [...fromCourses.classes];
+    }
+
+    if (fromCourses.status === "empty") {
+      return [];
+    }
+
+    throw new MadrasatiProviderError(
+      MADRASATI_CLASSES_UNAVAILABLE_CODE,
+      MADRASATI_CLASSES_UNAVAILABLE_MESSAGE,
+    );
   }
 
   async getSubjects(): Promise<MadrasatiSubject[]> {
@@ -333,6 +396,16 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
   private requireReadySession(): void {
     if (!this.session || !this.page) {
       throw new MadrasatiNotConnectedError("محوّل متصفح مدرستي غير متصل.");
+    }
+  }
+
+  private async waitForClassCatalog(): Promise<void> {
+    const needles = ["الشعبة", "لا توجد مقررات", "لا يوجد مقررات", "الصف الدراسي", "مقرراتي"];
+
+    for (const needle of needles) {
+      if (await this.automation.waitForPageText(this.page!, needle, 4000)) {
+        return;
+      }
     }
   }
 }

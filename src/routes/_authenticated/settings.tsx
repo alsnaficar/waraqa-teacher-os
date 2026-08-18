@@ -11,10 +11,12 @@ import {
   previewMadrasatiSync,
   getMadrasatiAuthenticationStatus,
   getMadrasatiTeacherProfile,
+  getMadrasatiClasses,
   MADRASATI_DRY_RUN_DISCLAIMER,
   type MadrasatiDryRunPreviewResult,
   type MadrasatiAuthenticationStatusResult,
   type MadrasatiTeacherProfileResult,
+  type MadrasatiClassResult,
 } from "@/platform/integration/connectors/madrasati/madrasati.functions";
 import { StudentsPanel } from "@/features/homework/components/students-panel";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -63,9 +65,13 @@ function SettingsPage() {
     useState<MadrasatiAuthenticationStatusResult | null>(null);
   const [teacherProfile, setTeacherProfile] =
     useState<MadrasatiTeacherProfileResult | null>(null);
+  const [madrasatiClasses, setMadrasatiClasses] = useState<MadrasatiClassResult[] | null>(
+    null,
+  );
   const previewFn = useServerFn(previewMadrasatiSync);
   const madrasatiStatusFn = useServerFn(getMadrasatiAuthenticationStatus);
   const teacherProfileFn = useServerFn(getMadrasatiTeacherProfile);
+  const madrasatiClassesFn = useServerFn(getMadrasatiClasses);
 
   useEffect(() => {
     let active = true;
@@ -115,6 +121,16 @@ function SettingsPage() {
               setTeacherProfile(null);
             }
           }
+          try {
+            const classes = await madrasatiClassesFn();
+            if (active) {
+              setMadrasatiClasses(classes);
+            }
+          } catch {
+            if (active) {
+              setMadrasatiClasses(null);
+            }
+          }
         }
       } catch {
         if (active) {
@@ -123,13 +139,14 @@ function SettingsPage() {
             authenticationState: "not_authenticated",
           });
           setTeacherProfile(null);
+          setMadrasatiClasses(null);
         }
       }
     })();
     return () => {
       active = false;
     };
-  }, [madrasatiStatusFn, teacherProfileFn]);
+  }, [madrasatiStatusFn, teacherProfileFn, madrasatiClassesFn]);
 
   const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -185,6 +202,16 @@ function SettingsPage() {
                         ? "جلسة تسجيل الدخول إلى مدرستي ما زالت مفتوحة على الخادم."
                         : `مزامنة مدرستي ستتم عبر المتصفح عند توفر المنصة. ${MADRASATI_DRY_RUN_DISCLAIMER}`}
                   </p>
+                  {madrasatiStatus?.authenticationState === "authenticated" &&
+                  madrasatiClasses ? (
+                    <p className="mt-2 text-xs leading-relaxed text-amber-900/80">
+                      {madrasatiClasses.length > 0
+                        ? `الفصول المقروءة: ${madrasatiClasses
+                            .map((item) => `${item.grade} / ${item.className}`)
+                            .join("، ")}`
+                        : "لم يُعثر على فصول مسندة في مدرستي."}
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   asChild

@@ -111,6 +111,7 @@ describe("Madrasati teacher profile extraction", () => {
     assert.deepEqual(Object.keys(sanitized).sort(), [
       "accessibleNames",
       "labeledValues",
+      "tableRows",
       "text",
       "title",
       "url",

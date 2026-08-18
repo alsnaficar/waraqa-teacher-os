@@ -97,6 +97,7 @@ class InspectionAutomation implements BrowserAutomation {
       text: await this.getPageText(),
       accessibleNames: [] as string[],
       labeledValues: [] as Array<{ label: string; value: string }>,
+      tableRows: [] as Array<{ headers: string[]; cells: string[] }>,
     };
   }
 

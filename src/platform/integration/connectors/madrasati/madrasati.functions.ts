@@ -70,6 +70,12 @@ export type MadrasatiTeacherProfileResult = {
   semester?: string;
 };
 
+export type MadrasatiClassResult = {
+  grade: string;
+  className: string;
+  stage?: string;
+};
+
 export type MadrasatiAuthenticationLiveFrameResult = {
   mimeType: "image/jpeg" | "image/png";
   base64: string;
@@ -205,6 +211,26 @@ export const getMadrasatiTeacherProfile = createServerFn({ method: "POST" })
       ...(teacher.academicYear ? { academicYear: teacher.academicYear } : {}),
       ...(teacher.semester ? { semester: teacher.semester } : {}),
     };
+  });
+
+/**
+ * Read-only assigned classes from the authenticated user's live Madrasati session.
+ * Never writes to the database. Never returns HTML, cookies, URLs, or Playwright objects.
+ */
+export const getMadrasatiClasses = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<MadrasatiClassResult[]> => {
+    const { readAuthenticatedMadrasatiClasses } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    const classes = await readAuthenticatedMadrasatiClasses(context.userId);
+
+    return classes.map((item) => ({
+      grade: item.grade,
+      className: item.className,
+      ...(item.stage ? { stage: item.stage } : {}),
+    }));
   });
 
 /**

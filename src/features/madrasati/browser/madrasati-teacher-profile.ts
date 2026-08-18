@@ -5,6 +5,11 @@ export type MadrasatiLabeledValue = {
   readonly value: string;
 };
 
+export type MadrasatiTableRow = {
+  readonly headers: readonly string[];
+  readonly cells: readonly string[];
+};
+
 /**
  * Semantic snapshot of a Madrasati page.
  * Must never include HTML, cookies, passwords, or Playwright objects.
@@ -15,6 +20,7 @@ export type MadrasatiPageLandmarks = {
   readonly text: string;
   readonly accessibleNames: readonly string[];
   readonly labeledValues: readonly MadrasatiLabeledValue[];
+  readonly tableRows?: readonly MadrasatiTableRow[];
 };
 
 const NAV_NOISE = [
@@ -67,6 +73,13 @@ export function sanitizePageLandmarks(raw: MadrasatiPageLandmarks): MadrasatiPag
       }))
       .filter((row) => row.label.length > 0 && row.value.length > 0)
       .slice(0, 40),
+    tableRows: (raw.tableRows ?? [])
+      .map((row) => ({
+        headers: row.headers.map((header) => clip(header, 80)).slice(0, 12),
+        cells: row.cells.map((cell) => clip(cell, MAX_FIELD)).slice(0, 12),
+      }))
+      .filter((row) => row.cells.some((cell) => cell.length > 0))
+      .slice(0, 80),
   };
 }
 
