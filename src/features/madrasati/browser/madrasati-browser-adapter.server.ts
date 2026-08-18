@@ -17,12 +17,18 @@ import type {
 import {
   MadrasatiBrowserNotReadyError,
   MadrasatiNotConnectedError,
+  MadrasatiProviderError,
   type MadrasatiProvider,
 } from "../provider/madrasati-provider.ts";
 import type {
   MadrasatiFocusedControl,
   MadrasatiLiveFrame,
 } from "./madrasati-browser-live-session.ts";
+import {
+  extractMadrasatiTeacher,
+  MADRASATI_TEACHER_PROFILE_UNAVAILABLE_CODE,
+  MADRASATI_TEACHER_PROFILE_UNAVAILABLE_MESSAGE,
+} from "./madrasati-teacher-profile.ts";
 
 const MADRASATI_URL = "https://schools.madrasati.sa/";
 
@@ -258,8 +264,54 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
   async getTeacherProfile(): Promise<MadrasatiTeacher> {
     this.requireReadySession();
-    throw new MadrasatiBrowserNotReadyError(
-      "تم فتح جلسة مدرستي، لكن قراءة ملف المعلم لم تُنفّذ بعد.",
+
+    const inspection = await this.inspectAuthenticationPage();
+
+    if (inspection.authenticationState !== "authenticated") {
+      throw new MadrasatiProviderError(
+        "NOT_AUTHENTICATED",
+        "لا يمكن قراءة ملف المعلم قبل اكتمال تسجيل الدخول إلى مدرستي.",
+      );
+    }
+
+    const fromHome = extractMadrasatiTeacher(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    if (fromHome) {
+      return fromHome;
+    }
+
+    const openedProfile = await this.automation.clickControlByAccessibleName(
+      this.page!,
+      ["الملف الشخصي", "حسابي", "تعديل بياناتي", "بياناتي"],
+    );
+
+    if (openedProfile) {
+      await this.automation.waitForPageText(this.page!, "تعديل بياناتي", 4000);
+      await this.automation.clickControlByAccessibleName(this.page!, [
+        "تعديل بياناتي",
+        "بياناتي",
+      ]);
+      await this.automation.waitForPageText(this.page!, "الاسم", 8000);
+    }
+
+    const fromProfile = extractMadrasatiTeacher(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    await this.automation.clickControlByAccessibleName(this.page!, [
+      "الرئيسية",
+      "الصفحة الرئيسية",
+    ]);
+
+    if (fromProfile) {
+      return fromProfile;
+    }
+
+    throw new MadrasatiProviderError(
+      MADRASATI_TEACHER_PROFILE_UNAVAILABLE_CODE,
+      MADRASATI_TEACHER_PROFILE_UNAVAILABLE_MESSAGE,
     );
   }
 

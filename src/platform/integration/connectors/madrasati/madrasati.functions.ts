@@ -63,6 +63,13 @@ export type MadrasatiAuthenticationStatusResult = {
   authenticationState: "not_authenticated" | "authenticated";
 };
 
+export type MadrasatiTeacherProfileResult = {
+  displayName: string;
+  schoolName?: string;
+  academicYear?: string;
+  semester?: string;
+};
+
 export type MadrasatiAuthenticationLiveFrameResult = {
   mimeType: "image/jpeg" | "image/png";
   base64: string;
@@ -177,6 +184,27 @@ export const getMadrasatiAuthenticationStatus = createServerFn({ method: "POST" 
     );
 
     return peekAuthenticatedMadrasatiAuthentication(context.userId);
+  });
+
+/**
+ * Read-only teacher profile from the authenticated user's live Madrasati session.
+ * Never writes to the database. Never returns HTML, cookies, URLs, or Playwright objects.
+ */
+export const getMadrasatiTeacherProfile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<MadrasatiTeacherProfileResult> => {
+    const { readAuthenticatedMadrasatiTeacherProfile } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    const teacher = await readAuthenticatedMadrasatiTeacherProfile(context.userId);
+
+    return {
+      displayName: teacher.displayName,
+      ...(teacher.schoolName ? { schoolName: teacher.schoolName } : {}),
+      ...(teacher.academicYear ? { academicYear: teacher.academicYear } : {}),
+      ...(teacher.semester ? { semester: teacher.semester } : {}),
+    };
   });
 
 /**

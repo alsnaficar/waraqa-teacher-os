@@ -90,6 +90,31 @@ class InspectionAutomation implements BrowserAutomation {
     return { isEditable: false, inputType: "none" };
   }
 
+  async readPageLandmarks(_page: BrowserPageHandle) {
+    return {
+      url: await this.getPageUrl(),
+      title: await this.getPageTitle(),
+      text: await this.getPageText(),
+      accessibleNames: [] as string[],
+      labeledValues: [] as Array<{ label: string; value: string }>,
+    };
+  }
+
+  async clickControlByAccessibleName(
+    _page: BrowserPageHandle,
+    _names: readonly string[],
+  ): Promise<boolean> {
+    return false;
+  }
+
+  async waitForPageText(
+    _page: BrowserPageHandle,
+    _needle: string,
+    _timeoutMs?: number,
+  ): Promise<boolean> {
+    return false;
+  }
+
   subscribePageLiveFrame(
     _page: BrowserPageHandle,
     _listener: (frame: MadrasatiLiveFrame) => void,

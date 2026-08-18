@@ -104,6 +104,31 @@ class FakeBrowserAutomation implements BrowserAutomation {
     return { isEditable: false, inputType: "none" };
   }
 
+  async readPageLandmarks(_page: BrowserPageHandle) {
+    return {
+      url: await this.getPageUrl(_page),
+      title: await this.getPageTitle(_page),
+      text: await this.getPageText(_page),
+      accessibleNames: [] as string[],
+      labeledValues: [] as Array<{ label: string; value: string }>,
+    };
+  }
+
+  async clickControlByAccessibleName(
+    _page: BrowserPageHandle,
+    _names: readonly string[],
+  ): Promise<boolean> {
+    return false;
+  }
+
+  async waitForPageText(
+    _page: BrowserPageHandle,
+    _needle: string,
+    _timeoutMs?: number,
+  ): Promise<boolean> {
+    return false;
+  }
+
   subscribePageLiveFrame(
     _page: BrowserPageHandle,
     _listener: (frame: MadrasatiLiveFrame) => void,
@@ -168,6 +193,42 @@ test("MadrasatiBrowserAdapter — beginAuthentication exposes sanitized live fra
 
   const focus = await provider.inspectAuthenticationFocus();
   assert.deepEqual(Object.keys(focus).sort(), ["inputType", "isEditable"]);
+});
+
+test("MadrasatiBrowserAdapter — reads teacher profile from authenticated home landmarks", async () => {
+  class TeacherHomeAutomation extends FakeBrowserAutomation {
+    async getPageText(): Promise<string> {
+      return "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات";
+    }
+
+    async readPageLandmarks() {
+      return {
+        url: "https://schools.madrasati.sa/",
+        title: "مدرستي",
+        text: await this.getPageText(),
+        accessibleNames: ["جدولي", "المقررات والمصادر", "تسجيل الخروج"],
+        labeledValues: [
+          { label: "المدرسة", value: "مدرسة الاختبار الأهلية" },
+          { label: "العام الدراسي", value: "1447" },
+          { label: "الفصل الدراسي", value: "الأول" },
+        ],
+      };
+    }
+  }
+
+  const provider = new MadrasatiBrowserAdapter(new TeacherHomeAutomation());
+  await provider.connect();
+
+  const teacher = await provider.getTeacherProfile();
+  assert.equal(teacher.displayName, "معلم الاختبار");
+  assert.equal(teacher.schoolName, "مدرسة الاختبار الأهلية");
+  assert.equal(teacher.academicYear, "1447");
+  assert.equal(teacher.semester, "1");
+
+  await assert.rejects(
+    () => provider.getTimetable(),
+    /قراءة الجدول لم تُنفّذ بعد/,
+  );
 });
 
 test("Playwright boundary — page lifecycle through opaque handles", async () => {

@@ -20,6 +20,10 @@ import {
   type MadrasatiFocusedControl,
   type MadrasatiLiveFrame,
 } from "./madrasati-browser-live-session.ts";
+import {
+  sanitizePageLandmarks,
+  type MadrasatiPageLandmarks,
+} from "./madrasati-teacher-profile.ts";
 
 type SessionRecord = {
   readonly context: BrowserContext;
@@ -361,6 +365,139 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     }
 
     return { isEditable: false, inputType: "none" };
+  }
+
+  async readPageLandmarks(
+    page: BrowserPageHandle,
+  ): Promise<MadrasatiPageLandmarks> {
+    const pageObject = this.requirePage(page);
+    const labeledValues: Array<{ label: string; value: string }> = [];
+    const accessibleNames: string[] = [];
+
+    for (const frame of pageObject.frames()) {
+      try {
+        const part = await frame.evaluate(() => {
+          const names: string[] = [];
+          const labeled: Array<{ label: string; value: string }> = [];
+
+          const pushName = (value: string | null | undefined) => {
+            const trimmed = (value ?? "").replace(/\s+/g, " ").trim();
+            if (trimmed) {
+              names.push(trimmed.slice(0, 200));
+            }
+          };
+
+          const controls = document.querySelectorAll(
+            'a, button, [role="button"], [role="link"], [role="menuitem"]',
+          );
+
+          for (const el of controls) {
+            if (!(el instanceof HTMLElement)) {
+              continue;
+            }
+            pushName(el.getAttribute("aria-label") || el.innerText);
+          }
+
+          for (const dt of document.querySelectorAll("dt")) {
+            const dd = dt.nextElementSibling;
+            if (dd && dd.tagName === "DD") {
+              labeled.push({
+                label: (dt.textContent ?? "").replace(/\s+/g, " ").trim(),
+                value: (dd.textContent ?? "").replace(/\s+/g, " ").trim(),
+              });
+            }
+          }
+
+          for (const label of document.querySelectorAll("label")) {
+            const text = (label.textContent ?? "").replace(/\s+/g, " ").trim();
+            const controlId = label.getAttribute("for");
+            const control = controlId ? document.getElementById(controlId) : null;
+            const value =
+              control instanceof HTMLInputElement ||
+              control instanceof HTMLSelectElement ||
+              control instanceof HTMLTextAreaElement
+                ? control.value
+                : (label.nextElementSibling?.textContent ?? "");
+            if (text && value) {
+              labeled.push({
+                label: text,
+                value: value.replace(/\s+/g, " ").trim(),
+              });
+            }
+          }
+
+          return { accessibleNames: names, labeledValues: labeled };
+        });
+
+        accessibleNames.push(...part.accessibleNames);
+        labeledValues.push(...part.labeledValues);
+      } catch {
+        // Cross-origin frames (Microsoft SSO) cannot be read.
+      }
+    }
+
+    return sanitizePageLandmarks({
+      url: pageObject.url(),
+      title: await pageObject.title(),
+      text: await this.getPageText(page),
+      accessibleNames,
+      labeledValues,
+    });
+  }
+
+  async clickControlByAccessibleName(
+    page: BrowserPageHandle,
+    names: readonly string[],
+  ): Promise<boolean> {
+    const pageObject = this.requirePage(page);
+    const roles = ["button", "link", "menuitem"] as const;
+
+    for (const name of names) {
+      const needle = name.trim();
+      if (!needle) {
+        continue;
+      }
+
+      for (const frame of pageObject.frames()) {
+        for (const role of roles) {
+          try {
+            const locator = frame.getByRole(role, { name: needle, exact: false });
+            if ((await locator.count()) > 0) {
+              await locator.first().click({ timeout: 4000 });
+              return true;
+            }
+          } catch {
+            // Try the next role or frame.
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  async waitForPageText(
+    page: BrowserPageHandle,
+    needle: string,
+    timeoutMs = 8000,
+  ): Promise<boolean> {
+    const pageObject = this.requirePage(page);
+    const snippet = needle.trim();
+
+    if (!snippet) {
+      return false;
+    }
+
+    try {
+      await pageObject.waitForFunction(
+        (text: string) => (document.body?.innerText ?? "").includes(text),
+        snippet,
+        { timeout: Math.min(Math.max(timeoutMs, 250), 15000) },
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   subscribePageLiveFrame(

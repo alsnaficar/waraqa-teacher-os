@@ -3,6 +3,7 @@ import {
   type MadrasatiBrowserAuthenticationStart,
 } from "../../../../features/madrasati/browser/madrasati-browser-session-manager.server.ts";
 import type { MadrasatiAuthenticationPage } from "../../../../features/madrasati/provider/madrasati-provider.ts";
+import type { MadrasatiTeacher } from "../../../../features/madrasati/provider/models.ts";
 import type {
   MadrasatiFocusedControl,
   MadrasatiLiveFrame,
@@ -63,6 +64,18 @@ export async function peekAuthenticatedMadrasatiAuthentication(
   const userId = requireAuthenticatedUserId(waraqaUserId);
 
   return madrasatiBrowserSessionManager.peekAuthentication(userId);
+}
+
+/**
+ * Read-only teacher profile from the authenticated user's live Madrasati session.
+ * Never writes to the database and never returns HTML, cookies, or Playwright objects.
+ */
+export async function readAuthenticatedMadrasatiTeacherProfile(
+  waraqaUserId: string,
+): Promise<MadrasatiTeacher> {
+  const userId = requireAuthenticatedUserId(waraqaUserId);
+
+  return madrasatiBrowserSessionManager.readTeacherProfile(userId);
 }
 
 /**
