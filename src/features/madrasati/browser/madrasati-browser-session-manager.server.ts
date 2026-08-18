@@ -4,7 +4,7 @@ import {
   PlaywrightBrowserAutomation,
 } from "./playwright-browser-automation.server.ts";
 import type { MadrasatiAuthenticationPage } from "../provider/madrasati-provider.ts";
-import type { MadrasatiClass, MadrasatiSubject, MadrasatiTeacher } from "../provider/models.ts";
+import type { MadrasatiClass, MadrasatiSubject, MadrasatiTeacher, MadrasatiTimetableEntry } from "../provider/models.ts";
 import {
   madrasatiLiveFrameHub,
   sanitizeFocusedControl,
@@ -260,6 +260,28 @@ export class MadrasatiBrowserSessionManager {
     record.lastUsedAt = Date.now();
 
     return record.provider.getSubjects();
+  }
+
+  /**
+   * Read-only teacher timetable from the caller's authenticated live session.
+   * Never writes to the database and never returns HTML or cookies.
+   */
+  async readTimetable(userId: string): Promise<MadrasatiTimetableEntry[]> {
+    const ownerId = this.requireUserId(userId);
+
+    await this.cleanupExpired();
+
+    const existingId = this.sessionsByUser.get(ownerId);
+
+    if (!existingId) {
+      throw new Error("Madrasati browser session was not found or has expired.");
+    }
+
+    const record = this.requireOwnedSession(ownerId, existingId);
+
+    record.lastUsedAt = Date.now();
+
+    return record.provider.getTimetable();
   }
 
   async getAuthenticationScreenshot(

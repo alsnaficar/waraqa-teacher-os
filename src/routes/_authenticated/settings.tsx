@@ -13,12 +13,14 @@ import {
   getMadrasatiTeacherProfile,
   getMadrasatiClasses,
   getMadrasatiSubjects,
+  getMadrasatiTimetable,
   MADRASATI_DRY_RUN_DISCLAIMER,
   type MadrasatiDryRunPreviewResult,
   type MadrasatiAuthenticationStatusResult,
   type MadrasatiTeacherProfileResult,
   type MadrasatiClassResult,
   type MadrasatiSubjectResult,
+  type MadrasatiTimetableEntryResult,
 } from "@/platform/integration/connectors/madrasati/madrasati.functions";
 import { StudentsPanel } from "@/features/homework/components/students-panel";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -73,11 +75,15 @@ function SettingsPage() {
   const [madrasatiSubjects, setMadrasatiSubjects] = useState<MadrasatiSubjectResult[] | null>(
     null,
   );
+  const [madrasatiTimetable, setMadrasatiTimetable] = useState<
+    MadrasatiTimetableEntryResult[] | null
+  >(null);
   const previewFn = useServerFn(previewMadrasatiSync);
   const madrasatiStatusFn = useServerFn(getMadrasatiAuthenticationStatus);
   const teacherProfileFn = useServerFn(getMadrasatiTeacherProfile);
   const madrasatiClassesFn = useServerFn(getMadrasatiClasses);
   const madrasatiSubjectsFn = useServerFn(getMadrasatiSubjects);
+  const madrasatiTimetableFn = useServerFn(getMadrasatiTimetable);
 
   useEffect(() => {
     let active = true;
@@ -147,6 +153,16 @@ function SettingsPage() {
               setMadrasatiSubjects(null);
             }
           }
+          try {
+            const timetable = await madrasatiTimetableFn();
+            if (active) {
+              setMadrasatiTimetable(timetable);
+            }
+          } catch {
+            if (active) {
+              setMadrasatiTimetable(null);
+            }
+          }
         }
       } catch {
         if (active) {
@@ -157,13 +173,14 @@ function SettingsPage() {
           setTeacherProfile(null);
           setMadrasatiClasses(null);
           setMadrasatiSubjects(null);
+          setMadrasatiTimetable(null);
         }
       }
     })();
     return () => {
       active = false;
     };
-  }, [madrasatiStatusFn, teacherProfileFn, madrasatiClassesFn, madrasatiSubjectsFn]);
+  }, [madrasatiStatusFn, teacherProfileFn, madrasatiClassesFn, madrasatiSubjectsFn, madrasatiTimetableFn]);
 
   const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -237,6 +254,14 @@ function SettingsPage() {
                             .map((item) => item.name)
                             .join("، ")}`
                         : "لم يُعثر على مواد مسندة في مدرستي."}
+                    </p>
+                  ) : null}
+                  {madrasatiStatus?.authenticationState === "authenticated" &&
+                  madrasatiTimetable ? (
+                    <p className="mt-2 text-xs leading-relaxed text-amber-900/80">
+                      {madrasatiTimetable.length > 0
+                        ? `الحصص المكتشفة من مدرستي: ${madrasatiTimetable.length}`
+                        : "لم يُعثر على حصص في جدول مدرستي."}
                     </p>
                   ) : null}
                 </div>

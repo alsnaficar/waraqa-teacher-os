@@ -391,3 +391,113 @@ test("PlaywrightBrowserAutomation — مقرراتي table landmarks normalize t
     await automation.close();
   }
 });
+
+test("PlaywrightBrowserAutomation — جدولي table landmarks normalize to timetable entries", async () => {
+  const { extractMadrasatiTimetable } = await import("./madrasati-timetable.ts");
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "madrasati-timetable-"));
+    const home = join(dir, "home.html");
+    const timetable = join(dir, "timetable.html");
+
+    writeFileSync(
+      home,
+      `<!doctype html><html lang="ar" dir="rtl"><body>
+        <nav>
+          <a href="home.html">الرئيسية</a>
+          <a href="timetable.html">جدولي</a>
+          <a href="#">المقررات والمصادر</a>
+          <a href="#">الواجبات</a>
+        </nav>
+        <p>مرحباً، معلم الاختبار</p>
+      </body></html>`,
+      "utf8",
+    );
+    writeFileSync(
+      timetable,
+      `<!doctype html><html lang="ar" dir="rtl"><body>
+        <nav>
+          <a href="home.html">الرئيسية</a>
+          <a href="timetable.html">جدولي</a>
+        </nav>
+        <h1>جدولي</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>اليوم</th>
+              <th>الحصة</th>
+              <th>المقرر</th>
+              <th>الصف</th>
+              <th>الشعبة</th>
+              <th>قاعة</th>
+              <th>من</th>
+              <th>إلى</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>الأحد</td>
+              <td>الحصة الأولى</td>
+              <td>الرياضيات</td>
+              <td>الصف الأول المتوسط</td>
+              <td>1</td>
+              <td>أ-101</td>
+              <td>07:00</td>
+              <td>07:45</td>
+            </tr>
+            <tr>
+              <td>الاثنين</td>
+              <td>2</td>
+              <td>العلوم</td>
+              <td>الصف الأول المتوسط</td>
+              <td>2</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </body></html>`,
+      "utf8",
+    );
+
+    await automation.goto(page, `file://${home}`, { waitUntil: "domcontentloaded" });
+    const opened = await automation.clickControlByAccessibleName(page, ["جدولي"]);
+    assert.equal(opened, true);
+
+    const appeared = await automation.waitForPageText(page, "الحصة", 5000);
+    assert.equal(appeared, true);
+
+    const landmarks = await automation.readPageLandmarks(page);
+    assert.equal("html" in landmarks, false);
+    assert.ok((landmarks.tableRows ?? []).length >= 2);
+
+    const extracted = extractMadrasatiTimetable(landmarks);
+    assert.equal(extracted.status, "found");
+    assert.equal(extracted.entries[0]?.dayOfWeek, 0);
+    assert.equal(extracted.entries[0]?.period, 1);
+    assert.equal(extracted.entries[0]?.subject, "الرياضيات");
+    assert.equal(extracted.entries[0]?.className, "1");
+    assert.equal(extracted.entries[0]?.classroom, "أ-101");
+    assert.equal(extracted.entries[0]?.startsAt, "07:00");
+    assert.equal(extracted.entries[1]?.dayOfWeek, 1);
+    assert.equal(extracted.entries[1]?.subject, "العلوم");
+    assert.equal("classroom" in (extracted.entries[1] ?? {}), false);
+    assert.equal("startsAt" in (extracted.entries[1] ?? {}), false);
+
+    const returned = await automation.clickControlByAccessibleName(page, ["الرئيسية"]);
+    assert.equal(returned, true);
+    assert.equal(await automation.waitForPageText(page, "معلم الاختبار", 5000), true);
+  } finally {
+    await automation.close();
+  }
+});

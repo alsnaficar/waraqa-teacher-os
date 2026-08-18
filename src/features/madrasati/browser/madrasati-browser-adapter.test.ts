@@ -229,8 +229,10 @@ test("MadrasatiBrowserAdapter — reads teacher profile from authenticated home 
 
   await assert.rejects(
     () => provider.getTimetable(),
-    /قراءة الجدول لم تُنفّذ بعد/,
+    /تعذر قراءة الجدول/,
   );
+  const after = await provider.getTeacherProfile();
+  assert.equal(after.displayName, "معلم الاختبار");
 });
 
 test("MadrasatiBrowserAdapter — navigates to مقرراتي and returns normalized classes", async () => {
@@ -333,7 +335,9 @@ test("MadrasatiBrowserAdapter — navigates to مقرراتي and returns normal
   assert.equal(automation.view, "home");
   assert.equal(automation.sessionClosed, false);
 
-  await assert.rejects(() => provider.getTimetable(), /قراءة الجدول لم تُنفّذ بعد/);
+  await assert.rejects(() => provider.getTimetable(), /تعذر قراءة الجدول/);
+  assert.equal(automation.view, "home");
+  assert.equal(automation.sessionClosed, false);
 });
 
 test("MadrasatiBrowserAdapter — getClasses fails closed when unauthenticated or unreadable", async () => {
@@ -481,6 +485,269 @@ test("MadrasatiBrowserAdapter — getSubjects fails closed when unauthenticated 
   await assert.rejects(() => unreadable.getSubjects(), /تعذر قراءة المواد/);
   assert.equal(automation.view, "home");
   assert.equal(automation.sessionClosed, false);
+});
+
+test("MadrasatiBrowserAdapter — navigates to جدولي and returns normalized timetable entries", async () => {
+  class TimetableAutomation extends FakeBrowserAutomation {
+    view: "home" | "timetable" = "home";
+    clicked: string[] = [];
+    sessionClosed = false;
+    pageClosed = false;
+
+    async closeSession(): Promise<void> {
+      this.sessionClosed = true;
+    }
+
+    async closePage(): Promise<void> {
+      this.pageClosed = true;
+    }
+
+    async getPageText(): Promise<string> {
+      if (this.view === "timetable") {
+        return "جدولي\nالأحد\nالحصة\nالرياضيات";
+      }
+
+      return "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+    }
+
+    async readPageLandmarks() {
+      if (this.view === "timetable") {
+        return {
+          url: "https://schools.madrasati.sa/Timetable",
+          title: "جدولي",
+          text: await this.getPageText(),
+          accessibleNames: ["جدولي", "الرئيسية"],
+          labeledValues: [] as Array<{ label: string; value: string }>,
+          tableRows: [
+            {
+              headers: ["اليوم", "الحصة", "المقرر", "الصف", "الشعبة", "قاعة"],
+              cells: ["الأحد", "الحصة الأولى", "الرياضيات", "الصف الأول المتوسط", "1", "أ-101"],
+            },
+            {
+              headers: ["اليوم", "الحصة", "المقرر", "الصف", "الشعبة", "قاعة"],
+              cells: ["الاثنين", "2", "العلوم", "الصف الأول المتوسط", "2", "أ-101"],
+            },
+          ],
+        };
+      }
+
+      return {
+        url: "https://schools.madrasati.sa/",
+        title: "مدرستي",
+        text: await this.getPageText(),
+        accessibleNames: ["جدولي", "المقررات والمصادر", "الرئيسية"],
+        labeledValues: [],
+        tableRows: [],
+      };
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      this.clicked.push(names[0] ?? "");
+
+      if (names.some((name) => name === "جدولي" || name === "الجدول")) {
+        this.view = "timetable";
+        return true;
+      }
+
+      if (names.some((name) => name === "الرئيسية" || name === "الصفحة الرئيسية")) {
+        this.view = "home";
+        return true;
+      }
+
+      return false;
+    }
+
+    async waitForPageText(
+      _page: BrowserPageHandle,
+      needle: string,
+    ): Promise<boolean> {
+      return (await this.getPageText()).includes(needle);
+    }
+  }
+
+  const automation = new TimetableAutomation();
+  const provider = new MadrasatiBrowserAdapter(automation);
+  await provider.connect();
+
+  const timetable = await provider.getTimetable();
+
+  assert.equal(timetable.length, 2);
+  assert.equal(timetable[0]?.dayOfWeek, 0);
+  assert.equal(timetable[0]?.period, 1);
+  assert.equal(timetable[0]?.subject, "الرياضيات");
+  assert.equal(timetable[0]?.grade, "الصف الأول المتوسط");
+  assert.equal(timetable[0]?.className, "1");
+  assert.equal(timetable[0]?.classroom, "أ-101");
+  assert.equal(timetable[1]?.dayOfWeek, 1);
+  assert.equal(timetable[1]?.subject, "العلوم");
+  assert.equal(automation.view, "home");
+  assert.equal(automation.sessionClosed, false);
+  assert.equal(automation.pageClosed, false);
+  assert.ok(automation.clicked.includes("جدولي"));
+  assert.ok(automation.clicked.includes("الرئيسية"));
+
+  const teacher = await provider.getTeacherProfile();
+  assert.equal(teacher.displayName, "معلم الاختبار");
+});
+
+test("MadrasatiBrowserAdapter — already on جدولي does not navigate again", async () => {
+  class AlreadyOnTimetableAutomation extends FakeBrowserAutomation {
+    clicked: string[] = [];
+
+    async getPageText(): Promise<string> {
+      return "جدولي\nالأحد\nالحصة الأولى\nالرياضيات\nتسجيل الخروج\nالمقررات";
+    }
+
+    async readPageLandmarks() {
+      return {
+        url: "https://schools.madrasati.sa/Timetable",
+        title: "جدولي",
+        text: await this.getPageText(),
+        accessibleNames: ["جدولي", "الرئيسية"],
+        labeledValues: [] as Array<{ label: string; value: string }>,
+        tableRows: [
+          {
+            headers: ["اليوم", "الحصة", "المقرر", "الصف", "الشعبة"],
+            cells: ["الأحد", "1", "الرياضيات", "الصف الأول المتوسط", "1"],
+          },
+        ],
+      };
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      this.clicked.push(names[0] ?? "");
+      return true;
+    }
+  }
+
+  const automation = new AlreadyOnTimetableAutomation();
+  const provider = new MadrasatiBrowserAdapter(automation);
+  await provider.connect();
+
+  const timetable = await provider.getTimetable();
+  assert.equal(timetable.length, 1);
+  assert.equal(timetable[0]?.subject, "الرياضيات");
+  assert.deepEqual(automation.clicked, []);
+});
+
+test("MadrasatiBrowserAdapter — getTimetable fails closed when unauthenticated or unreadable", async () => {
+  const unauthenticated = new MadrasatiBrowserAdapter(new FakeBrowserAutomation());
+  await unauthenticated.connect();
+  await assert.rejects(() => unauthenticated.getTimetable(), /قبل اكتمال تسجيل الدخول/);
+
+  class UnreadableTimetableAutomation extends FakeBrowserAutomation {
+    view: "home" | "timetable" = "home";
+    sessionClosed = false;
+
+    async closeSession(): Promise<void> {
+      this.sessionClosed = true;
+    }
+
+    async getPageText(): Promise<string> {
+      return this.view === "timetable"
+        ? "جدولي"
+        : "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+    }
+
+    async readPageLandmarks() {
+      return {
+        url:
+          this.view === "timetable"
+            ? "https://schools.madrasati.sa/Timetable"
+            : "https://schools.madrasati.sa/",
+        title: this.view === "timetable" ? "جدولي" : "مدرستي",
+        text: await this.getPageText(),
+        accessibleNames: ["جدولي", "المقررات والمصادر", "الرئيسية"],
+        labeledValues: [] as Array<{ label: string; value: string }>,
+        tableRows: [],
+      };
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      if (names.some((name) => name === "جدولي" || name === "الجدول")) {
+        this.view = "timetable";
+        return true;
+      }
+      if (names.some((name) => name === "الرئيسية")) {
+        this.view = "home";
+        return true;
+      }
+      return false;
+    }
+
+    async waitForPageText(): Promise<boolean> {
+      return true;
+    }
+  }
+
+  const automation = new UnreadableTimetableAutomation();
+  const unreadable = new MadrasatiBrowserAdapter(automation);
+  await unreadable.connect();
+  await assert.rejects(() => unreadable.getTimetable(), /تعذر قراءة الجدول/);
+  assert.equal(automation.view, "home");
+  assert.equal(automation.sessionClosed, false);
+});
+
+test("MadrasatiBrowserAdapter — confirmed empty جدولي is not a fake success with invented lessons", async () => {
+  class EmptyTimetableAutomation extends FakeBrowserAutomation {
+    view: "home" | "timetable" = "home";
+
+    async getPageText(): Promise<string> {
+      return this.view === "timetable"
+        ? "جدولي\nلا توجد حصص"
+        : "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+    }
+
+    async readPageLandmarks() {
+      return {
+        url:
+          this.view === "timetable"
+            ? "https://schools.madrasati.sa/Timetable"
+            : "https://schools.madrasati.sa/",
+        title: this.view === "timetable" ? "جدولي" : "مدرستي",
+        text: await this.getPageText(),
+        accessibleNames: ["جدولي", "الرئيسية"],
+        labeledValues: [] as Array<{ label: string; value: string }>,
+        tableRows: [],
+      };
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      if (names.some((name) => name === "جدولي" || name === "الجدول")) {
+        this.view = "timetable";
+        return true;
+      }
+      if (names.some((name) => name === "الرئيسية")) {
+        this.view = "home";
+        return true;
+      }
+      return false;
+    }
+
+    async waitForPageText(
+      _page: BrowserPageHandle,
+      needle: string,
+    ): Promise<boolean> {
+      return (await this.getPageText()).includes(needle);
+    }
+  }
+
+  const provider = new MadrasatiBrowserAdapter(new EmptyTimetableAutomation());
+  await provider.connect();
+  const timetable = await provider.getTimetable();
+  assert.deepEqual(timetable, []);
 });
 
 test("Playwright boundary — page lifecycle through opaque handles", async () => {

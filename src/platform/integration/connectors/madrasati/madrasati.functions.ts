@@ -81,6 +81,17 @@ export type MadrasatiSubjectResult = {
   code?: string;
 };
 
+export type MadrasatiTimetableEntryResult = {
+  dayOfWeek: number;
+  period: number;
+  subject: string;
+  grade: string;
+  className: string;
+  classroom?: string;
+  startsAt?: string;
+  endsAt?: string;
+};
+
 export type MadrasatiAuthenticationLiveFrameResult = {
   mimeType: "image/jpeg" | "image/png";
   base64: string;
@@ -254,6 +265,31 @@ export const getMadrasatiSubjects = createServerFn({ method: "POST" })
     return subjects.map((item) => ({
       name: item.name,
       ...(item.code ? { code: item.code } : {}),
+    }));
+  });
+
+/**
+ * Read-only teacher timetable from the authenticated user's live Madrasati session.
+ * Never writes to the database. Never returns HTML, cookies, URLs, or Playwright objects.
+ */
+export const getMadrasatiTimetable = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<MadrasatiTimetableEntryResult[]> => {
+    const { readAuthenticatedMadrasatiTimetable } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    const timetable = await readAuthenticatedMadrasatiTimetable(context.userId);
+
+    return timetable.map((item) => ({
+      dayOfWeek: item.dayOfWeek,
+      period: item.period,
+      subject: item.subject,
+      grade: item.grade,
+      className: item.className,
+      ...(item.classroom ? { classroom: item.classroom } : {}),
+      ...(item.startsAt ? { startsAt: item.startsAt } : {}),
+      ...(item.endsAt ? { endsAt: item.endsAt } : {}),
     }));
   });
 

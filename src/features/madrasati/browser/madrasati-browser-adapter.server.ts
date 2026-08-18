@@ -15,7 +15,6 @@ import type {
   MadrasatiTimetableEntry,
 } from "../provider/models.ts";
 import {
-  MadrasatiBrowserNotReadyError,
   MadrasatiNotConnectedError,
   MadrasatiProviderError,
   type MadrasatiProvider,
@@ -39,6 +38,11 @@ import {
   MADRASATI_SUBJECTS_UNAVAILABLE_CODE,
   MADRASATI_SUBJECTS_UNAVAILABLE_MESSAGE,
 } from "./madrasati-subjects.ts";
+import {
+  extractMadrasatiTimetable,
+  MADRASATI_TIMETABLE_UNAVAILABLE_CODE,
+  MADRASATI_TIMETABLE_UNAVAILABLE_MESSAGE,
+} from "./madrasati-timetable.ts";
 
 const MADRASATI_URL = "https://schools.madrasati.sa/";
 
@@ -327,7 +331,66 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
   async getTimetable(): Promise<MadrasatiTimetableEntry[]> {
     this.requireReadySession();
-    throw new MadrasatiBrowserNotReadyError("تم فتح جلسة مدرستي، لكن قراءة الجدول لم تُنفّذ بعد.");
+
+    const inspection = await this.inspectAuthenticationPage();
+
+    if (inspection.authenticationState !== "authenticated") {
+      throw new MadrasatiProviderError(
+        "NOT_AUTHENTICATED",
+        "لا يمكن قراءة الجدول قبل اكتمال تسجيل الدخول إلى مدرستي.",
+      );
+    }
+
+    const fromCurrent = extractMadrasatiTimetable(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    if (fromCurrent.status === "found") {
+      return [...fromCurrent.entries];
+    }
+
+    if (fromCurrent.status === "empty") {
+      return [];
+    }
+
+    await this.automation.clickControlByAccessibleName(this.page!, [
+      "جدولي",
+      "الجدول الدراسي",
+      "جدول الحصص",
+      "الجدول",
+    ]);
+    await this.waitForTimetable();
+
+    const fromTimetable = extractMadrasatiTimetable(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    await this.automation.clickControlByAccessibleName(this.page!, [
+      "الرئيسية",
+      "الصفحة الرئيسية",
+    ]);
+
+    const after = await this.inspectAuthenticationPage();
+
+    if (after.authenticationState !== "authenticated") {
+      throw new MadrasatiProviderError(
+        "NOT_AUTHENTICATED",
+        "انتهت جلسة مدرستي أثناء قراءة الجدول.",
+      );
+    }
+
+    if (fromTimetable.status === "found") {
+      return [...fromTimetable.entries];
+    }
+
+    if (fromTimetable.status === "empty") {
+      return [];
+    }
+
+    throw new MadrasatiProviderError(
+      MADRASATI_TIMETABLE_UNAVAILABLE_CODE,
+      MADRASATI_TIMETABLE_UNAVAILABLE_MESSAGE,
+    );
   }
 
   async getClasses(): Promise<MadrasatiClass[]> {
@@ -464,6 +527,23 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
   private async waitForClassCatalog(): Promise<void> {
     const needles = ["الشعبة", "لا توجد مقررات", "لا يوجد مقررات", "الصف الدراسي", "مقرراتي"];
+
+    for (const needle of needles) {
+      if (await this.automation.waitForPageText(this.page!, needle, 4000)) {
+        return;
+      }
+    }
+  }
+
+  private async waitForTimetable(): Promise<void> {
+    const needles = [
+      "الأحد",
+      "الحصة",
+      "لا يوجد جدول",
+      "لا توجد حصص",
+      "لا يوجد حصص",
+      "الجدول فارغ",
+    ];
 
     for (const needle of needles) {
       if (await this.automation.waitForPageText(this.page!, needle, 4000)) {

@@ -163,6 +163,24 @@ export function isGradeValue(value: string): boolean {
   return hasStageOrGradeWord && GRADE_PATTERN.test(trimmed);
 }
 
+/** Longest explicit grade phrase inside a timetable/catalog blob. */
+export function findGradeInText(value: string): string | undefined {
+  const trimmed = collapse(value);
+  if (!trimmed || /الفصل الدراسي/.test(trimmed)) {
+    return undefined;
+  }
+
+  const matches = [...trimmed.matchAll(new RegExp(GRADE_PATTERN, "g"))]
+    .map((match) => collapse(match[0] ?? ""))
+    .filter((grade) => isGradeValue(grade));
+
+  if (matches.length === 0) {
+    return undefined;
+  }
+
+  return matches.sort((left, right) => right.length - left.length)[0];
+}
+
 export function isClassNameValue(value: string): boolean {
   const trimmed = collapse(value).replace(/^(?:الشعبة|شعبة|الفصل|فصل)\s*/u, "");
 

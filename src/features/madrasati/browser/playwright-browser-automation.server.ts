@@ -468,7 +468,9 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
             const gridRows = grid.querySelectorAll('[role="row"]');
             for (let rowIndex = 0; rowIndex < gridRows.length; rowIndex += 1) {
               const cells = Array.from(
-                gridRows[rowIndex].querySelectorAll('[role="cell"], [role="gridcell"]'),
+                gridRows[rowIndex].querySelectorAll(
+                  '[role="rowheader"], [role="cell"], [role="gridcell"]',
+                ),
               ).map(function(el) {
                 return clean(el.textContent);
               });
