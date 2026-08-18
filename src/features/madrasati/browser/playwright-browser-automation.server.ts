@@ -136,7 +136,23 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
   }
 
   async getPageText(page: BrowserPageHandle): Promise<string> {
-    return this.requirePage(page).locator("body").innerText();
+    const pageObject = this.requirePage(page);
+    const chunks: string[] = [];
+
+    for (const frame of pageObject.frames()) {
+      try {
+        const text = await frame.locator("body").innerText({ timeout: 2500 });
+        const trimmed = text.trim();
+
+        if (trimmed) {
+          chunks.push(trimmed);
+        }
+      } catch {
+        // Cross-origin frames (Microsoft SSO) cannot be read. Skip them.
+      }
+    }
+
+    return chunks.join("\n");
   }
 
   async getPageScreenshot(page: BrowserPageHandle): Promise<Uint8Array> {

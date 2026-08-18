@@ -108,6 +108,7 @@ describe("Madrasati authenticated dry-run preview", () => {
     const modal = readFileSync(join(ROOT, MODAL_FILE), "utf8");
     assert.match(modal, /معاينة مزامنة مدرستي/);
     assert.match(modal, /MADRASATI_DRY_RUN_DISCLAIMER|معاينة تجريبية/);
+    assert.match(modal, /getMadrasatiAuthenticationStatus/);
     assert.equal(/\btype=["']password["']/.test(modal), false);
     assert.equal(/تم جلب البيانات من مدرستي|تمت المزامنة/.test(modal), false);
   });

@@ -146,6 +146,10 @@ describe("Madrasati live-session transport policy", () => {
     assert.equal(/setInterval\(\s*\(\)\s*=>\s*\{\s*void pullLiveFrame/s.test(modal), false);
     assert.equal(/LIVE_FRAME_INTERVAL_MS/.test(modal), false);
     assert.equal(/socket\.io|new WebSocket/.test(modal), false);
+    assert.match(
+      modal,
+      /Keep the authenticated Playwright session on the server for sync/,
+    );
   });
 
   it("opens the native keyboard by focusing a real overlay input during the tap gesture", () => {
@@ -284,6 +288,14 @@ describe("Madrasati live-session transport policy", () => {
     assert.match(
       source,
       /export const waitForMadrasatiAuthenticationLiveFrame[\s\S]*middleware\(\[requireSupabaseAuth\]\)[\s\S]*context\.userId/,
+    );
+    assert.match(
+      source,
+      /export const inspectMadrasatiAuthentication[\s\S]*middleware\(\[requireSupabaseAuth\]\)[\s\S]*authenticationState: page\.authenticationState/,
+    );
+    assert.match(
+      source,
+      /export const getMadrasatiAuthenticationStatus[\s\S]*middleware\(\[requireSupabaseAuth\]\)[\s\S]*context\.userId/,
     );
     assert.equal(/data\.userId|data\.teacherId|data\.email/.test(source), false);
   });

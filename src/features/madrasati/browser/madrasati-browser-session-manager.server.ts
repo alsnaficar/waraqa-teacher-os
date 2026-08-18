@@ -143,6 +143,58 @@ export class MadrasatiBrowserSessionManager {
     return record.provider.inspectAuthenticationPage();
   }
 
+  /**
+   * Read-only status of the caller's existing session, if any.
+   * Never starts a browser and never returns page text, cookies, or URLs.
+   */
+  async peekAuthentication(userId: string): Promise<{
+    hasSession: boolean;
+    authenticationState: "not_authenticated" | "authenticated";
+  }> {
+    const ownerId = this.requireUserId(userId);
+
+    await this.cleanupExpired();
+
+    const existingId = this.sessionsByUser.get(ownerId);
+
+    if (!existingId) {
+      return {
+        hasSession: false,
+        authenticationState: "not_authenticated",
+      };
+    }
+
+    const existing = this.sessions.get(existingId);
+
+    if (!existing) {
+      this.sessionsByUser.delete(ownerId);
+
+      return {
+        hasSession: false,
+        authenticationState: "not_authenticated",
+      };
+    }
+
+    existing.lastUsedAt = Date.now();
+
+    try {
+      const page = await existing.provider.inspectAuthenticationPage();
+
+      return {
+        hasSession: true,
+        authenticationState:
+          page.authenticationState === "authenticated"
+            ? "authenticated"
+            : "not_authenticated",
+      };
+    } catch {
+      return {
+        hasSession: true,
+        authenticationState: "not_authenticated",
+      };
+    }
+  }
+
   async getAuthenticationScreenshot(
     userId: string,
     sessionId: string,
