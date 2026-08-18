@@ -1,12 +1,17 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Loader2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
 
 import { PageShell } from "@/components/layout/page-shell";
 import { SectionHeader } from "@/shared/components/section-header";
-import { MadrasatiAuthModal } from "@/platform/integration/connectors/madrasati/components/madrasati-auth-modal";
 import { GradesClassesPanel } from "@/features/classes/components/grades-classes-panel";
+import {
+  previewMadrasatiSync,
+  MADRASATI_DRY_RUN_DISCLAIMER,
+  type MadrasatiDryRunPreviewResult,
+} from "@/platform/integration/connectors/madrasati/madrasati.functions";
 import { StudentsPanel } from "@/features/homework/components/students-panel";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -48,7 +53,9 @@ function SettingsPage() {
   const [form, setForm] = useState<ProfileForm>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [madrasatiModalOpen, setMadrasatiModalOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [preview, setPreview] = useState<MadrasatiDryRunPreviewResult | null>(null);
+  const previewFn = useServerFn(previewMadrasatiSync);
 
   useEffect(() => {
     let active = true;
@@ -117,26 +124,60 @@ function SettingsPage() {
         {/* Madrasati Integration Card — status only; no credential collection */}
         <Card className="shadow-sm border-amber-100 bg-amber-50/40">
           <CardContent className="p-6">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-              <div className="min-w-0">
-                <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4 shrink-0" />
-                  مزامنة منصة مدرستي
-                </h3>
-                <p className="text-xs text-amber-900/80 mt-1 leading-relaxed">
-                  مزامنة مدرستي ستتم عبر المتصفح عند توفر المنصة. يمكنك تشغيل{" "}
-                  <span className="font-bold">معاينة تجريبية</span> ببيانات اختبار فقط — وليست
-                  مزامنة فعلية مع منصة مدرستي.
-                </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 shrink-0" />
+                    مزامنة منصة مدرستي
+                  </h3>
+                  <p className="text-xs text-amber-900/80 mt-1 leading-relaxed">
+                    مزامنة مدرستي ستتم عبر المتصفح عند توفر المنصة. {MADRASATI_DRY_RUN_DISCLAIMER}
+                  </p>
+                </div>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-11 font-bold text-xs gap-2 shrink-0 border-amber-200 bg-white"
+                >
+                  <Link to="/madrasati-login">تسجيل الدخول إلى مدرستي</Link>
+                </Button>
               </div>
+
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => setMadrasatiModalOpen(true)}
-                className="h-11 font-bold text-xs gap-2 shrink-0 border-amber-200 bg-white"
+                variant="ghost"
+                className="h-11 w-full text-xs font-bold text-amber-900"
+                disabled={previewLoading}
+                onClick={() => {
+                  void (async () => {
+                    setPreviewLoading(true);
+                    try {
+                      setPreview(await previewFn());
+                    } catch (error) {
+                      const text =
+                        error instanceof Error
+                          ? error.message
+                          : "تعذر تنفيذ معاينة مزامنة مدرستي.";
+                      toast.error(text);
+                    } finally {
+                      setPreviewLoading(false);
+                    }
+                  })();
+                }}
               >
-                عرض الحالة
+                {previewLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                معاينة مزامنة مدرستي
               </Button>
+
+              {preview ? (
+                <p className="text-xs leading-relaxed text-amber-900/80">
+                  {preview.disclaimer} · اكتشف {preview.counts.discovered} · مقبول{" "}
+                  {preview.timetable.accepted.length} · مرفوض {preview.counts.rejected}
+                </p>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -235,7 +276,6 @@ function SettingsPage() {
         </Card>
       </div>
 
-      <MadrasatiAuthModal open={madrasatiModalOpen} onOpenChange={setMadrasatiModalOpen} />
     </PageShell>
   );
 }

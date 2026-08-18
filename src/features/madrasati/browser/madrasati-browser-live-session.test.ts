@@ -116,7 +116,7 @@ describe("Madrasati live-session transport policy", () => {
     const modal = readFileSync(
       join(
         ROOT,
-        "src/platform/integration/connectors/madrasati/components/madrasati-auth-modal.tsx",
+        "src/platform/integration/connectors/madrasati/components/madrasati-auth-page.tsx",
       ),
       "utf8",
     );
@@ -124,15 +124,60 @@ describe("Madrasati live-session transport policy", () => {
     assert.equal(/<iframe/i.test(modal), false);
     assert.equal(/\btype=["']password["']/.test(modal), false);
     assert.equal(/كلمة المرور/.test(modal), false);
+    assert.equal(/<Dialog[\s>]/.test(modal), false);
+    assert.equal(/max-h-\[58vh\]/.test(modal), false);
+    assert.equal(/grid-cols-2/.test(modal), false);
+    assert.equal(/pb-52/.test(modal), false);
+    assert.match(modal, /object-contain/);
+    assert.match(modal, /flex-nowrap/);
+    assert.match(
+      modal,
+      /const x = \(\(event\.clientX - rect\.left\) \/ rect\.width\) \* viewportWidth/,
+    );
+    assert.match(
+      modal,
+      /const y = \(\(event\.clientY - rect\.top\) \/ rect\.height\) \* viewportHeight/,
+    );
     assert.match(modal, /consumeMadrasatiLiveFrames/);
     assert.match(modal, /waitForMadrasatiAuthenticationLiveFrame/);
     assert.match(modal, /inspectMadrasatiAuthenticationFocus/);
-    assert.match(modal, /max-h-\[58vh\]/);
     assert.match(modal, /تم تسجيل الدخول إلى مدرستي بنجاح، جارٍ العودة إلى ورقة/);
     assert.match(modal, /navigate\(\{\s*to:\s*["']\/dashboard["']\s*\}\)/);
     assert.equal(/setInterval\(\s*\(\)\s*=>\s*\{\s*void pullLiveFrame/s.test(modal), false);
     assert.equal(/LIVE_FRAME_INTERVAL_MS/.test(modal), false);
     assert.equal(/socket\.io|new WebSocket/.test(modal), false);
+  });
+
+  it("opens the native keyboard by focusing a real overlay input during the tap gesture", () => {
+    const page = readFileSync(
+      join(
+        ROOT,
+        "src/platform/integration/connectors/madrasati/components/madrasati-auth-page.tsx",
+      ),
+      "utf8",
+    );
+
+    assert.match(
+      page,
+      /function focusNativeInput\(\) \{\s*inputRef\.current\?\.focus\(\);\s*\}/s,
+    );
+    assert.equal(/requestAnimationFrame\s*\(\s*\(\)\s*=>\s*\{\s*inputRef/.test(page), false);
+    assert.equal(/pointer-events-none/.test(page), false);
+    assert.match(page, /onPointerDown=\{\(\) => \{\s*focusNativeInput\(\);/s);
+    assert.match(page, /absolute inset-0 z-10 h-full min-h-\[44px\]/);
+    assert.match(page, /relative z-10 inline-block max-h-full max-w-full/);
+    assert.equal(/\btype=["']password["']/.test(page), false);
+    assert.equal(/<iframe/i.test(page), false);
+    assert.match(
+      page,
+      /const x = \(\(event\.clientX - rect\.left\) \/ rect\.width\) \* viewportWidth/,
+    );
+    assert.match(
+      page,
+      /const y = \(\(event\.clientY - rect\.top\) \/ rect\.height\) \* viewportHeight/,
+    );
+    assert.match(page, /image\.getBoundingClientRect\(\)/);
+    assert.match(page, /focusNativeInput\(\);\s*setClickBusy\(true\);/s);
   });
 
   it("live frame hub publishes only the latest frame and cleans up subscribers", async () => {

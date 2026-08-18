@@ -19,9 +19,10 @@ function AuthenticatedLayout() {
   useAcademicCalendar();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isMadrasatiLogin = pathname === "/madrasati-login";
 
   // Admin routes render their own shell — do not wrap with teacher chrome.
-  if (isAdminArea) {
+  if (isAdminArea || isMadrasatiLogin) {
     return <Outlet />;
   }
 
