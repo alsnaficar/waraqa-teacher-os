@@ -75,6 +75,13 @@ class FakeInteractiveAdapter {
     };
   }
 
+  async getTeacherProfile() {
+    return {
+      displayName: "معلم الاختبار",
+      schoolName: "مدرسة الاختبار الأهلية",
+    };
+  }
+
   async clickAuthentication(x: number, y: number) {
     this.clicks.push({ x, y });
   }
@@ -296,6 +303,21 @@ describe("Madrasati browser session manager — lifecycle and ownership", () => 
       hasSession: false,
       authenticationState: "not_authenticated",
     });
+  });
+
+  it("owner can read a teacher profile without HTML or cookies", async () => {
+    const { manager } = createManager();
+
+    await assert.rejects(() => manager.readTeacherProfile(USER_A), /not found|expired/i);
+
+    await manager.startAuthentication(USER_A);
+    const teacher = await manager.readTeacherProfile(USER_A);
+
+    assert.equal(teacher.displayName, "معلم الاختبار");
+    assert.equal(teacher.schoolName, "مدرسة الاختبار الأهلية");
+    assert.equal("html" in teacher, false);
+    assert.equal("cookies" in teacher, false);
+    await assert.rejects(() => manager.readTeacherProfile(USER_B), /not found|expired/i);
   });
 
   it("gives each Waraqa user a different session id", async () => {

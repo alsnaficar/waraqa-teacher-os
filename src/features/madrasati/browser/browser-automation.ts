@@ -9,6 +9,7 @@ import type {
   MadrasatiFocusedControl,
   MadrasatiLiveFrame,
 } from "./madrasati-browser-live-session.ts";
+import type { MadrasatiPageLandmarks } from "./madrasati-teacher-profile.ts";
 
 export type BrowserAutomationKind = "none" | "playwright" | "puppeteer";
 
@@ -117,6 +118,30 @@ export interface BrowserAutomation {
   inspectFocusedControl(
     page: BrowserPageHandle,
   ): Promise<MadrasatiFocusedControl>;
+
+  /**
+   * Semantic landmarks for the current page: visible text, accessible names,
+   * and labeled values. Never includes HTML, cookies, or Playwright objects.
+   */
+  readPageLandmarks(page: BrowserPageHandle): Promise<MadrasatiPageLandmarks>;
+
+  /**
+   * Clicks the first control whose accessible name matches one of the names.
+   * Returns false when none are present.
+   */
+  clickControlByAccessibleName(
+    page: BrowserPageHandle,
+    names: readonly string[],
+  ): Promise<boolean>;
+
+  /**
+   * Waits until the page's visible text includes the needle.
+   */
+  waitForPageText(
+    page: BrowserPageHandle,
+    needle: string,
+    timeoutMs?: number,
+  ): Promise<boolean>;
 
   /**
    * Subscribes to live JPEG frames for a page. The unsubscribe function
@@ -232,6 +257,30 @@ export class UnavailableBrowserAutomation implements BrowserAutomation {
   ): Promise<MadrasatiFocusedControl> {
     await this.assertAvailable();
     return { isEditable: false, inputType: "none" };
+  }
+
+  async readPageLandmarks(
+    _page: BrowserPageHandle,
+  ): Promise<MadrasatiPageLandmarks> {
+    await this.assertAvailable();
+    throw new BrowserAutomationUnavailableError("playwright");
+  }
+
+  async clickControlByAccessibleName(
+    _page: BrowserPageHandle,
+    _names: readonly string[],
+  ): Promise<boolean> {
+    await this.assertAvailable();
+    return false;
+  }
+
+  async waitForPageText(
+    _page: BrowserPageHandle,
+    _needle: string,
+    _timeoutMs?: number,
+  ): Promise<boolean> {
+    await this.assertAvailable();
+    return false;
   }
 
   subscribePageLiveFrame(

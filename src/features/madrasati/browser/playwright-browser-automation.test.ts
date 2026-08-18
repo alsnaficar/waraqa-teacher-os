@@ -238,3 +238,66 @@ test("PlaywrightBrowserAutomation — live view and focus stay cookie-free on a 
   await automation.stopPageLiveView(page);
   await automation.close();
 });
+
+test("PlaywrightBrowserAutomation — teacher home landmarks do not include HTML or cookies", async () => {
+  const { extractMadrasatiTeacher } = await import("./madrasati-teacher-profile.ts");
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html lang="ar" dir="rtl"><body>
+    <header>
+      <button type="button" aria-label="الملف الشخصي">مرحباً، معلم الاختبار</button>
+    </header>
+    <nav>
+      <a href="#">الرئيسية</a>
+      <a href="#">جدولي</a>
+      <a href="#">المقررات والمصادر</a>
+      <a href="#">الواجبات</a>
+    </nav>
+    <dl>
+      <dt>المدرسة</dt>
+      <dd>مدرسة الاختبار الأهلية</dd>
+      <dt>العام الدراسي</dt>
+      <dd>1447</dd>
+      <dt>الفصل الدراسي</dt>
+      <dd>الأول</dd>
+    </dl>
+  </body></html>`;
+
+  const dir = mkdtempSync(join(tmpdir(), "madrasati-teacher-home-"));
+  const file = join(dir, "home.html");
+  writeFileSync(file, html, "utf8");
+
+  await automation.goto(page, `file://${file}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  const appeared = await automation.waitForPageText(page, "معلم الاختبار", 5000);
+  assert.equal(appeared, true);
+
+  const landmarks = await automation.readPageLandmarks(page);
+  assert.deepEqual(Object.keys(landmarks).sort(), [
+    "accessibleNames",
+    "labeledValues",
+    "text",
+    "title",
+    "url",
+  ]);
+  assert.equal("html" in landmarks, false);
+  assert.equal("cookies" in landmarks, false);
+
+  const teacher = extractMadrasatiTeacher(landmarks);
+  assert.equal(teacher?.displayName, "معلم الاختبار");
+  assert.equal(teacher?.schoolName, "مدرسة الاختبار الأهلية");
+  assert.equal(teacher?.academicYear, "1447");
+  assert.equal(teacher?.semester, "1");
+
+  await automation.close();
+});
