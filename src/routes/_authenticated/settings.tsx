@@ -14,6 +14,7 @@ import {
   getMadrasatiClasses,
   getMadrasatiSubjects,
   getMadrasatiTimetable,
+  verifyMadrasatiLiveExtraction,
   MADRASATI_DRY_RUN_DISCLAIMER,
   type MadrasatiDryRunPreviewResult,
   type MadrasatiAuthenticationStatusResult,
@@ -21,6 +22,7 @@ import {
   type MadrasatiClassResult,
   type MadrasatiSubjectResult,
   type MadrasatiTimetableEntryResult,
+  type MadrasatiLiveVerificationResult,
 } from "@/platform/integration/connectors/madrasati/madrasati.functions";
 import { StudentsPanel } from "@/features/homework/components/students-panel";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -78,12 +80,16 @@ function SettingsPage() {
   const [madrasatiTimetable, setMadrasatiTimetable] = useState<
     MadrasatiTimetableEntryResult[] | null
   >(null);
+  const [liveVerification, setLiveVerification] =
+    useState<MadrasatiLiveVerificationResult | null>(null);
+  const [liveVerificationLoading, setLiveVerificationLoading] = useState(false);
   const previewFn = useServerFn(previewMadrasatiSync);
   const madrasatiStatusFn = useServerFn(getMadrasatiAuthenticationStatus);
   const teacherProfileFn = useServerFn(getMadrasatiTeacherProfile);
   const madrasatiClassesFn = useServerFn(getMadrasatiClasses);
   const madrasatiSubjectsFn = useServerFn(getMadrasatiSubjects);
   const madrasatiTimetableFn = useServerFn(getMadrasatiTimetable);
+  const liveVerificationFn = useServerFn(verifyMadrasatiLiveExtraction);
 
   useEffect(() => {
     let active = true;
@@ -174,6 +180,7 @@ function SettingsPage() {
           setMadrasatiClasses(null);
           setMadrasatiSubjects(null);
           setMadrasatiTimetable(null);
+          setLiveVerification(null);
         }
       }
     })();
@@ -264,6 +271,57 @@ function SettingsPage() {
                         : "لم يُعثر على حصص في جدول مدرستي."}
                     </p>
                   ) : null}
+                  {liveVerification ? (
+                    <div className="mt-2 space-y-1 text-xs leading-relaxed text-amber-900/80">
+                      <p>
+                        التحقق المباشر:{" "}
+                        {liveVerification.stoppedBecauseMock
+                          ? "LIVE MADRASATI SESSION WAS NOT USED."
+                          : liveVerification.connection === "LIVE"
+                            ? "جلسة حية"
+                            : "جلسة وهمية"}
+                        {liveVerification.authenticated ? " · موثّق" : " · غير موثّق"}
+                      </p>
+                      <p>
+                        المعلم: {liveVerification.teacher.success ? "نجاح" : "فشل"}
+                        {liveVerification.teacher.success
+                          ? ` · الاسم: ${liveVerification.teacher.data.displayName ? "نعم" : "لا"} · المدرسة: ${liveVerification.teacher.data.schoolName ? "نعم" : "لا"}`
+                          : ""}
+                      </p>
+                      <p>
+                        الفصول:{" "}
+                        {liveVerification.classes.success
+                          ? liveVerification.classes.empty
+                            ? "نتيجة فارغة صحيحة"
+                            : `نجاح · ${liveVerification.classes.data.length}`
+                          : "فشل"}
+                      </p>
+                      <p>
+                        المواد:{" "}
+                        {liveVerification.subjects.success
+                          ? liveVerification.subjects.empty
+                            ? "نتيجة فارغة صحيحة"
+                            : `نجاح · ${liveVerification.subjects.data.length}`
+                          : "فشل"}
+                      </p>
+                      <p>
+                        الجدول:{" "}
+                        {liveVerification.timetable.success
+                          ? liveVerification.timetable.empty
+                            ? "نتيجة فارغة صحيحة"
+                            : `نجاح · ${liveVerification.timetable.data.length}`
+                          : "فشل"}
+                      </p>
+                      <p>
+                        الجلسة: قبل{" "}
+                        {liveVerification.session.existedBefore ? "نعم" : "لا"} · بقيت{" "}
+                        {liveVerification.session.remainedAlive ? "نعم" : "لا"} · موثّقة{" "}
+                        {liveVerification.session.remainedAuthenticated ? "نعم" : "لا"} · جلسة
+                        ثانية {liveVerification.session.secondSessionCreated ? "نعم" : "لا"}
+                      </p>
+                      <p>كتابة قاعدة البيانات: {liveVerification.databaseWrites}</p>
+                    </div>
+                  ) : null}
                 </div>
                 <Button
                   asChild
@@ -271,6 +329,36 @@ function SettingsPage() {
                   className="h-11 font-bold text-xs gap-2 shrink-0 border-amber-200 bg-white"
                 >
                   <Link to="/madrasati-login">تسجيل الدخول إلى مدرستي</Link>
+                </Button>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full sm:w-auto text-xs font-bold text-amber-900 border-amber-200 bg-white"
+                  disabled={liveVerificationLoading || !madrasatiStatus?.hasSession}
+                  onClick={() => {
+                    void (async () => {
+                      setLiveVerificationLoading(true);
+                      try {
+                        setLiveVerification(await liveVerificationFn());
+                      } catch (error) {
+                        const text =
+                          error instanceof Error
+                            ? error.message
+                            : "تعذر تنفيذ التحقق المباشر من مدرستي.";
+                        toast.error(text);
+                      } finally {
+                        setLiveVerificationLoading(false);
+                      }
+                    })();
+                  }}
+                >
+                  {liveVerificationLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  تحقق من استخراج مدرستي
                 </Button>
               </div>
 

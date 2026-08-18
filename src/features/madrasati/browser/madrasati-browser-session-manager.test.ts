@@ -14,17 +14,37 @@ const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 class FakeInteractiveAdapter {
   disconnectCalls = 0;
+  connectCalls = 0;
   typed: string[] = [];
   clicks: Array<{ x: number; y: number }> = [];
   liveViewStarted = 0;
+  authenticated = false;
+  isMock = false;
+  timetableError: Error | null = null;
+  emptyClasses = false;
+  emptySubjects = false;
+  emptyTimetable = false;
 
   async connect() {
+    this.connectCalls += 1;
     return {
       state: "connected" as const,
       authenticationState: "not_authenticated" as const,
       message: "connected",
-      isMock: false,
+      isMock: this.isMock,
       browserAutomationAvailable: true,
+    };
+  }
+
+  async getConnectionStatus() {
+    return {
+      state: "connected" as const,
+      authenticationState: this.authenticated
+        ? ("authenticated" as const)
+        : ("not_authenticated" as const),
+      message: "connected",
+      isMock: this.isMock,
+      browserAutomationAvailable: !this.isMock,
     };
   }
 
@@ -43,6 +63,15 @@ class FakeInteractiveAdapter {
   }
 
   async inspectAuthenticationPage(): Promise<MadrasatiAuthenticationPage> {
+    if (this.authenticated) {
+      return {
+        url: "https://schools.madrasati.sa/",
+        title: "مدرستي",
+        text: "جدولي\nالمقررات\nالواجبات\nتسجيل الخروج",
+        authenticationState: "authenticated",
+      };
+    }
+
     return {
       url: "https://example.com/login",
       title: "Example login",
@@ -83,6 +112,10 @@ class FakeInteractiveAdapter {
   }
 
   async getClasses() {
+    if (this.emptyClasses) {
+      return [];
+    }
+
     return [
       { grade: "الصف الأول المتوسط", className: "1", stage: "intermediate" },
       { grade: "الصف الأول المتوسط", className: "2", stage: "intermediate" },
@@ -90,10 +123,22 @@ class FakeInteractiveAdapter {
   }
 
   async getSubjects() {
+    if (this.emptySubjects) {
+      return [];
+    }
+
     return [{ name: "الرياضيات" }, { name: "العلوم" }];
   }
 
   async getTimetable() {
+    if (this.timetableError) {
+      throw this.timetableError;
+    }
+
+    if (this.emptyTimetable) {
+      return [];
+    }
+
     return [
       {
         dayOfWeek: 0,
@@ -409,5 +454,103 @@ describe("Madrasati browser session manager — lifecycle and ownership", () => 
     const second = await manager.startAuthentication(USER_B);
 
     assert.notEqual(first.session.sessionId, second.session.sessionId);
+  });
+
+  it("live verification reuses the owned session and does not create another", async () => {
+    const { adapter, manager } = createManager();
+
+    const missing = await manager.verifyLiveExtraction(USER_A);
+    assert.equal(missing.session.existedBefore, false);
+    assert.equal(missing.teacher.success, false);
+    assert.equal(adapter.connectCalls, 0);
+    assert.equal(adapter.disconnectCalls, 0);
+
+    await manager.startAuthentication(USER_A);
+    adapter.authenticated = true;
+    const connectsAfterStart = adapter.connectCalls;
+
+    const report = await manager.verifyLiveExtraction(USER_A);
+
+    assert.equal(report.connection, "LIVE");
+    assert.equal(report.isMock, false);
+    assert.equal(report.stoppedBecauseMock, false);
+    assert.equal(report.authenticated, true);
+    assert.equal(report.teacher.success, true);
+    if (report.teacher.success) {
+      assert.equal(report.teacher.data.displayName, "معلم الاختبار");
+      assert.equal(report.teacher.data.schoolName, "مدرسة الاختبار الأهلية");
+    }
+    assert.equal(report.classes.success, true);
+    assert.equal(report.subjects.success, true);
+    assert.equal(report.timetable.success, true);
+    if (report.timetable.success) {
+      assert.equal(report.timetable.data.length, 1);
+      assert.equal("startsAt" in report.timetable.data[0]!, false);
+    }
+    assert.equal(report.timetableValidation.duplicateCount, 0);
+    assert.equal(report.session.existedBefore, true);
+    assert.equal(report.session.remainedAlive, true);
+    assert.equal(report.session.remainedAuthenticated, true);
+    assert.equal(report.session.secondSessionCreated, false);
+    assert.equal(report.databaseWrites, "NONE");
+    assert.equal(adapter.connectCalls, connectsAfterStart);
+    assert.equal(adapter.disconnectCalls, 0);
+    assert.equal("html" in report, false);
+    assert.equal("cookies" in report, false);
+    assert.equal("text" in report, false);
+  });
+
+  it("live verification stops when the connection is mock", async () => {
+    const { adapter, manager } = createManager();
+    adapter.isMock = true;
+    await manager.startAuthentication(USER_A);
+    adapter.authenticated = true;
+    const connects = adapter.connectCalls;
+
+    const report = await manager.verifyLiveExtraction(USER_A);
+    assert.equal(report.connection, "MOCK");
+    assert.equal(report.stoppedBecauseMock, true);
+    assert.equal(report.teacher.success, false);
+    if (!report.teacher.success) {
+      assert.equal(report.teacher.message, "LIVE MADRASATI SESSION WAS NOT USED.");
+    }
+    assert.equal(adapter.connectCalls, connects);
+    assert.equal(adapter.disconnectCalls, 0);
+  });
+
+  it("live verification isolates a timetable failure without closing the session", async () => {
+    const { adapter, manager } = createManager();
+    await manager.startAuthentication(USER_A);
+    adapter.authenticated = true;
+    adapter.timetableError = new Error("تعذر قراءة الجدول من صفحة جدولي في مدرستي.");
+
+    const report = await manager.verifyLiveExtraction(USER_A);
+    assert.equal(report.teacher.success, true);
+    assert.equal(report.classes.success, true);
+    assert.equal(report.subjects.success, true);
+    assert.equal(report.timetable.success, false);
+    if (!report.timetable.success) {
+      assert.match(report.timetable.message, /تعذر قراءة الجدول/);
+    }
+    assert.equal(adapter.disconnectCalls, 0);
+    assert.equal(report.session.remainedAlive, true);
+  });
+
+  it("live verification treats a confirmed empty catalog as success, not a scraper failure", async () => {
+    const { adapter, manager } = createManager();
+    await manager.startAuthentication(USER_A);
+    adapter.authenticated = true;
+    adapter.emptyClasses = true;
+    adapter.emptySubjects = true;
+    adapter.emptyTimetable = true;
+
+    const report = await manager.verifyLiveExtraction(USER_A);
+    assert.equal(report.classes.success, true);
+    assert.equal(report.classes.empty, true);
+    assert.equal(report.subjects.success, true);
+    assert.equal(report.subjects.empty, true);
+    assert.equal(report.timetable.success, true);
+    assert.equal(report.timetable.empty, true);
+    assert.equal(adapter.disconnectCalls, 0);
   });
 });

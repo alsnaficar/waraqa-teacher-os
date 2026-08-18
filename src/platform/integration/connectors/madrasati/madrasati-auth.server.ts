@@ -4,6 +4,7 @@ import {
 } from "../../../../features/madrasati/browser/madrasati-browser-session-manager.server.ts";
 import type { MadrasatiAuthenticationPage } from "../../../../features/madrasati/provider/madrasati-provider.ts";
 import type { MadrasatiClass, MadrasatiSubject, MadrasatiTeacher, MadrasatiTimetableEntry } from "../../../../features/madrasati/provider/models.ts";
+import type { MadrasatiLiveVerificationReport } from "../../../../features/madrasati/browser/madrasati-live-verification.ts";
 import type {
   MadrasatiFocusedControl,
   MadrasatiLiveFrame,
@@ -112,6 +113,19 @@ export async function readAuthenticatedMadrasatiTimetable(
   const userId = requireAuthenticatedUserId(waraqaUserId);
 
   return madrasatiBrowserSessionManager.readTimetable(userId);
+}
+
+/**
+ * Read-only live verification of teacher, classes, subjects, and timetable.
+ * Reuses the existing owned Madrasati browser session. Never starts a browser,
+ * never writes to the database, and never returns HTML, cookies, or Playwright objects.
+ */
+export async function verifyAuthenticatedMadrasatiLiveExtraction(
+  waraqaUserId: string,
+): Promise<MadrasatiLiveVerificationReport> {
+  const userId = requireAuthenticatedUserId(waraqaUserId);
+
+  return madrasatiBrowserSessionManager.verifyLiveExtraction(userId);
 }
 
 /**
