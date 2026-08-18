@@ -127,6 +127,9 @@ describe("Madrasati live-session transport policy", () => {
     assert.match(modal, /consumeMadrasatiLiveFrames/);
     assert.match(modal, /waitForMadrasatiAuthenticationLiveFrame/);
     assert.match(modal, /inspectMadrasatiAuthenticationFocus/);
+    assert.match(modal, /max-h-\[58vh\]/);
+    assert.match(modal, /تم تسجيل الدخول إلى مدرستي بنجاح، جارٍ العودة إلى ورقة/);
+    assert.match(modal, /navigate\(\{\s*to:\s*["']\/dashboard["']\s*\}\)/);
     assert.equal(/setInterval\(\s*\(\)\s*=>\s*\{\s*void pullLiveFrame/s.test(modal), false);
     assert.equal(/LIVE_FRAME_INTERVAL_MS/.test(modal), false);
     assert.equal(/socket\.io|new WebSocket/.test(modal), false);

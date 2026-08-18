@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Dialog,
@@ -49,10 +50,15 @@ type AuthenticationState = "not_authenticated" | "authenticated" | "unknown";
 
 const INSPECT_INTERVAL_MS = 3000;
 
+const RETURNING_HOME_MESSAGE =
+  "تم تسجيل الدخول إلى مدرستي بنجاح، جارٍ العودة إلى ورقة...";
+
 export function MadrasatiAuthModal({
   open,
   onOpenChange,
+  onSyncSuccess,
 }: MadrasatiAuthModalProps) {
+  const navigate = useNavigate();
   const startFn = useServerFn(startMadrasatiAuthentication);
   const inspectFn = useServerFn(inspectMadrasatiAuthentication);
   const waitFrameFn = useServerFn(waitForMadrasatiAuthenticationLiveFrame);
@@ -67,6 +73,7 @@ export function MadrasatiAuthModal({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const writeQueueRef = useRef(Promise.resolve());
   const composingRef = useRef(false);
+  const returningHomeRef = useRef(false);
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -89,6 +96,7 @@ export function MadrasatiAuthModal({
   });
   const [coarsePointer, setCoarsePointer] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const [returningHome, setReturningHome] = useState(false);
 
   function enqueueWrite(task: () => Promise<void>) {
     writeQueueRef.current = writeQueueRef.current
@@ -132,11 +140,11 @@ export function MadrasatiAuthModal({
 
       setUrl(inspection.url);
       setAuthenticationState(inspection.authenticationState);
-      setMessage(inspection.title || inspection.url);
-
-      if (inspection.authenticationState === "authenticated") {
-        toast.success("تم اكتشاف تسجيل الدخول إلى منصة مدرستي.");
-      }
+      setMessage(
+        inspection.authenticationState === "authenticated"
+          ? RETURNING_HOME_MESSAGE
+          : inspection.title || inspection.url,
+      );
     } catch (error) {
       const text =
         error instanceof Error
@@ -328,6 +336,8 @@ export function MadrasatiAuthModal({
       setMessage(null);
       setAuthenticationState("unknown");
       setFocus({ isEditable: false, inputType: "none" });
+      setReturningHome(false);
+      returningHomeRef.current = false;
 
       onOpenChange(false);
     } catch (error) {
@@ -414,9 +424,17 @@ export function MadrasatiAuthModal({
         },
       })
         .then((inspection) => {
+          if (returningHomeRef.current) {
+            return;
+          }
+
           setUrl(inspection.url);
           setAuthenticationState(inspection.authenticationState);
-          setMessage(inspection.title || inspection.url);
+          setMessage(
+            inspection.authenticationState === "authenticated"
+              ? RETURNING_HOME_MESSAGE
+              : inspection.title || inspection.url,
+          );
         })
         .catch(() => undefined);
     }, INSPECT_INTERVAL_MS);
@@ -439,7 +457,62 @@ export function MadrasatiAuthModal({
     setAuthenticationState("unknown");
     setFocus({ isEditable: false, inputType: "none" });
     setKeyboardInset(0);
+    setReturningHome(false);
+    returningHomeRef.current = false;
   }, [open]);
+
+  useEffect(() => {
+    if (!open || authenticationState !== "authenticated" || returningHomeRef.current) {
+      return;
+    }
+
+    if (typeof navigate !== "function") {
+      return;
+    }
+
+    returningHomeRef.current = true;
+    setReturningHome(true);
+    setMessage(RETURNING_HOME_MESSAGE);
+    toast.success(RETURNING_HOME_MESSAGE);
+
+    void (async () => {
+      try {
+        if (sessionId) {
+          await closeFn({
+            data: {
+              sessionId,
+            },
+          });
+        }
+
+        setSessionId(null);
+        onOpenChange(false);
+        await navigate({ to: "/dashboard" });
+
+        if (onSyncSuccess) {
+          await onSyncSuccess();
+        }
+      } catch (error) {
+        returningHomeRef.current = false;
+        setReturningHome(false);
+
+        const text =
+          error instanceof Error
+            ? error.message
+            : "تعذر العودة إلى ورقة.";
+
+        toast.error(text);
+      }
+    })();
+  }, [
+    open,
+    authenticationState,
+    sessionId,
+    navigate,
+    closeFn,
+    onOpenChange,
+    onSyncSuccess,
+  ]);
 
   const keyboardBar = sessionId ? (
     <div
@@ -631,9 +704,11 @@ export function MadrasatiAuthModal({
                   )}
 
                   <span>
-                    {authenticationState === "authenticated"
-                      ? "تم تسجيل الدخول"
-                      : "بانتظار تسجيل الدخول"}
+                    {returningHome
+                      ? RETURNING_HOME_MESSAGE
+                      : authenticationState === "authenticated"
+                        ? "تم تسجيل الدخول"
+                        : "بانتظار تسجيل الدخول"}
                   </span>
                 </div>
 
@@ -641,7 +716,7 @@ export function MadrasatiAuthModal({
                   type="button"
                   variant="outline"
                   className="h-11 min-h-[44px]"
-                  disabled={refreshing}
+                  disabled={refreshing || returningHome}
                   onClick={() => void refreshSession(sessionId)}
                 >
                   {refreshing ? (
@@ -676,7 +751,7 @@ export function MadrasatiAuthModal({
                     ref={screenshotRef}
                     src={screenshot}
                     alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
-                    className="block h-auto w-full select-none"
+                    className="mx-auto block h-auto max-h-[58vh] max-w-full w-auto select-none"
                     draggable={false}
                     onPointerUp={(event) => void handleLiveViewPointer(event)}
                   />
