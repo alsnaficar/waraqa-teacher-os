@@ -92,6 +92,37 @@ export type MadrasatiTimetableEntryResult = {
   endsAt?: string;
 };
 
+export type MadrasatiLiveExtractionResult<T> =
+  | { success: true; data: T; empty?: boolean }
+  | { success: false; code: string; message: string };
+
+export type MadrasatiLiveVerificationResult = {
+  authenticated: boolean;
+  connection: "LIVE" | "MOCK";
+  isMock: boolean;
+  stoppedBecauseMock: boolean;
+  teacher: MadrasatiLiveExtractionResult<MadrasatiTeacherProfileResult>;
+  classes: MadrasatiLiveExtractionResult<readonly MadrasatiClassResult[]>;
+  subjects: MadrasatiLiveExtractionResult<readonly MadrasatiSubjectResult[]>;
+  timetable: MadrasatiLiveExtractionResult<readonly MadrasatiTimetableEntryResult[]>;
+  timetableValidation: {
+    invalidDayCount: number;
+    invalidPeriodCount: number;
+    missingSubjectCount: number;
+    missingGradeCount: number;
+    missingClassCount: number;
+    duplicateCount: number;
+    semesterAsClassNameCount: number;
+  };
+  session: {
+    existedBefore: boolean;
+    remainedAlive: boolean;
+    remainedAuthenticated: boolean;
+    secondSessionCreated: boolean;
+  };
+  databaseWrites: "NONE";
+};
+
 export type MadrasatiAuthenticationLiveFrameResult = {
   mimeType: "image/jpeg" | "image/png";
   base64: string;
@@ -291,6 +322,21 @@ export const getMadrasatiTimetable = createServerFn({ method: "POST" })
       ...(item.startsAt ? { startsAt: item.startsAt } : {}),
       ...(item.endsAt ? { endsAt: item.endsAt } : {}),
     }));
+  });
+
+/**
+ * Read-only live verification of the authenticated user's Madrasati extraction.
+ * Reuses the existing owned browser session. Never writes to the database.
+ * Never returns HTML, cookies, URLs, or Playwright objects.
+ */
+export const verifyMadrasatiLiveExtraction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<MadrasatiLiveVerificationResult> => {
+    const { verifyAuthenticatedMadrasatiLiveExtraction } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    return verifyAuthenticatedMadrasatiLiveExtraction(context.userId);
   });
 
 /**

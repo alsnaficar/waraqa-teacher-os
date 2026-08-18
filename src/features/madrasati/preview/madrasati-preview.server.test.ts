@@ -113,6 +113,7 @@ describe("Madrasati authenticated dry-run preview", () => {
     assert.match(modal, /getMadrasatiClasses/);
     assert.match(modal, /getMadrasatiSubjects/);
     assert.match(modal, /getMadrasatiTimetable/);
+    assert.match(modal, /verifyMadrasatiLiveExtraction/);
     assert.equal(/\btype=["']password["']/.test(modal), false);
     assert.equal(/تم جلب البيانات من مدرستي|تمت المزامنة/.test(modal), false);
   });

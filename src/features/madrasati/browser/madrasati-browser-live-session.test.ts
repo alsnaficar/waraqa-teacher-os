@@ -313,6 +313,10 @@ describe("Madrasati live-session transport policy", () => {
       source,
       /export const getMadrasatiTimetable[\s\S]*middleware\(\[requireSupabaseAuth\]\)[\s\S]*context\.userId/,
     );
+    assert.match(
+      source,
+      /export const verifyMadrasatiLiveExtraction[\s\S]*middleware\(\[requireSupabaseAuth\]\)[\s\S]*context\.userId/,
+    );
     assert.equal(/data\.userId|data\.teacherId|data\.email/.test(source), false);
   });
 });

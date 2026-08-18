@@ -5,6 +5,23 @@ import {
 } from "./playwright-browser-automation.server.ts";
 import type { MadrasatiAuthenticationPage } from "../provider/madrasati-provider.ts";
 import type { MadrasatiClass, MadrasatiSubject, MadrasatiTeacher, MadrasatiTimetableEntry } from "../provider/models.ts";
+import { MadrasatiProviderError } from "../provider/madrasati-provider.ts";
+import {
+  EMPTY_TIMETABLE_VALIDATION,
+  buildMissingSessionReport,
+  buildMockSessionStopReport,
+  extractionFromValue,
+  logLiveVerificationSummary,
+  sanitizeClassSnapshots,
+  sanitizeSubjectSnapshots,
+  sanitizeTeacherSnapshot,
+  sanitizeTimetableSnapshots,
+  toExtractionFailure,
+  validateTimetableSnapshots,
+  type MadrasatiExtractionResult,
+  type MadrasatiExtractionSuccess,
+  type MadrasatiLiveVerificationReport,
+} from "./madrasati-live-verification.ts";
 import {
   madrasatiLiveFrameHub,
   sanitizeFocusedControl,
@@ -282,6 +299,124 @@ export class MadrasatiBrowserSessionManager {
     record.lastUsedAt = Date.now();
 
     return record.provider.getTimetable();
+  }
+
+  /**
+   * Read-only live verification of teacher/classes/subjects/timetable.
+   * Reuses the existing owned session. Never starts a browser, never writes,
+   * and never returns HTML, cookies, or Playwright objects.
+   */
+  async verifyLiveExtraction(userId: string): Promise<MadrasatiLiveVerificationReport> {
+    const ownerId = this.requireUserId(userId);
+
+    await this.cleanupExpired();
+
+    const existingId = this.sessionsByUser.get(ownerId);
+    const existedBefore = Boolean(existingId && this.sessions.has(existingId));
+
+    if (!existingId || !existedBefore) {
+      const report = buildMissingSessionReport();
+      logLiveVerificationSummary(report);
+      return report;
+    }
+
+    const record = this.sessions.get(existingId);
+    if (!record) {
+      const report = buildMissingSessionReport();
+      logLiveVerificationSummary(report);
+      return report;
+    }
+
+    record.lastUsedAt = Date.now();
+
+    const connection = await record.provider.getConnectionStatus();
+    if (connection.isMock) {
+      const report = buildMockSessionStopReport(true);
+      logLiveVerificationSummary(report);
+      return report;
+    }
+
+    const sessionIdBefore = record.sessionId;
+    const authBefore = await this.peekAuthentication(ownerId);
+    const authenticatedBefore = authBefore.authenticationState === "authenticated";
+
+    const teacher = await this.readExtraction(async () => {
+      const snapshot = sanitizeTeacherSnapshot(await record.provider.getTeacherProfile());
+      if (!snapshot) {
+        throw new MadrasatiProviderError(
+          "TEACHER_PROFILE_UNAVAILABLE",
+          "تعذر قراءة اسم المعلم من جلسة مدرستي.",
+        );
+      }
+      return extractionFromValue(snapshot, false);
+    });
+
+    const sessionAfterTeacher = this.sessionsByUser.get(ownerId);
+
+    const classes = await this.readExtraction(async () => {
+      const snapshots = sanitizeClassSnapshots(await record.provider.getClasses());
+      return extractionFromValue(snapshots, snapshots.length === 0);
+    });
+
+    const sessionAfterClasses = this.sessionsByUser.get(ownerId);
+
+    const subjects = await this.readExtraction(async () => {
+      const snapshots = sanitizeSubjectSnapshots(await record.provider.getSubjects());
+      return extractionFromValue(snapshots, snapshots.length === 0);
+    });
+
+    const sessionAfterSubjects = this.sessionsByUser.get(ownerId);
+
+    const timetable = await this.readExtraction(async () => {
+      const snapshots = sanitizeTimetableSnapshots(await record.provider.getTimetable());
+      return extractionFromValue(snapshots, snapshots.length === 0);
+    });
+
+    const sessionAfterTimetable = this.sessionsByUser.get(ownerId);
+    const stillPresent = this.sessions.get(sessionIdBefore);
+    const authAfter = await this.peekAuthentication(ownerId);
+    const remainedAuthenticated =
+      authenticatedBefore && authAfter.authenticationState === "authenticated";
+    const secondSessionCreated =
+      [sessionAfterTeacher, sessionAfterClasses, sessionAfterSubjects, sessionAfterTimetable].some(
+        (id) => id != null && id !== sessionIdBefore,
+      );
+
+    const timetableValidation = timetable.success
+      ? validateTimetableSnapshots(timetable.data)
+      : EMPTY_TIMETABLE_VALIDATION;
+
+    const report: MadrasatiLiveVerificationReport = {
+      authenticated: remainedAuthenticated,
+      connection: "LIVE",
+      isMock: false,
+      stoppedBecauseMock: false,
+      teacher,
+      classes,
+      subjects,
+      timetable,
+      timetableValidation,
+      session: {
+        existedBefore: true,
+        remainedAlive: Boolean(stillPresent) && !secondSessionCreated,
+        remainedAuthenticated,
+        secondSessionCreated,
+      },
+      databaseWrites: "NONE",
+    };
+
+    logLiveVerificationSummary(report);
+    return report;
+  }
+
+  private async readExtraction<T>(
+    read: () => Promise<MadrasatiExtractionSuccess<T>>,
+  ): Promise<MadrasatiExtractionResult<T>> {
+    try {
+      return await read();
+    } catch (error) {
+      return toExtractionFailure(error);
+    }
   }
 
   async getAuthenticationScreenshot(
