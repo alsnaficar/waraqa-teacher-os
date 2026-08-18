@@ -111,6 +111,7 @@ class FakeBrowserAutomation implements BrowserAutomation {
       text: await this.getPageText(_page),
       accessibleNames: [] as string[],
       labeledValues: [] as Array<{ label: string; value: string }>,
+      tableRows: [] as Array<{ headers: string[]; cells: string[] }>,
     };
   }
 
@@ -212,6 +213,7 @@ test("MadrasatiBrowserAdapter — reads teacher profile from authenticated home 
           { label: "العام الدراسي", value: "1447" },
           { label: "الفصل الدراسي", value: "الأول" },
         ],
+        tableRows: [],
       };
     }
   }
@@ -229,6 +231,178 @@ test("MadrasatiBrowserAdapter — reads teacher profile from authenticated home 
     () => provider.getTimetable(),
     /قراءة الجدول لم تُنفّذ بعد/,
   );
+});
+
+test("MadrasatiBrowserAdapter — navigates to مقرراتي and returns normalized classes", async () => {
+  class ClassCatalogAutomation extends FakeBrowserAutomation {
+    view: "home" | "courses" = "home";
+    clicked: string[] = [];
+    sessionClosed = false;
+
+    async closeSession(): Promise<void> {
+      this.sessionClosed = true;
+    }
+
+    async getPageText(): Promise<string> {
+      if (this.view === "courses") {
+        return "مقرراتي\nالصف\nالشعبة\nالصف الأول المتوسط\n1\nالصف الأول المتوسط\n2";
+      }
+
+      return "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+    }
+
+    async readPageLandmarks() {
+      if (this.view === "courses") {
+        return {
+          url: "https://schools.madrasati.sa/Courses",
+          title: "مقرراتي",
+          text: await this.getPageText(),
+          accessibleNames: ["مقرراتي", "الرئيسية"],
+          labeledValues: [],
+          tableRows: [
+            {
+              headers: ["المقرر", "الصف", "الشعبة"],
+              cells: ["الرياضيات", "الصف الأول المتوسط", "1"],
+            },
+            {
+              headers: ["المقرر", "الصف", "الشعبة"],
+              cells: ["العلوم", "الصف الأول المتوسط", "2"],
+            },
+          ],
+        };
+      }
+
+      return {
+        url: "https://schools.madrasati.sa/",
+        title: "مدرستي",
+        text: await this.getPageText(),
+        accessibleNames: ["جدولي", "المقررات والمصادر", "مقرراتي", "الرئيسية"],
+        labeledValues: [],
+        tableRows: [],
+      };
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      this.clicked.push(names[0] ?? "");
+
+      if (names.some((name) => name === "مقرراتي" || name === "المقررات والمصادر")) {
+        this.view = "courses";
+        return true;
+      }
+
+      if (names.some((name) => name === "الرئيسية" || name === "الصفحة الرئيسية")) {
+        this.view = "home";
+        return true;
+      }
+
+      return false;
+    }
+
+    async waitForPageText(
+      _page: BrowserPageHandle,
+      needle: string,
+    ): Promise<boolean> {
+      return (await this.getPageText()).includes(needle);
+    }
+  }
+
+  const automation = new ClassCatalogAutomation();
+  const provider = new MadrasatiBrowserAdapter(automation);
+  await provider.connect();
+
+  const classes = await provider.getClasses();
+
+  assert.deepEqual(classes, [
+    { grade: "الصف الأول المتوسط", className: "1", stage: "intermediate" },
+    { grade: "الصف الأول المتوسط", className: "2", stage: "intermediate" },
+  ]);
+  assert.equal(automation.view, "home");
+  assert.equal(automation.sessionClosed, false);
+  assert.ok(automation.clicked.includes("المقررات والمصادر"));
+  assert.ok(automation.clicked.includes("مقرراتي"));
+  assert.ok(automation.clicked.includes("الرئيسية"));
+
+  const teacher = await provider.getTeacherProfile();
+  assert.equal(teacher.displayName, "معلم الاختبار");
+
+  await assert.rejects(() => provider.getTimetable(), /قراءة الجدول لم تُنفّذ بعد/);
+  await assert.rejects(() => provider.getSubjects(), /قراءة المواد لم تُنفّذ بعد/);
+});
+
+test("MadrasatiBrowserAdapter — getClasses fails closed when unauthenticated or unreadable", async () => {
+  const unauthenticated = new MadrasatiBrowserAdapter(new FakeBrowserAutomation());
+  await unauthenticated.connect();
+  await assert.rejects(() => unauthenticated.getClasses(), /قبل اكتمال تسجيل الدخول/);
+
+  class UnreadableCatalogAutomation extends FakeBrowserAutomation {
+    async getPageText(): Promise<string> {
+      return "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+    }
+
+    async waitForPageText(): Promise<boolean> {
+      return true;
+    }
+  }
+
+  const unreadable = new MadrasatiBrowserAdapter(new UnreadableCatalogAutomation());
+  await unreadable.connect();
+  await assert.rejects(() => unreadable.getClasses(), /تعذر قراءة الفصول/);
+});
+
+test("MadrasatiBrowserAdapter — confirmed empty مقرراتي list is not a fake success with mock classes", async () => {
+  class EmptyCatalogAutomation extends FakeBrowserAutomation {
+    view: "home" | "courses" = "home";
+
+    async getPageText(): Promise<string> {
+      return this.view === "courses"
+        ? "مقرراتي\nلا توجد مقررات مسندة"
+        : "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+    }
+
+    async readPageLandmarks() {
+      return {
+        url:
+          this.view === "courses"
+            ? "https://schools.madrasati.sa/Courses"
+            : "https://schools.madrasati.sa/",
+        title: this.view === "courses" ? "مقرراتي" : "مدرستي",
+        text: await this.getPageText(),
+        accessibleNames: ["مقرراتي", "المقررات والمصادر", "الرئيسية"],
+        labeledValues: [],
+        tableRows: [],
+      };
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      if (names.some((name) => name === "مقرراتي" || name === "المقررات والمصادر")) {
+        this.view = "courses";
+        return true;
+      }
+      if (names.some((name) => name === "الرئيسية")) {
+        this.view = "home";
+        return true;
+      }
+      return false;
+    }
+
+    async waitForPageText(
+      _page: BrowserPageHandle,
+      needle: string,
+    ): Promise<boolean> {
+      return (await this.getPageText()).includes(needle);
+    }
+  }
+
+  const provider = new MadrasatiBrowserAdapter(new EmptyCatalogAutomation());
+  await provider.connect();
+  const classes = await provider.getClasses();
+  assert.deepEqual(classes, []);
 });
 
 test("Playwright boundary — page lifecycle through opaque handles", async () => {

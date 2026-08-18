@@ -82,6 +82,13 @@ class FakeInteractiveAdapter {
     };
   }
 
+  async getClasses() {
+    return [
+      { grade: "الصف الأول المتوسط", className: "1", stage: "intermediate" },
+      { grade: "الصف الأول المتوسط", className: "2", stage: "intermediate" },
+    ];
+  }
+
   async clickAuthentication(x: number, y: number) {
     this.clicks.push({ x, y });
   }
@@ -318,6 +325,24 @@ describe("Madrasati browser session manager — lifecycle and ownership", () => 
     assert.equal("html" in teacher, false);
     assert.equal("cookies" in teacher, false);
     await assert.rejects(() => manager.readTeacherProfile(USER_B), /not found|expired/i);
+  });
+
+  it("owner can read assigned classes without HTML or cookies", async () => {
+    const { adapter, manager } = createManager();
+
+    await assert.rejects(() => manager.readClasses(USER_A), /not found|expired/i);
+
+    await manager.startAuthentication(USER_A);
+    const classes = await manager.readClasses(USER_A);
+
+    assert.equal(classes.length, 2);
+    assert.equal(classes[0]?.grade, "الصف الأول المتوسط");
+    assert.equal(classes[0]?.className, "1");
+    assert.equal(classes[1]?.className, "2");
+    assert.equal("html" in (classes[0] ?? {}), false);
+    assert.equal("cookies" in (classes[0] ?? {}), false);
+    await assert.rejects(() => manager.readClasses(USER_B), /not found|expired/i);
+    assert.equal(adapter.disconnectCalls, 0);
   });
 
   it("gives each Waraqa user a different session id", async () => {

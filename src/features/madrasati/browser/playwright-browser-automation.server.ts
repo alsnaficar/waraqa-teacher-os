@@ -373,19 +373,18 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     const pageObject = this.requirePage(page);
     const labeledValues: Array<{ label: string; value: string }> = [];
     const accessibleNames: string[] = [];
+    const tableRows: Array<{ headers: string[]; cells: string[] }> = [];
 
     for (const frame of pageObject.frames()) {
       try {
-        const part = await frame.evaluate(() => {
-          const names: string[] = [];
-          const labeled: Array<{ label: string; value: string }> = [];
+        const part = (await frame.evaluate(`(() => {
+          const names = [];
+          const labeled = [];
+          const rows = [];
 
-          const pushName = (value: string | null | undefined) => {
-            const trimmed = (value ?? "").replace(/\s+/g, " ").trim();
-            if (trimmed) {
-              names.push(trimmed.slice(0, 200));
-            }
-          };
+          function clean(value) {
+            return String(value || "").replace(/\\s+/g, " ").trim();
+          }
 
           const controls = document.querySelectorAll(
             'a, button, [role="button"], [role="link"], [role="menuitem"]',
@@ -395,21 +394,24 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
             if (!(el instanceof HTMLElement)) {
               continue;
             }
-            pushName(el.getAttribute("aria-label") || el.innerText);
+            const name = clean(el.getAttribute("aria-label") || el.innerText);
+            if (name) {
+              names.push(name.slice(0, 200));
+            }
           }
 
           for (const dt of document.querySelectorAll("dt")) {
             const dd = dt.nextElementSibling;
             if (dd && dd.tagName === "DD") {
               labeled.push({
-                label: (dt.textContent ?? "").replace(/\s+/g, " ").trim(),
-                value: (dd.textContent ?? "").replace(/\s+/g, " ").trim(),
+                label: clean(dt.textContent),
+                value: clean(dd.textContent),
               });
             }
           }
 
           for (const label of document.querySelectorAll("label")) {
-            const text = (label.textContent ?? "").replace(/\s+/g, " ").trim();
+            const text = clean(label.textContent);
             const controlId = label.getAttribute("for");
             const control = controlId ? document.getElementById(controlId) : null;
             const value =
@@ -417,20 +419,76 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
               control instanceof HTMLSelectElement ||
               control instanceof HTMLTextAreaElement
                 ? control.value
-                : (label.nextElementSibling?.textContent ?? "");
+                : (label.nextElementSibling && label.nextElementSibling.textContent) || "";
             if (text && value) {
               labeled.push({
                 label: text,
-                value: value.replace(/\s+/g, " ").trim(),
+                value: clean(value),
               });
             }
           }
 
-          return { accessibleNames: names, labeledValues: labeled };
-        });
+          const tables = document.querySelectorAll("table");
+          for (let tableIndex = 0; tableIndex < tables.length; tableIndex += 1) {
+            const table = tables[tableIndex];
+            const headerRow = table.querySelector("thead tr") || table.querySelector("tr");
+            const headers = headerRow
+              ? Array.from(headerRow.querySelectorAll("th, td")).map(function(el) {
+                  return clean(el.textContent);
+                })
+              : [];
+            const tableRowEls = table.querySelectorAll("tr");
+            for (let rowIndex = 0; rowIndex < tableRowEls.length; rowIndex += 1) {
+              const cells = Array.from(tableRowEls[rowIndex].querySelectorAll("th, td")).map(
+                function(el) {
+                  return clean(el.textContent);
+                },
+              );
+              const isHeader =
+                headers.length > 0 &&
+                cells.length === headers.length &&
+                cells.every(function(cell, index) {
+                  return cell === headers[index];
+                });
+              if (isHeader || !cells.some(function(cell) { return cell.length > 0; })) {
+                continue;
+              }
+              rows.push({ headers: headers, cells: cells });
+            }
+          }
+
+          const grids = document.querySelectorAll('[role="table"], [role="grid"]');
+          for (let gridIndex = 0; gridIndex < grids.length; gridIndex += 1) {
+            const grid = grids[gridIndex];
+            const headers = Array.from(grid.querySelectorAll('[role="columnheader"]')).map(
+              function(el) {
+                return clean(el.textContent);
+              },
+            );
+            const gridRows = grid.querySelectorAll('[role="row"]');
+            for (let rowIndex = 0; rowIndex < gridRows.length; rowIndex += 1) {
+              const cells = Array.from(
+                gridRows[rowIndex].querySelectorAll('[role="cell"], [role="gridcell"]'),
+              ).map(function(el) {
+                return clean(el.textContent);
+              });
+              if (!cells.some(function(cell) { return cell.length > 0; })) {
+                continue;
+              }
+              rows.push({ headers: headers, cells: cells });
+            }
+          }
+
+          return { accessibleNames: names, labeledValues: labeled, tableRows: rows };
+        })()`)) as {
+          accessibleNames: string[];
+          labeledValues: Array<{ label: string; value: string }>;
+          tableRows: Array<{ headers: string[]; cells: string[] }>;
+        };
 
         accessibleNames.push(...part.accessibleNames);
         labeledValues.push(...part.labeledValues);
+        tableRows.push(...(part.tableRows ?? []));
       } catch {
         // Cross-origin frames (Microsoft SSO) cannot be read.
       }
@@ -442,6 +500,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
       text: await this.getPageText(page),
       accessibleNames,
       labeledValues,
+      tableRows,
     });
   }
 

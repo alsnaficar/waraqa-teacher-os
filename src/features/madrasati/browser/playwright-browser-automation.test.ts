@@ -286,6 +286,7 @@ test("PlaywrightBrowserAutomation — teacher home landmarks do not include HTML
   assert.deepEqual(Object.keys(landmarks).sort(), [
     "accessibleNames",
     "labeledValues",
+    "tableRows",
     "text",
     "title",
     "url",
@@ -300,4 +301,85 @@ test("PlaywrightBrowserAutomation — teacher home landmarks do not include HTML
   assert.equal(teacher?.semester, "1");
 
   await automation.close();
+});
+
+test("PlaywrightBrowserAutomation — مقرراتي table landmarks normalize to classes", async () => {
+  const { extractMadrasatiClasses } = await import("./madrasati-classes.ts");
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "madrasati-classes-"));
+  const home = join(dir, "home.html");
+  const courses = join(dir, "courses.html");
+
+  writeFileSync(
+    home,
+    `<!doctype html><html lang="ar" dir="rtl"><body>
+      <nav>
+        <a href="courses.html">المقررات والمصادر</a>
+        <a href="courses.html">مقرراتي</a>
+        <a href="home.html">الرئيسية</a>
+        <a href="#">جدولي</a>
+        <a href="#">الواجبات</a>
+      </nav>
+      <p>مرحباً، معلم الاختبار</p>
+    </body></html>`,
+    "utf8",
+  );
+  writeFileSync(
+    courses,
+    `<!doctype html><html lang="ar" dir="rtl"><body>
+      <nav>
+        <a href="home.html">الرئيسية</a>
+        <a href="courses.html">مقرراتي</a>
+      </nav>
+      <h1>مقرراتي</h1>
+      <table>
+        <thead>
+          <tr><th>المقرر</th><th>الصف</th><th>الشعبة</th><th>المرحلة</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>الرياضيات</td><td>الصف الأول المتوسط</td><td>1</td><td>متوسط</td></tr>
+          <tr><td>العلوم</td><td>الصف الأول المتوسط</td><td>2</td><td>متوسط</td></tr>
+        </tbody>
+      </table>
+    </body></html>`,
+    "utf8",
+  );
+
+  await automation.goto(page, `file://${home}`, { waitUntil: "domcontentloaded" });
+  const opened = await automation.clickControlByAccessibleName(page, [
+    "المقررات والمصادر",
+    "مقرراتي",
+  ]);
+  assert.equal(opened, true);
+
+  const appeared = await automation.waitForPageText(page, "الشعبة", 5000);
+  assert.equal(appeared, true);
+
+  const landmarks = await automation.readPageLandmarks(page);
+  assert.equal("html" in landmarks, false);
+  assert.ok((landmarks.tableRows ?? []).length >= 2);
+
+  const extracted = extractMadrasatiClasses(landmarks);
+  assert.equal(extracted.status, "found");
+  assert.deepEqual(
+    extracted.classes.map((item) => `${item.grade}/${item.className}`),
+    ["الصف الأول المتوسط/1", "الصف الأول المتوسط/2"],
+  );
+
+    const returned = await automation.clickControlByAccessibleName(page, ["الرئيسية"]);
+    assert.equal(returned, true);
+    assert.equal(await automation.waitForPageText(page, "جدولي", 5000), true);
+  } finally {
+    await automation.close();
+  }
 });
