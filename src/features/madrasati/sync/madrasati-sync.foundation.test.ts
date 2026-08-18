@@ -139,7 +139,11 @@ describe("Madrasati foundation — browser adapter boundary", () => {
 
   it("UnavailableBrowserAutomation fails closed without network I/O", async () => {
     const automation = new UnavailableBrowserAutomation();
+    const page = Object.freeze({ id: "none" });
     await assert.rejects(() => automation.assertAvailable(), /Playwright|Puppeteer|not available/i);
+    await assert.rejects(() => automation.startPageLiveView(page), /not available/i);
+    await assert.rejects(() => automation.getPageLiveFrame(page), /not available/i);
+    await assert.rejects(() => automation.inspectFocusedControl(page), /not available/i);
   });
 });
 

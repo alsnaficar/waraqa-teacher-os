@@ -4,8 +4,21 @@ import {
   PlaywrightBrowserAutomation,
 } from "./playwright-browser-automation.server.ts";
 import type { MadrasatiAuthenticationPage } from "../provider/madrasati-provider.ts";
+import {
+  madrasatiLiveFrameHub,
+  sanitizeFocusedControl,
+  sanitizeLiveFrame,
+  type MadrasatiFocusedControl,
+  type MadrasatiLiveFrame,
+  type MadrasatiLiveFrameUpdate,
+} from "./madrasati-browser-live-session.ts";
 
 const SESSION_TTL_MS = 15 * 60 * 1000;
+
+export type MadrasatiBrowserSessionManagerOptions = {
+  readonly createProvider?: () => MadrasatiBrowserAdapter;
+  readonly ttlMs?: number;
+};
 
 type BrowserSessionRecord = {
   readonly sessionId: string;
@@ -13,6 +26,7 @@ type BrowserSessionRecord = {
   readonly provider: MadrasatiBrowserAdapter;
   readonly createdAt: number;
   lastUsedAt: number;
+  unsubscribeLive?: () => void;
 };
 
 export interface MadrasatiBrowserSessionInfo {
@@ -28,12 +42,25 @@ export interface MadrasatiBrowserAuthenticationStart {
   message: string;
 }
 
-class MadrasatiBrowserSessionManager {
-  private readonly automation = new PlaywrightBrowserAutomation();
+export class MadrasatiBrowserSessionManager {
+  private readonly createProvider: () => MadrasatiBrowserAdapter;
+
+  private readonly ttlMs: number;
 
   private readonly sessions = new Map<string, BrowserSessionRecord>();
 
   private readonly sessionsByUser = new Map<string, string>();
+
+  constructor(options: MadrasatiBrowserSessionManagerOptions = {}) {
+    this.ttlMs = options.ttlMs ?? SESSION_TTL_MS;
+
+    if (options.createProvider) {
+      this.createProvider = options.createProvider;
+    } else {
+      const automation = new PlaywrightBrowserAutomation();
+      this.createProvider = () => new MadrasatiBrowserAdapter(automation);
+    }
+  }
 
   async startAuthentication(
     userId: string,
@@ -50,6 +77,9 @@ class MadrasatiBrowserSessionManager {
       if (existing) {
         existing.lastUsedAt = Date.now();
 
+        await existing.provider.startAuthenticationLiveView();
+        this.attachLivePublisher(existing);
+
         const page = await existing.provider.inspectAuthenticationPage();
 
         return {
@@ -64,7 +94,7 @@ class MadrasatiBrowserSessionManager {
       this.sessionsByUser.delete(ownerId);
     }
 
-    const provider = new MadrasatiBrowserAdapter(this.automation);
+    const provider = this.createProvider();
 
     await provider.connect();
 
@@ -84,6 +114,9 @@ class MadrasatiBrowserSessionManager {
 
       this.sessions.set(sessionId, record);
       this.sessionsByUser.set(ownerId, sessionId);
+
+      await provider.startAuthenticationLiveView();
+      this.attachLivePublisher(record);
 
       const page = await provider.inspectAuthenticationPage();
 
@@ -158,9 +191,77 @@ class MadrasatiBrowserSessionManager {
     await record.provider.pressAuthenticationKey(key);
   }
 
+  async getAuthenticationLiveFrame(
+    userId: string,
+    sessionId: string,
+  ): Promise<MadrasatiLiveFrame> {
+    const record = this.requireOwnedSession(userId, sessionId);
+
+    record.lastUsedAt = Date.now();
+
+    return sanitizeLiveFrame(await record.provider.getAuthenticationLiveFrame());
+  }
+
+  async inspectAuthenticationFocus(
+    userId: string,
+    sessionId: string,
+  ): Promise<MadrasatiFocusedControl> {
+    const record = this.requireOwnedSession(userId, sessionId);
+
+    record.lastUsedAt = Date.now();
+
+    return sanitizeFocusedControl(
+      await record.provider.inspectAuthenticationFocus(),
+    );
+  }
+
+  async waitForAuthenticationLiveFrame(
+    userId: string,
+    sessionId: string,
+    sinceSeq: number,
+    timeoutMs = 1500,
+  ): Promise<MadrasatiLiveFrameUpdate | null> {
+    const record = this.requireOwnedSession(userId, sessionId);
+
+    record.lastUsedAt = Date.now();
+
+    if (!madrasatiLiveFrameHub.getLatest(record.sessionId)) {
+      try {
+        const frame = await record.provider.getAuthenticationLiveFrame();
+        madrasatiLiveFrameHub.publish(record.sessionId, frame);
+      } catch {
+        // Waiters still fail closed if no frame becomes available.
+      }
+    }
+
+    const boundedTimeout = Math.min(Math.max(timeoutMs, 250), 2000);
+
+    return madrasatiLiveFrameHub.waitForFrame(
+      record.sessionId,
+      Number.isFinite(sinceSeq) ? sinceSeq : 0,
+      boundedTimeout,
+    );
+  }
+
+  subscribeAuthenticationLiveFrame(
+    userId: string,
+    sessionId: string,
+    listener: (update: MadrasatiLiveFrameUpdate) => void,
+  ): () => void {
+    const record = this.requireOwnedSession(userId, sessionId);
+
+    record.lastUsedAt = Date.now();
+    this.attachLivePublisher(record);
+
+    return madrasatiLiveFrameHub.subscribe(record.sessionId, listener, {
+      replayLatest: true,
+    });
+  }
+
   async closeSession(userId: string, sessionId: string): Promise<void> {
     const record = this.requireOwnedSession(userId, sessionId);
 
+    this.detachLivePublisher(record);
     this.sessions.delete(sessionId);
 
     if (this.sessionsByUser.get(record.userId) === sessionId) {
@@ -174,10 +275,11 @@ class MadrasatiBrowserSessionManager {
     const now = Date.now();
 
     const expired = [...this.sessions.values()].filter(
-      (record) => now - record.lastUsedAt >= SESSION_TTL_MS,
+      (record) => now - record.lastUsedAt >= this.ttlMs,
     );
 
     for (const record of expired) {
+      this.detachLivePublisher(record);
       this.sessions.delete(record.sessionId);
 
       if (this.sessionsByUser.get(record.userId) === record.sessionId) {
@@ -209,7 +311,8 @@ class MadrasatiBrowserSessionManager {
       throw new Error("Madrasati browser session does not belong to this user.");
     }
 
-    if (Date.now() - record.lastUsedAt >= SESSION_TTL_MS) {
+    if (Date.now() - record.lastUsedAt >= this.ttlMs) {
+      this.detachLivePublisher(record);
       this.sessions.delete(record.sessionId);
 
       if (this.sessionsByUser.get(record.userId) === record.sessionId) {
@@ -222,6 +325,24 @@ class MadrasatiBrowserSessionManager {
     }
 
     return record;
+  }
+
+  private attachLivePublisher(record: BrowserSessionRecord): void {
+    if (record.unsubscribeLive) {
+      return;
+    }
+
+    record.unsubscribeLive = record.provider.subscribeAuthenticationLiveFrame(
+      (frame) => {
+        madrasatiLiveFrameHub.publish(record.sessionId, frame);
+      },
+    );
+  }
+
+  private detachLivePublisher(record: BrowserSessionRecord): void {
+    record.unsubscribeLive?.();
+    record.unsubscribeLive = undefined;
+    madrasatiLiveFrameHub.close(record.sessionId);
   }
 
   private requireUserId(userId: string): string {
@@ -240,7 +361,7 @@ class MadrasatiBrowserSessionManager {
     return {
       sessionId: record.sessionId,
       createdAt: new Date(record.createdAt).toISOString(),
-      expiresAt: new Date(record.lastUsedAt + SESSION_TTL_MS).toISOString(),
+      expiresAt: new Date(record.lastUsedAt + this.ttlMs).toISOString(),
     };
   }
 }

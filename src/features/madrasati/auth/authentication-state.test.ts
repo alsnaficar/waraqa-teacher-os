@@ -9,7 +9,7 @@ describe("Madrasati authentication state detection", () => {
       detectMadrasatiAuthenticationState({
         url: "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",
         title: "Sign in to your account",
-        text: "",
+        text: "قائمة المدارس قائمة الأبناء الإعلانات",
       }),
       "not_authenticated",
     );
@@ -20,7 +20,7 @@ describe("Madrasati authentication state detection", () => {
       detectMadrasatiAuthenticationState({
         url: "https://schools.madrasati.sa/Auth/SignIn",
         title: "Madrasati",
-        text: "تسجيل الدخول",
+        text: "تسجيل الدخول قائمة المدارس قائمة الأبناء",
       }),
       "not_authenticated",
     );
@@ -37,12 +37,56 @@ describe("Madrasati authentication state detection", () => {
     );
   });
 
+  it("detects authenticated school/children/announcements home", () => {
+    assert.equal(
+      detectMadrasatiAuthenticationState({
+        url: "https://schools.madrasati.sa/Home",
+        title: "مدرستي",
+        text: "قائمة المدارس\nقائمة الأبناء\nالإعلانات",
+      }),
+      "authenticated",
+    );
+  });
+
+  it("detects authenticated dashboard markers", () => {
+    assert.equal(
+      detectMadrasatiAuthenticationState({
+        url: "https://schools.madrasati.sa/Dashboard",
+        title: "مدرستي",
+        text: "لوحة التحكم\nالرئيسية",
+      }),
+      "authenticated",
+    );
+  });
+
   it("fails closed for an unknown page", () => {
     assert.equal(
       detectMadrasatiAuthenticationState({
         url: "https://example.com/",
         title: "Example",
-        text: "Example Domain",
+        text: "Example Domain قائمة المدارس قائمة الأبناء",
+      }),
+      "not_authenticated",
+    );
+  });
+
+  it("fails closed for a Madrasati page without authenticated markers", () => {
+    assert.equal(
+      detectMadrasatiAuthenticationState({
+        url: "https://schools.madrasati.sa/unknown",
+        title: "مدرستي",
+        text: "صفحة عامة بدون مؤشرات كافية",
+      }),
+      "not_authenticated",
+    );
+  });
+
+  it("fails closed when only one authenticated marker is present", () => {
+    assert.equal(
+      detectMadrasatiAuthenticationState({
+        url: "https://schools.madrasati.sa/",
+        title: "مدرستي",
+        text: "الإعلانات فقط",
       }),
       "not_authenticated",
     );

@@ -185,3 +185,56 @@ test("PlaywrightBrowserAutomation — kind is playwright", () => {
 
   assert.equal(automation.kind, "playwright");
 });
+
+test("PlaywrightBrowserAutomation — live view and focus stay cookie-free on a local form", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html><body style="margin:0">
+    <input id="email" style="position:absolute;left:20px;top:20px;width:220px;height:44px" />
+    <input id="secret" type="password" style="position:absolute;left:20px;top:80px;width:220px;height:44px" />
+  </body></html>`;
+
+  await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await automation.startPageLiveView(page);
+  await automation.clickPage(page, 40, 40);
+
+  const emailFocus = await automation.inspectFocusedControl(page);
+
+  assert.equal(emailFocus.isEditable, true);
+  assert.equal(emailFocus.inputType, "text");
+  assert.deepEqual(Object.keys(emailFocus).sort(), ["inputType", "isEditable"]);
+  assert.equal("value" in emailFocus, false);
+
+  await automation.typePage(page, "teacher@example.com");
+
+  const afterType = await automation.inspectFocusedControl(page);
+  assert.equal("value" in afterType, false);
+
+  await automation.clickPage(page, 40, 100);
+  const protectedFocus = await automation.inspectFocusedControl(page);
+  assert.equal(protectedFocus.isEditable, true);
+  assert.equal(protectedFocus.inputType, "protected");
+  assert.equal("value" in protectedFocus, false);
+
+  const frame = await automation.getPageLiveFrame(page);
+  assert.ok(frame.base64.length > 20);
+  assert.ok(frame.mimeType === "image/jpeg" || frame.mimeType === "image/png");
+  assert.equal(frame.viewportWidth, 390);
+  assert.equal(frame.viewportHeight, 844);
+  assert.deepEqual(Object.keys(frame).sort(), [
+    "base64",
+    "mimeType",
+    "viewportHeight",
+    "viewportWidth",
+  ]);
+
+  await automation.stopPageLiveView(page);
+  await automation.close();
+});

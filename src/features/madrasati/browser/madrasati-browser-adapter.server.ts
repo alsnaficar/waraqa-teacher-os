@@ -19,8 +19,17 @@ import {
   MadrasatiNotConnectedError,
   type MadrasatiProvider,
 } from "../provider/madrasati-provider.ts";
+import type {
+  MadrasatiFocusedControl,
+  MadrasatiLiveFrame,
+} from "./madrasati-browser-live-session.ts";
 
 const MADRASATI_URL = "https://schools.madrasati.sa/";
+
+const MADRASATI_AUTH_VIEWPORT = {
+  width: 390,
+  height: 844,
+} as const;
 
 export class MadrasatiBrowserAdapter implements MadrasatiProvider {
   private readonly automation: BrowserAutomation;
@@ -45,7 +54,9 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
         };
       }
 
-      const session = await this.automation.openSession();
+      const session = await this.automation.openSession({
+        viewport: MADRASATI_AUTH_VIEWPORT,
+      });
 
       try {
         const page = await this.automation.openPage(session);
@@ -101,6 +112,8 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
     });
 
     const currentUrl = await this.automation.getPageUrl(this.page!);
+
+    await this.startAuthenticationLiveView();
 
     return {
       state: "connected",
@@ -164,6 +177,36 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
     }
 
     await this.automation.pressPageKey(this.page!, key.trim());
+  }
+
+  async startAuthenticationLiveView(): Promise<void> {
+    this.requireReadySession();
+
+    try {
+      await this.automation.startPageLiveView(this.page!);
+    } catch {
+      // Live view is optional. PNG screenshot fallback remains available.
+    }
+  }
+
+  async getAuthenticationLiveFrame(): Promise<MadrasatiLiveFrame> {
+    this.requireReadySession();
+
+    return this.automation.getPageLiveFrame(this.page!);
+  }
+
+  async inspectAuthenticationFocus(): Promise<MadrasatiFocusedControl> {
+    this.requireReadySession();
+
+    return this.automation.inspectFocusedControl(this.page!);
+  }
+
+  subscribeAuthenticationLiveFrame(
+    listener: (frame: MadrasatiLiveFrame) => void,
+  ): () => void {
+    this.requireReadySession();
+
+    return this.automation.subscribePageLiveFrame(this.page!, listener);
   }
 
   async disconnect(): Promise<MadrasatiConnectionStatus> {
