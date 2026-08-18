@@ -34,6 +34,11 @@ import {
   MADRASATI_CLASSES_UNAVAILABLE_CODE,
   MADRASATI_CLASSES_UNAVAILABLE_MESSAGE,
 } from "./madrasati-classes.ts";
+import {
+  extractMadrasatiSubjects,
+  MADRASATI_SUBJECTS_UNAVAILABLE_CODE,
+  MADRASATI_SUBJECTS_UNAVAILABLE_MESSAGE,
+} from "./madrasati-subjects.ts";
 
 const MADRASATI_URL = "https://schools.madrasati.sa/";
 
@@ -390,7 +395,65 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
 
   async getSubjects(): Promise<MadrasatiSubject[]> {
     this.requireReadySession();
-    throw new MadrasatiBrowserNotReadyError("تم فتح جلسة مدرستي، لكن قراءة المواد لم تُنفّذ بعد.");
+
+    const inspection = await this.inspectAuthenticationPage();
+
+    if (inspection.authenticationState !== "authenticated") {
+      throw new MadrasatiProviderError(
+        "NOT_AUTHENTICATED",
+        "لا يمكن قراءة المواد قبل اكتمال تسجيل الدخول إلى مدرستي.",
+      );
+    }
+
+    const fromCurrent = extractMadrasatiSubjects(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    if (fromCurrent.status === "found") {
+      return [...fromCurrent.subjects];
+    }
+
+    if (fromCurrent.status === "empty") {
+      return [];
+    }
+
+    await this.automation.clickControlByAccessibleName(this.page!, [
+      "المقررات والمصادر",
+      "المقررات",
+    ]);
+    await this.automation.clickControlByAccessibleName(this.page!, ["مقرراتي"]);
+    await this.waitForClassCatalog();
+
+    const fromCourses = extractMadrasatiSubjects(
+      await this.automation.readPageLandmarks(this.page!),
+    );
+
+    await this.automation.clickControlByAccessibleName(this.page!, [
+      "الرئيسية",
+      "الصفحة الرئيسية",
+    ]);
+
+    const after = await this.inspectAuthenticationPage();
+
+    if (after.authenticationState !== "authenticated") {
+      throw new MadrasatiProviderError(
+        "NOT_AUTHENTICATED",
+        "انتهت جلسة مدرستي أثناء قراءة المواد.",
+      );
+    }
+
+    if (fromCourses.status === "found") {
+      return [...fromCourses.subjects];
+    }
+
+    if (fromCourses.status === "empty") {
+      return [];
+    }
+
+    throw new MadrasatiProviderError(
+      MADRASATI_SUBJECTS_UNAVAILABLE_CODE,
+      MADRASATI_SUBJECTS_UNAVAILABLE_MESSAGE,
+    );
   }
 
   private requireReadySession(): void {

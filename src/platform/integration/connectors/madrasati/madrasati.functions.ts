@@ -76,6 +76,11 @@ export type MadrasatiClassResult = {
   stage?: string;
 };
 
+export type MadrasatiSubjectResult = {
+  name: string;
+  code?: string;
+};
+
 export type MadrasatiAuthenticationLiveFrameResult = {
   mimeType: "image/jpeg" | "image/png";
   base64: string;
@@ -230,6 +235,25 @@ export const getMadrasatiClasses = createServerFn({ method: "POST" })
       grade: item.grade,
       className: item.className,
       ...(item.stage ? { stage: item.stage } : {}),
+    }));
+  });
+
+/**
+ * Read-only assigned subjects from the authenticated user's live Madrasati session.
+ * Never writes to the database. Never returns HTML, cookies, URLs, or Playwright objects.
+ */
+export const getMadrasatiSubjects = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<MadrasatiSubjectResult[]> => {
+    const { readAuthenticatedMadrasatiSubjects } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    const subjects = await readAuthenticatedMadrasatiSubjects(context.userId);
+
+    return subjects.map((item) => ({
+      name: item.name,
+      ...(item.code ? { code: item.code } : {}),
     }));
   });
 

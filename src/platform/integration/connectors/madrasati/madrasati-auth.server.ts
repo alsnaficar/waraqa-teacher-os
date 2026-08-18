@@ -3,7 +3,7 @@ import {
   type MadrasatiBrowserAuthenticationStart,
 } from "../../../../features/madrasati/browser/madrasati-browser-session-manager.server.ts";
 import type { MadrasatiAuthenticationPage } from "../../../../features/madrasati/provider/madrasati-provider.ts";
-import type { MadrasatiClass, MadrasatiTeacher } from "../../../../features/madrasati/provider/models.ts";
+import type { MadrasatiClass, MadrasatiSubject, MadrasatiTeacher } from "../../../../features/madrasati/provider/models.ts";
 import type {
   MadrasatiFocusedControl,
   MadrasatiLiveFrame,
@@ -88,6 +88,18 @@ export async function readAuthenticatedMadrasatiClasses(
   const userId = requireAuthenticatedUserId(waraqaUserId);
 
   return madrasatiBrowserSessionManager.readClasses(userId);
+}
+
+/**
+ * Read-only assigned subjects from the authenticated user's live Madrasati session.
+ * Never writes to the database and never returns HTML, cookies, or Playwright objects.
+ */
+export async function readAuthenticatedMadrasatiSubjects(
+  waraqaUserId: string,
+): Promise<MadrasatiSubject[]> {
+  const userId = requireAuthenticatedUserId(waraqaUserId);
+
+  return madrasatiBrowserSessionManager.readSubjects(userId);
 }
 
 /**
