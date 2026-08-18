@@ -17,9 +17,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import {
   CheckCircle2,
-  Info,
   Loader2,
-  RefreshCw,
   School,
   XCircle,
 } from "lucide-react";
@@ -514,30 +512,35 @@ export function MadrasatiAuthModal({
     onSyncSuccess,
   ]);
 
+  const popupStyle =
+    coarsePointer && keyboardInset > 40
+      ? {
+          top: "auto",
+          bottom: `calc(${keyboardInset}px + 8px)`,
+          transform: "translate(-50%, 0)",
+          maxHeight: `calc(100dvh - ${keyboardInset}px - 16px)`,
+        }
+      : undefined;
+
+  const liveViewMaxHeight = `min(58vh, calc(100dvh - ${keyboardInset}px - 11rem))`;
+
+  const statusLabel = returningHome
+    ? RETURNING_HOME_MESSAGE
+    : authenticationState === "authenticated"
+      ? "تم تسجيل الدخول"
+      : sessionId
+        ? "بانتظار تسجيل الدخول"
+        : "جلسة آمنة داخل ورقة";
+
   const keyboardBar = sessionId ? (
-    <div
-      className={[
-        "space-y-3 rounded-xl border border-primary/10 bg-background p-3",
-        coarsePointer
-          ? "fixed inset-x-3 z-[60] shadow-2xl"
-          : "sticky bottom-0",
-      ].join(" ")}
-      style={
-        coarsePointer
-          ? {
-              bottom: `max(0.75rem, calc(${keyboardInset}px + env(safe-area-inset-bottom, 0px)))`,
-            }
-          : undefined
-      }
-    >
+    <div className="space-y-2 rounded-xl bg-muted/40 p-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          اضغط الحقل داخل الشاشة ثم اكتب. الأحرف تُرسل فورًا إلى المتصفح
-          المعزول ولا تُحفظ.
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          اضغط الحقل داخل الشاشة ثم اكتب.
         </p>
 
         {focus.isEditable ? (
-          <span className="text-[11px] font-bold text-green-600">
+          <span className="text-[11px] font-semibold text-green-600">
             {focus.inputType === "protected"
               ? "حقل محمي نشط"
               : "الحقل محدد"}
@@ -601,216 +604,165 @@ export function MadrasatiAuthModal({
     >
       <DialogContent
         dir="rtl"
-        className="max-h-[92dvh] w-[calc(100vw-16px)] max-w-3xl overflow-y-auto rounded-2xl border-primary/10 p-4 shadow-xl sm:p-6"
+        style={popupStyle}
+        className="flex max-h-[min(92dvh,100svh)] w-[calc(100vw-16px)] max-w-[720px] flex-col gap-2 overflow-y-auto rounded-2xl border-primary/10 p-3 shadow-2xl sm:rounded-2xl sm:p-4"
       >
-        <DialogHeader className="border-b border-muted pb-4 text-right">
-          <div className="mb-1.5 flex items-center gap-2.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
-              <School className="h-5 w-5" />
+        <DialogHeader className="space-y-0 pr-8 text-right">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+              <School className="h-4 w-4" />
             </div>
 
-            <div>
-              <DialogTitle className="text-lg font-black text-foreground">
-                تسجيل الدخول إلى منصة مدرستي
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-sm font-bold leading-6 text-foreground">
+                {sessionId ? "متصفح مدرستي" : "تسجيل الدخول إلى مدرستي"}
               </DialogTitle>
 
-              <DialogDescription className="mt-0.5 text-xs font-medium text-muted-foreground">
-                جلسة متصفح آمنة تعمل على خادم ورقة
+              <DialogDescription className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium leading-snug text-muted-foreground">
+                {sessionId ? (
+                  <>
+                    {authenticationState === "authenticated" ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    )}
+                    <span className="min-w-0">{statusLabel}</span>
+                  </>
+                ) : (
+                  <span>جلسة متصفح آمنة داخل ورقة</span>
+                )}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div
-          className={[
-            "space-y-4 pt-4",
-            sessionId && coarsePointer ? "pb-52" : "",
-          ].join(" ")}
-        >
-          <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300">
-            <div className="flex items-start gap-2.5">
-              <Info className="mt-0.5 h-5 w-5 shrink-0" />
-
-              <div className="space-y-1.5 text-xs leading-relaxed">
-                <p className="font-bold">معاينة مزامنة مدرستي</p>
-                <p>{MADRASATI_DRY_RUN_DISCLAIMER}</p>
-              </div>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full gap-2 bg-background text-sm font-bold"
-              disabled={previewLoading}
-              onClick={() => void handlePreview()}
-            >
-              {previewLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : null}
-              معاينة مزامنة مدرستي
-            </Button>
-
-            {preview ? (
-              <div className="space-y-2 rounded-lg border bg-background/70 p-3 text-xs">
-                <p className="font-bold">{preview.disclaimer}</p>
-                <p>
-                  اكتشف {preview.counts.discovered} · مقبول{" "}
-                  {preview.timetable.accepted.length} · مرفوض{" "}
-                  {preview.counts.rejected}
-                </p>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex gap-2.5 rounded-xl border border-amber-100 bg-amber-50/60 p-4 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
-            <Info className="mt-0.5 h-5 w-5 shrink-0" />
-
-            <div className="space-y-2 text-xs font-medium leading-relaxed">
-              <p>
-                تسجيل الدخول يتم داخل جلسة المتصفح الموجودة على خادم ورقة.
-              </p>
-
-              <p>
-                بيانات الاعتماد وملفات Cookies لا يتم حفظها في قاعدة بيانات ورقة.
-              </p>
-
-              <p>
-                الصفحة المعروضة هي بث حي من المتصفح المعزول، وليست iframe لصفحة
-                Microsoft.
-              </p>
-            </div>
-          </div>
-
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
           {!sessionId ? (
-            <Button
-              type="button"
-              className="h-11 w-full gap-2 text-sm font-bold"
-              disabled={loading}
-              onClick={() => void handleStart()}
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : null}
-              فتح جلسة مدرستي
-            </Button>
-          ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 px-4 py-3">
-                <div className="flex items-center gap-2 text-sm font-bold">
-                  {authenticationState === "authenticated" ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <XCircle className="h-5 w-5 text-amber-600" />
-                  )}
+              <Button
+                type="button"
+                className="h-11 w-full gap-2 text-sm font-bold"
+                disabled={loading}
+                onClick={() => void handleStart()}
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                فتح جلسة مدرستي
+              </Button>
 
-                  <span>
-                    {returningHome
-                      ? RETURNING_HOME_MESSAGE
-                      : authenticationState === "authenticated"
-                        ? "تم تسجيل الدخول"
-                        : "بانتظار تسجيل الدخول"}
-                  </span>
-                </div>
+              <details className="rounded-xl bg-muted/30 px-3 py-1 text-xs">
+                <summary className="flex h-11 min-h-[44px] cursor-pointer list-none items-center font-semibold text-muted-foreground">
+                  معاينة مزامنة مدرستي
+                </summary>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 min-h-[44px]"
-                  disabled={refreshing || returningHome}
-                  onClick={() => void refreshSession(sessionId)}
-                >
-                  {refreshing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  <span className="mr-2">تحديث</span>
-                </Button>
-              </div>
+                <div className="space-y-2 pb-2">
+                  <p className="leading-relaxed text-muted-foreground">
+                    {MADRASATI_DRY_RUN_DISCLAIMER}
+                  </p>
 
-              {url ? (
-                <div className="break-all rounded-lg border bg-muted/20 px-3 py-2 text-xs">
-                  <span className="font-bold">العنوان الحالي:</span> {url}
-                </div>
-              ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full gap-2 bg-background text-sm font-bold"
+                    disabled={previewLoading}
+                    onClick={() => void handlePreview()}
+                  >
+                    {previewLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    معاينة مزامنة مدرستي
+                  </Button>
 
-              {message ? (
-                <div className="rounded-lg border bg-muted/20 px-3 py-2 text-xs">
-                  {message}
-                </div>
-              ) : null}
-
-              {screenshot ? (
-                <div
-                  className={[
-                    "relative overflow-hidden rounded-xl border bg-black",
-                    clickBusy ? "cursor-wait" : "cursor-crosshair",
-                  ].join(" ")}
-                >
-                  <img
-                    ref={screenshotRef}
-                    src={screenshot}
-                    alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
-                    className="mx-auto block h-auto max-h-[58vh] max-w-full w-auto select-none"
-                    draggable={false}
-                    onPointerUp={(event) => void handleLiveViewPointer(event)}
-                  />
-
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    inputMode={focus.inputType === "email" ? "email" : "text"}
-                    enterKeyHint="next"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    aria-label="إدخال إلى متصفح مدرستي"
-                    className="pointer-events-none absolute inset-x-0 bottom-0 h-12 min-h-[48px] w-full caret-transparent opacity-[0.02] text-base"
-                    disabled={!sessionId}
-                    onCompositionStart={() => {
-                      composingRef.current = true;
-                    }}
-                    onCompositionEnd={(event) => {
-                      composingRef.current = false;
-                      flushNativeInput(event.currentTarget);
-                    }}
-                    onInput={(event) => {
-                      flushNativeInput(event.currentTarget);
-                    }}
-                    onKeyDown={(event) => handleRemoteKey(event)}
-                  />
-
-                  {clickBusy ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                      <div className="rounded-full bg-background/90 p-3 shadow-lg">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      </div>
+                  {preview ? (
+                    <div className="space-y-1 rounded-lg bg-background/70 p-2">
+                      <p className="font-semibold">{preview.disclaimer}</p>
+                      <p>
+                        اكتشف {preview.counts.discovered} · مقبول{" "}
+                        {preview.timetable.accepted.length} · مرفوض{" "}
+                        {preview.counts.rejected}
+                      </p>
                     </div>
                   ) : null}
                 </div>
-              ) : (
-                <div className="flex min-h-64 items-center justify-center rounded-xl border bg-muted/20">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              )}
+              </details>
+            </>
+          ) : (
+            <>
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                {screenshot ? (
+                  <div
+                    className={[
+                      "relative overflow-hidden rounded-xl bg-black shadow-sm",
+                      clickBusy ? "cursor-wait" : "cursor-crosshair",
+                    ].join(" ")}
+                  >
+                    <img
+                      ref={screenshotRef}
+                      src={screenshot}
+                      alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
+                      className="mx-auto block h-auto max-h-[58vh] max-w-full w-auto select-none"
+                      style={{ maxHeight: liveViewMaxHeight }}
+                      draggable={false}
+                      onPointerUp={(event) => void handleLiveViewPointer(event)}
+                    />
 
-              {!coarsePointer ? keyboardBar : null}
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      inputMode={focus.inputType === "email" ? "email" : "text"}
+                      enterKeyHint="next"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      aria-label="إدخال إلى متصفح مدرستي"
+                      className="pointer-events-none absolute inset-x-0 bottom-0 h-12 min-h-[48px] w-full caret-transparent opacity-[0.02] text-base"
+                      disabled={!sessionId}
+                      onCompositionStart={() => {
+                        composingRef.current = true;
+                      }}
+                      onCompositionEnd={(event) => {
+                        composingRef.current = false;
+                        flushNativeInput(event.currentTarget);
+                      }}
+                      onInput={(event) => {
+                        flushNativeInput(event.currentTarget);
+                      }}
+                      onKeyDown={(event) => handleRemoteKey(event)}
+                    />
 
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-xs leading-relaxed text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300">
-                <p className="mb-1 font-bold">طريقة الاستخدام</p>
-                <p>
-                  اضغط مباشرة على الحقل المطلوب داخل الشاشة الحية، ثم اكتب من
-                  لوحة مفاتيح جوالك. ورقة لا تعرض صفحة Microsoft داخل iframe
-                  ولا تحتفظ بما تكتبه.
-                </p>
+                    {clickBusy ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <div className="rounded-full bg-background/90 p-3 shadow-lg">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {returningHome ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/85 p-4 text-center text-sm font-semibold">
+                        {RETURNING_HOME_MESSAGE}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mx-auto flex h-36 w-full max-w-[220px] flex-col items-center justify-center gap-2 rounded-xl bg-zinc-900 text-zinc-200">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="px-3 text-center text-[11px] leading-relaxed">
+                      جارٍ تحميل شاشة مدرستي...
+                    </span>
+                  </div>
+                )}
               </div>
+
+              {keyboardBar}
 
               <Button
                 type="button"
-                variant="outline"
-                className="h-11 w-full text-sm font-bold"
-                disabled={closing}
+                variant="ghost"
+                className="h-11 w-full text-sm font-medium text-muted-foreground"
+                disabled={closing || returningHome}
                 onClick={() => void handleCloseSession()}
               >
                 {closing ? (
@@ -820,20 +772,7 @@ export function MadrasatiAuthModal({
               </Button>
             </>
           )}
-
-          {!sessionId ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full text-sm font-bold"
-              onClick={() => onOpenChange(false)}
-            >
-              إغلاق
-            </Button>
-          ) : null}
         </div>
-
-        {coarsePointer ? keyboardBar : null}
       </DialogContent>
     </Dialog>
   );
