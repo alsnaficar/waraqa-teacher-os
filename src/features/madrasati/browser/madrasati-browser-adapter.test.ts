@@ -328,8 +328,12 @@ test("MadrasatiBrowserAdapter — navigates to مقرراتي and returns normal
   const teacher = await provider.getTeacherProfile();
   assert.equal(teacher.displayName, "معلم الاختبار");
 
+  const subjects = await provider.getSubjects();
+  assert.deepEqual(subjects, [{ name: "الرياضيات" }, { name: "العلوم" }]);
+  assert.equal(automation.view, "home");
+  assert.equal(automation.sessionClosed, false);
+
   await assert.rejects(() => provider.getTimetable(), /قراءة الجدول لم تُنفّذ بعد/);
-  await assert.rejects(() => provider.getSubjects(), /قراءة المواد لم تُنفّذ بعد/);
 });
 
 test("MadrasatiBrowserAdapter — getClasses fails closed when unauthenticated or unreadable", async () => {
@@ -403,6 +407,80 @@ test("MadrasatiBrowserAdapter — confirmed empty مقرراتي list is not a f
   await provider.connect();
   const classes = await provider.getClasses();
   assert.deepEqual(classes, []);
+  const subjects = await provider.getSubjects();
+  assert.deepEqual(subjects, []);
+});
+
+test("MadrasatiBrowserAdapter — getSubjects fails closed when unauthenticated or unreadable", async () => {
+  const unauthenticated = new MadrasatiBrowserAdapter(new FakeBrowserAutomation());
+  await unauthenticated.connect();
+  await assert.rejects(() => unauthenticated.getSubjects(), /قبل اكتمال تسجيل الدخول/);
+
+  class GradeOnlyCatalogAutomation extends FakeBrowserAutomation {
+    view: "home" | "courses" = "home";
+    sessionClosed = false;
+
+    async closeSession(): Promise<void> {
+      this.sessionClosed = true;
+    }
+
+    async getPageText(): Promise<string> {
+      return this.view === "courses"
+        ? "مقرراتي\nالصف\nالشعبة\nالصف الأول المتوسط\n1"
+        : "مرحباً، معلم الاختبار\nجدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+    }
+
+    async readPageLandmarks() {
+      return {
+        url:
+          this.view === "courses"
+            ? "https://schools.madrasati.sa/Courses"
+            : "https://schools.madrasati.sa/",
+        title: this.view === "courses" ? "مقرراتي" : "مدرستي",
+        text: await this.getPageText(),
+        accessibleNames: ["مقرراتي", "المقررات والمصادر", "الرئيسية"],
+        labeledValues: [],
+        tableRows:
+          this.view === "courses"
+            ? [
+                {
+                  headers: ["الصف", "الشعبة"],
+                  cells: ["الصف الأول المتوسط", "1"],
+                },
+              ]
+            : [],
+      };
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      if (names.some((name) => name === "مقرراتي" || name === "المقررات والمصادر")) {
+        this.view = "courses";
+        return true;
+      }
+      if (names.some((name) => name === "الرئيسية")) {
+        this.view = "home";
+        return true;
+      }
+      return false;
+    }
+
+    async waitForPageText(
+      _page: BrowserPageHandle,
+      needle: string,
+    ): Promise<boolean> {
+      return (await this.getPageText()).includes(needle);
+    }
+  }
+
+  const automation = new GradeOnlyCatalogAutomation();
+  const unreadable = new MadrasatiBrowserAdapter(automation);
+  await unreadable.connect();
+  await assert.rejects(() => unreadable.getSubjects(), /تعذر قراءة المواد/);
+  assert.equal(automation.view, "home");
+  assert.equal(automation.sessionClosed, false);
 });
 
 test("Playwright boundary — page lifecycle through opaque handles", async () => {

@@ -89,6 +89,10 @@ class FakeInteractiveAdapter {
     ];
   }
 
+  async getSubjects() {
+    return [{ name: "الرياضيات" }, { name: "العلوم" }];
+  }
+
   async clickAuthentication(x: number, y: number) {
     this.clicks.push({ x, y });
   }
@@ -342,6 +346,24 @@ describe("Madrasati browser session manager — lifecycle and ownership", () => 
     assert.equal("html" in (classes[0] ?? {}), false);
     assert.equal("cookies" in (classes[0] ?? {}), false);
     await assert.rejects(() => manager.readClasses(USER_B), /not found|expired/i);
+    assert.equal(adapter.disconnectCalls, 0);
+  });
+
+  it("owner can read assigned subjects without HTML or cookies", async () => {
+    const { adapter, manager } = createManager();
+
+    await assert.rejects(() => manager.readSubjects(USER_A), /not found|expired/i);
+
+    await manager.startAuthentication(USER_A);
+    const subjects = await manager.readSubjects(USER_A);
+
+    assert.deepEqual(
+      subjects.map((item) => item.name),
+      ["الرياضيات", "العلوم"],
+    );
+    assert.equal("html" in (subjects[0] ?? {}), false);
+    assert.equal("cookies" in (subjects[0] ?? {}), false);
+    await assert.rejects(() => manager.readSubjects(USER_B), /not found|expired/i);
     assert.equal(adapter.disconnectCalls, 0);
   });
 

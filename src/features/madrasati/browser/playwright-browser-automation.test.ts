@@ -305,6 +305,7 @@ test("PlaywrightBrowserAutomation — teacher home landmarks do not include HTML
 
 test("PlaywrightBrowserAutomation — مقرراتي table landmarks normalize to classes", async () => {
   const { extractMadrasatiClasses } = await import("./madrasati-classes.ts");
+  const { extractMadrasatiSubjects } = await import("./madrasati-subjects.ts");
   const { mkdtempSync, writeFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
@@ -374,6 +375,13 @@ test("PlaywrightBrowserAutomation — مقرراتي table landmarks normalize t
   assert.deepEqual(
     extracted.classes.map((item) => `${item.grade}/${item.className}`),
     ["الصف الأول المتوسط/1", "الصف الأول المتوسط/2"],
+  );
+
+  const subjects = extractMadrasatiSubjects(landmarks);
+  assert.equal(subjects.status, "found");
+  assert.deepEqual(
+    subjects.subjects.map((item) => item.name),
+    ["الرياضيات", "العلوم"],
   );
 
     const returned = await automation.clickControlByAccessibleName(page, ["الرئيسية"]);

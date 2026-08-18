@@ -12,11 +12,13 @@ import {
   getMadrasatiAuthenticationStatus,
   getMadrasatiTeacherProfile,
   getMadrasatiClasses,
+  getMadrasatiSubjects,
   MADRASATI_DRY_RUN_DISCLAIMER,
   type MadrasatiDryRunPreviewResult,
   type MadrasatiAuthenticationStatusResult,
   type MadrasatiTeacherProfileResult,
   type MadrasatiClassResult,
+  type MadrasatiSubjectResult,
 } from "@/platform/integration/connectors/madrasati/madrasati.functions";
 import { StudentsPanel } from "@/features/homework/components/students-panel";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -68,10 +70,14 @@ function SettingsPage() {
   const [madrasatiClasses, setMadrasatiClasses] = useState<MadrasatiClassResult[] | null>(
     null,
   );
+  const [madrasatiSubjects, setMadrasatiSubjects] = useState<MadrasatiSubjectResult[] | null>(
+    null,
+  );
   const previewFn = useServerFn(previewMadrasatiSync);
   const madrasatiStatusFn = useServerFn(getMadrasatiAuthenticationStatus);
   const teacherProfileFn = useServerFn(getMadrasatiTeacherProfile);
   const madrasatiClassesFn = useServerFn(getMadrasatiClasses);
+  const madrasatiSubjectsFn = useServerFn(getMadrasatiSubjects);
 
   useEffect(() => {
     let active = true;
@@ -131,6 +137,16 @@ function SettingsPage() {
               setMadrasatiClasses(null);
             }
           }
+          try {
+            const subjects = await madrasatiSubjectsFn();
+            if (active) {
+              setMadrasatiSubjects(subjects);
+            }
+          } catch {
+            if (active) {
+              setMadrasatiSubjects(null);
+            }
+          }
         }
       } catch {
         if (active) {
@@ -140,13 +156,14 @@ function SettingsPage() {
           });
           setTeacherProfile(null);
           setMadrasatiClasses(null);
+          setMadrasatiSubjects(null);
         }
       }
     })();
     return () => {
       active = false;
     };
-  }, [madrasatiStatusFn, teacherProfileFn, madrasatiClassesFn]);
+  }, [madrasatiStatusFn, teacherProfileFn, madrasatiClassesFn, madrasatiSubjectsFn]);
 
   const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -210,6 +227,16 @@ function SettingsPage() {
                             .map((item) => `${item.grade} / ${item.className}`)
                             .join("، ")}`
                         : "لم يُعثر على فصول مسندة في مدرستي."}
+                    </p>
+                  ) : null}
+                  {madrasatiStatus?.authenticationState === "authenticated" &&
+                  madrasatiSubjects ? (
+                    <p className="mt-2 text-xs leading-relaxed text-amber-900/80">
+                      {madrasatiSubjects.length > 0
+                        ? `المواد المكتشفة من مدرستي: ${madrasatiSubjects
+                            .map((item) => item.name)
+                            .join("، ")}`
+                        : "لم يُعثر على مواد مسندة في مدرستي."}
                     </p>
                   ) : null}
                 </div>
