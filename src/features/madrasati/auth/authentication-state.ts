@@ -6,6 +6,12 @@ export interface MadrasatiAuthenticationPageSnapshot {
   text: string;
 }
 
+/**
+ * Authenticated Madrasati teacher (and compatible parent) home markers.
+ *
+ * Teacher home after Microsoft SSO typically shows جدولي / المقررات /
+ * الواجبات rather than parent labels like قائمة الأبناء.
+ */
 const AUTHENTICATED_MARKERS = [
   "قائمة المدارس",
   "قائمة الأبناء",
@@ -15,6 +21,12 @@ const AUTHENTICATED_MARKERS = [
   "الجدول",
   "الفصول",
   "المواد",
+  "جدولي",
+  "المقررات",
+  "الواجبات",
+  "الاختبارات",
+  "تسجيل الخروج",
+  "الكادر التعليمي",
 ] as const;
 
 const REQUIRED_AUTHENTICATED_MARKERS = 2;
@@ -42,7 +54,7 @@ export function detectMadrasatiAuthenticationState(
     return "not_authenticated";
   }
 
-  if (!isMadrasatiSchoolsHost(url)) {
+  if (!isMadrasatiAppHost(url)) {
     return "not_authenticated";
   }
 
@@ -61,23 +73,30 @@ function countAuthenticatedMarkers(haystack: string): number {
 }
 
 function isMicrosoftLoginUrl(url: string): boolean {
-  return url.toLowerCase().includes("login.microsoftonline.com");
-}
-
-function isMadrasatiSchoolsHost(url: string): boolean {
   const hostname = readHostname(url);
 
-  return hostname === "schools.madrasati.sa";
+  return (
+    hostname === "login.microsoftonline.com" ||
+    hostname.endsWith(".microsoftonline.com") ||
+    hostname === "login.live.com" ||
+    hostname === "login.microsoft.com"
+  );
+}
+
+function isMadrasatiAppHost(url: string): boolean {
+  const hostname = readHostname(url);
+
+  return hostname === "madrasati.sa" || hostname.endsWith(".madrasati.sa");
 }
 
 function isMadrasatiSignInUrl(url: string): boolean {
-  const hostname = readHostname(url);
-  const pathname = readPathname(url);
+  if (!isMadrasatiAppHost(url)) {
+    return false;
+  }
 
-  return (
-    hostname === "schools.madrasati.sa" &&
-    pathname.toLowerCase().includes("/auth/signin")
-  );
+  const pathname = readPathname(url).toLowerCase();
+
+  return pathname.includes("/auth/signin") || pathname.includes("/auth/login");
 }
 
 function readHostname(url: string): string {

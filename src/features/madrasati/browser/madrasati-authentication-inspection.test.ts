@@ -109,4 +109,18 @@ describe("Madrasati browser authentication inspection", () => {
     assert.equal(page.authenticationState, "authenticated");
     assert.equal(page.url, "https://schools.madrasati.sa/");
   });
+
+  it("reports authenticated for a teacher home after Microsoft SSO", async () => {
+    class TeacherHomeAutomation extends InspectionAutomation {
+      async getPageText(): Promise<string> {
+        return "جدولي\nالمقررات والمصادر\nالواجبات\nتسجيل الخروج";
+      }
+    }
+
+    const provider = new MadrasatiBrowserAdapter(new TeacherHomeAutomation());
+    await provider.connect();
+    const page = await provider.inspectAuthenticationPage();
+
+    assert.equal(page.authenticationState, "authenticated");
+  });
 });

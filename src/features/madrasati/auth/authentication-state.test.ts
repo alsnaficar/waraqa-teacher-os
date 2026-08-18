@@ -48,14 +48,36 @@ describe("Madrasati authentication state detection", () => {
     );
   });
 
-  it("detects authenticated dashboard markers", () => {
+  it("detects an authenticated Madrasati teacher home after Microsoft SSO", () => {
     assert.equal(
       detectMadrasatiAuthenticationState({
-        url: "https://schools.madrasati.sa/Dashboard",
+        url: "https://schools.madrasati.sa/",
         title: "مدرستي",
-        text: "لوحة التحكم\nالرئيسية",
+        text: "جدولي\nالمقررات والمصادر\nالواجبات",
       }),
       "authenticated",
+    );
+  });
+
+  it("detects authenticated teacher home on a Madrasati subdomain", () => {
+    assert.equal(
+      detectMadrasatiAuthenticationState({
+        url: "https://lms.madrasati.sa/Home",
+        title: "مدرستي",
+        text: "تسجيل الخروج\nالاختبارات",
+      }),
+      "authenticated",
+    );
+  });
+
+  it("still treats Microsoft login as not authenticated when teacher markers are present", () => {
+    assert.equal(
+      detectMadrasatiAuthenticationState({
+        url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        title: "Sign in",
+        text: "جدولي المقررات الواجبات تسجيل الخروج",
+      }),
+      "not_authenticated",
     );
   });
 

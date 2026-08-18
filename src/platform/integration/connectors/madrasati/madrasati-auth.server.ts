@@ -51,6 +51,21 @@ export async function inspectAuthenticatedMadrasatiAuthentication(
 }
 
 /**
+ * Status of the caller's existing Madrasati browser session, if any.
+ * Never starts a browser and never returns page text, cookies, or URLs.
+ */
+export async function peekAuthenticatedMadrasatiAuthentication(
+  waraqaUserId: string,
+): Promise<{
+  hasSession: boolean;
+  authenticationState: "not_authenticated" | "authenticated";
+}> {
+  const userId = requireAuthenticatedUserId(waraqaUserId);
+
+  return madrasatiBrowserSessionManager.peekAuthentication(userId);
+}
+
+/**
  * Closes only a session owned by the authenticated Waraqa user.
  */
 export async function closeAuthenticatedMadrasatiAuthentication(

@@ -270,6 +270,34 @@ describe("Madrasati browser session manager — lifecycle and ownership", () => 
     assert.equal("cookies" in update!.frame, false);
   });
 
+  it("owner peek reports session presence without page text", async () => {
+    const { manager } = createManager();
+
+    const empty = await manager.peekAuthentication(USER_A);
+    assert.deepEqual(empty, {
+      hasSession: false,
+      authenticationState: "not_authenticated",
+    });
+
+    await manager.startAuthentication(USER_A);
+    const owned = await manager.peekAuthentication(USER_A);
+
+    assert.deepEqual(owned, {
+      hasSession: true,
+      authenticationState: "not_authenticated",
+    });
+    assert.deepEqual(Object.keys(owned).sort(), [
+      "authenticationState",
+      "hasSession",
+    ]);
+
+    const other = await manager.peekAuthentication(USER_B);
+    assert.deepEqual(other, {
+      hasSession: false,
+      authenticationState: "not_authenticated",
+    });
+  });
+
   it("gives each Waraqa user a different session id", async () => {
     const manager = new MadrasatiBrowserSessionManager({
       createProvider: () =>

@@ -48,17 +48,19 @@ export type MadrasatiAuthenticationStartResult = {
 /**
  * Result returned when inspecting the server-side authentication page.
  *
- * Page text is intentionally returned only for the authenticated owner of
- * the session and only as the current inspection payload.
+ * Page text, title, URL, cookies and Playwright objects never leave the server.
+ * The client only receives the fail-closed authentication state.
  */
 export type MadrasatiAuthenticationInspectionResult = {
-  url: string;
-  title: string;
-  text: string;
   authenticationState:
     | "not_authenticated"
     | "authenticated"
     | "unknown";
+};
+
+export type MadrasatiAuthenticationStatusResult = {
+  hasSession: boolean;
+  authenticationState: "not_authenticated" | "authenticated";
 };
 
 export type MadrasatiAuthenticationLiveFrameResult = {
@@ -131,10 +133,14 @@ export const inspectMadrasatiAuthentication = createServerFn({ method: "POST" })
       "./madrasati-auth.server.ts"
     );
 
-    return inspectAuthenticatedMadrasatiAuthentication(
+    const page = await inspectAuthenticatedMadrasatiAuthentication(
       context.userId,
       data.sessionId,
     );
+
+    return {
+      authenticationState: page.authenticationState,
+    };
   });
 
 /**
@@ -157,6 +163,20 @@ export const screenshotMadrasatiAuthentication = createServerFn({ method: "POST"
       context.userId,
       data.sessionId,
     );
+  });
+
+/**
+ * Status of the caller's existing Madrasati browser session, if any.
+ * Never starts a browser and never returns page text, cookies, or URLs.
+ */
+export const getMadrasatiAuthenticationStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<MadrasatiAuthenticationStatusResult> => {
+    const { peekAuthenticatedMadrasatiAuthentication } = await import(
+      "./madrasati-auth.server.ts"
+    );
+
+    return peekAuthenticatedMadrasatiAuthentication(context.userId);
   });
 
 /**

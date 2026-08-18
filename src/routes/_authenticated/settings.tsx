@@ -9,8 +9,10 @@ import { SectionHeader } from "@/shared/components/section-header";
 import { GradesClassesPanel } from "@/features/classes/components/grades-classes-panel";
 import {
   previewMadrasatiSync,
+  getMadrasatiAuthenticationStatus,
   MADRASATI_DRY_RUN_DISCLAIMER,
   type MadrasatiDryRunPreviewResult,
+  type MadrasatiAuthenticationStatusResult,
 } from "@/platform/integration/connectors/madrasati/madrasati.functions";
 import { StudentsPanel } from "@/features/homework/components/students-panel";
 import { Card, CardContent } from "@/shared/ui/card";
@@ -55,7 +57,10 @@ function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [preview, setPreview] = useState<MadrasatiDryRunPreviewResult | null>(null);
+  const [madrasatiStatus, setMadrasatiStatus] =
+    useState<MadrasatiAuthenticationStatusResult | null>(null);
   const previewFn = useServerFn(previewMadrasatiSync);
+  const madrasatiStatusFn = useServerFn(getMadrasatiAuthenticationStatus);
 
   useEffect(() => {
     let active = true;
@@ -85,6 +90,28 @@ function SettingsPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const status = await madrasatiStatusFn();
+        if (active) {
+          setMadrasatiStatus(status);
+        }
+      } catch {
+        if (active) {
+          setMadrasatiStatus({
+            hasSession: false,
+            authenticationState: "not_authenticated",
+          });
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [madrasatiStatusFn]);
 
   const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -132,7 +159,11 @@ function SettingsPage() {
                     مزامنة منصة مدرستي
                   </h3>
                   <p className="text-xs text-amber-900/80 mt-1 leading-relaxed">
-                    مزامنة مدرستي ستتم عبر المتصفح عند توفر المنصة. {MADRASATI_DRY_RUN_DISCLAIMER}
+                    {madrasatiStatus?.authenticationState === "authenticated"
+                      ? "تم تسجيل الدخول إلى مدرستي. جلسة المتصفح محفوظة على الخادم وجاهزة للمزامنة."
+                      : madrasatiStatus?.hasSession
+                        ? "جلسة تسجيل الدخول إلى مدرستي ما زالت مفتوحة على الخادم."
+                        : `مزامنة مدرستي ستتم عبر المتصفح عند توفر المنصة. ${MADRASATI_DRY_RUN_DISCLAIMER}`}
                   </p>
                 </div>
                 <Button

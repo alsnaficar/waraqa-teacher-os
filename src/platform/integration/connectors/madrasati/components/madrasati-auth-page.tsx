@@ -427,12 +427,7 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
 
     void (async () => {
       try {
-        const ownedSessionId = sessionIdRef.current;
-
-        if (ownedSessionId) {
-          await closeOwnedSession(ownedSessionId);
-        }
-
+        // Keep the authenticated Playwright session on the server for sync.
         clearLocalSession();
         await navigate({ to: "/dashboard" });
 
@@ -451,7 +446,7 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
         toast.error(text);
       }
     })();
-  }, [authenticationState, navigate, closeFn, onSyncSuccess]);
+  }, [authenticationState, navigate, onSyncSuccess]);
 
   const statusLabel = returningHome
     ? RETURNING_HOME_MESSAGE
