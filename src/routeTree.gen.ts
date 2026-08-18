@@ -31,6 +31,7 @@ import { Route as AuthenticatedGoogleSheetsRouteImport } from './routes/_authent
 import { Route as AuthenticatedGradingRouteImport } from './routes/_authenticated/grading'
 import { Route as AuthenticatedHomeworkRouteImport } from './routes/_authenticated/homework'
 import { Route as AuthenticatedLessonSessionsRouteImport } from './routes/_authenticated/lesson-sessions'
+import { Route as AuthenticatedMadrasatiLoginRouteImport } from './routes/_authenticated/madrasati-login'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPlannerRouteImport } from './routes/_authenticated/planner'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
@@ -162,6 +163,12 @@ const AuthenticatedLessonSessionsRoute =
     path: '/lesson-sessions',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedMadrasatiLoginRoute =
+  AuthenticatedMadrasatiLoginRouteImport.update({
+    id: '/madrasati-login',
+    path: '/madrasati-login',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedNotificationsRoute =
   AuthenticatedNotificationsRouteImport.update({
     id: '/notifications',
@@ -257,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/grading': typeof AuthenticatedGradingRoute
   '/homework': typeof AuthenticatedHomeworkRoute
   '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
+  '/madrasati-login': typeof AuthenticatedMadrasatiLoginRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -292,6 +300,7 @@ export interface FileRoutesByTo {
   '/grading': typeof AuthenticatedGradingRoute
   '/homework': typeof AuthenticatedHomeworkRoute
   '/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
+  '/madrasati-login': typeof AuthenticatedMadrasatiLoginRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/planner': typeof AuthenticatedPlannerRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -330,6 +339,7 @@ export interface FileRoutesById {
   '/_authenticated/grading': typeof AuthenticatedGradingRoute
   '/_authenticated/homework': typeof AuthenticatedHomeworkRoute
   '/_authenticated/lesson-sessions': typeof AuthenticatedLessonSessionsRoute
+  '/_authenticated/madrasati-login': typeof AuthenticatedMadrasatiLoginRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/planner': typeof AuthenticatedPlannerRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
@@ -368,6 +378,7 @@ export interface FileRouteTypes {
     | '/grading'
     | '/homework'
     | '/lesson-sessions'
+    | '/madrasati-login'
     | '/notifications'
     | '/planner'
     | '/reports'
@@ -403,6 +414,7 @@ export interface FileRouteTypes {
     | '/grading'
     | '/homework'
     | '/lesson-sessions'
+    | '/madrasati-login'
     | '/notifications'
     | '/planner'
     | '/reports'
@@ -440,6 +452,7 @@ export interface FileRouteTypes {
     | '/_authenticated/grading'
     | '/_authenticated/homework'
     | '/_authenticated/lesson-sessions'
+    | '/_authenticated/madrasati-login'
     | '/_authenticated/notifications'
     | '/_authenticated/planner'
     | '/_authenticated/reports'
@@ -622,6 +635,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLessonSessionsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/madrasati-login': {
+      id: '/_authenticated/madrasati-login'
+      path: '/madrasati-login'
+      fullPath: '/madrasati-login'
+      preLoaderRoute: typeof AuthenticatedMadrasatiLoginRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/notifications': {
       id: '/_authenticated/notifications'
       path: '/notifications'
@@ -757,6 +777,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedGradingRoute: typeof AuthenticatedGradingRoute
   AuthenticatedHomeworkRoute: typeof AuthenticatedHomeworkRoute
   AuthenticatedLessonSessionsRoute: typeof AuthenticatedLessonSessionsRoute
+  AuthenticatedMadrasatiLoginRoute: typeof AuthenticatedMadrasatiLoginRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedPlannerRoute: typeof AuthenticatedPlannerRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
@@ -782,6 +803,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedGradingRoute: AuthenticatedGradingRoute,
   AuthenticatedHomeworkRoute: AuthenticatedHomeworkRoute,
   AuthenticatedLessonSessionsRoute: AuthenticatedLessonSessionsRoute,
+  AuthenticatedMadrasatiLoginRoute: AuthenticatedMadrasatiLoginRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedPlannerRoute: AuthenticatedPlannerRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,

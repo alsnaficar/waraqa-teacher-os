@@ -116,7 +116,7 @@ describe("Madrasati live-session transport policy", () => {
     const modal = readFileSync(
       join(
         ROOT,
-        "src/platform/integration/connectors/madrasati/components/madrasati-auth-modal.tsx",
+        "src/platform/integration/connectors/madrasati/components/madrasati-auth-page.tsx",
       ),
       "utf8",
     );
@@ -124,10 +124,11 @@ describe("Madrasati live-session transport policy", () => {
     assert.equal(/<iframe/i.test(modal), false);
     assert.equal(/\btype=["']password["']/.test(modal), false);
     assert.equal(/كلمة المرور/.test(modal), false);
+    assert.equal(/<Dialog[\s>]/.test(modal), false);
+    assert.equal(/max-h-\[58vh\]/.test(modal), false);
     assert.match(modal, /consumeMadrasatiLiveFrames/);
     assert.match(modal, /waitForMadrasatiAuthenticationLiveFrame/);
     assert.match(modal, /inspectMadrasatiAuthenticationFocus/);
-    assert.match(modal, /max-h-\[58vh\]/);
     assert.match(modal, /تم تسجيل الدخول إلى مدرستي بنجاح، جارٍ العودة إلى ورقة/);
     assert.match(modal, /navigate\(\{\s*to:\s*["']\/dashboard["']\s*\}\)/);
     assert.equal(/setInterval\(\s*\(\)\s*=>\s*\{\s*void pullLiveFrame/s.test(modal), false);

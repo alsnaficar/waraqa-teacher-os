@@ -15,7 +15,7 @@ const FUNCTIONS_FILE = "src/platform/integration/connectors/madrasati/madrasati.
 const PREVIEW_CORE_FILE =
   "src/platform/integration/connectors/madrasati/madrasati-preview.server.ts";
 const MODAL_FILE =
-  "src/platform/integration/connectors/madrasati/components/madrasati-auth-modal.tsx";
+  "src/routes/_authenticated/settings.tsx";
 
 const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";

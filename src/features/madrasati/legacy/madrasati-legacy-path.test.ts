@@ -18,7 +18,8 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 const LEGACY_UI_FILES = [
-  "src/platform/integration/connectors/madrasati/components/madrasati-auth-modal.tsx",
+  "src/platform/integration/connectors/madrasati/components/madrasati-auth-page.tsx",
+  "src/routes/_authenticated/madrasati-login.tsx",
   "src/routes/connect-school.tsx",
   "src/routes/_authenticated/settings.tsx",
   "src/components/dashboard/dashboard-header.tsx",
