@@ -126,6 +126,18 @@ describe("Madrasati live-session transport policy", () => {
     assert.equal(/كلمة المرور/.test(modal), false);
     assert.equal(/<Dialog[\s>]/.test(modal), false);
     assert.equal(/max-h-\[58vh\]/.test(modal), false);
+    assert.equal(/grid-cols-2/.test(modal), false);
+    assert.equal(/pb-52/.test(modal), false);
+    assert.match(modal, /object-contain/);
+    assert.match(modal, /flex-nowrap/);
+    assert.match(
+      modal,
+      /const x = \(\(event\.clientX - rect\.left\) \/ rect\.width\) \* viewportWidth/,
+    );
+    assert.match(
+      modal,
+      /const y = \(\(event\.clientY - rect\.top\) \/ rect\.height\) \* viewportHeight/,
+    );
     assert.match(modal, /consumeMadrasatiLiveFrames/);
     assert.match(modal, /waitForMadrasatiAuthenticationLiveFrame/);
     assert.match(modal, /inspectMadrasatiAuthenticationFocus/);

@@ -465,50 +465,41 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
           ? "جارٍ فتح الجلسة..."
           : "تعذر فتح الجلسة";
 
+  const keyboardButtons = [
+    ["Tab", "Tab"],
+    ["كتابة", "focus"],
+    ["⌫", "Backspace"],
+    ["Enter", "Enter"],
+    ["Esc", "Escape"],
+  ] as const;
+
   const keyboardBar = sessionId ? (
     <div
-      className="shrink-0 space-y-2 border-t bg-background/95 px-3 py-2"
+      className="shrink-0 border-t bg-background px-1.5 pt-1"
       style={{
-        paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+        paddingBottom: "max(0.25rem, env(safe-area-inset-bottom, 0px))",
       }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          اضغط الحقل داخل الشاشة ثم اكتب.
+      {focus.isEditable ? (
+        <p className="mb-1 truncate px-1 text-center text-[10px] font-semibold leading-none text-green-600">
+          {focus.inputType === "protected" ? "حقل محمي نشط" : "الحقل محدد"}
         </p>
+      ) : null}
 
-        {focus.isEditable ? (
-          <span className="text-[11px] font-semibold text-green-600">
-            {focus.inputType === "protected"
-              ? "حقل محمي نشط"
-              : "الحقل محدد"}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 min-h-[44px]"
-          disabled={!sessionId}
-          onClick={() => focusNativeInput()}
-        >
-          كتابة
-        </Button>
-        {[
-          ["Tab", "Tab"],
-          ["Enter", "Enter"],
-          ["⌫", "Backspace"],
-          ["Esc", "Escape"],
-        ].map(([label, key]) => (
+      <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5">
+        {keyboardButtons.map(([label, key]) => (
           <Button
             key={key}
             type="button"
             variant="outline"
-            className="h-11 min-h-[44px]"
+            className="h-11 min-h-[44px] min-w-[44px] flex-1 px-1.5 text-[11px] font-semibold sm:text-xs"
             disabled={!sessionId}
             onClick={() => {
+              if (key === "focus") {
+                focusNativeInput();
+                return;
+              }
+
               focusNativeInput();
 
               enqueueWrite(async () => {
@@ -531,14 +522,14 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
   return (
     <div
       dir="rtl"
-      className="flex bg-background"
+      className="flex overflow-hidden bg-background"
       style={{
         height: `calc(100dvh - ${keyboardInset}px)`,
         maxHeight: `calc(100dvh - ${keyboardInset}px)`,
       }}
     >
       <div className="flex min-h-0 w-full flex-col">
-        <header className="flex h-14 min-h-[56px] shrink-0 items-center gap-2 border-b px-2 sm:h-16 sm:min-h-[64px] sm:px-3">
+        <header className="flex h-12 min-h-[48px] shrink-0 items-center gap-1.5 border-b px-1.5 sm:h-14 sm:min-h-[56px] sm:px-3">
           <Button
             type="button"
             variant="ghost"
@@ -573,7 +564,7 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
           {screenshot ? (
             <div
               className={[
-                "relative flex h-full w-full items-center justify-center",
+                "relative flex h-full min-h-0 w-full min-w-0 items-center justify-center",
                 clickBusy ? "cursor-wait" : "cursor-crosshair",
               ].join(" ")}
             >
@@ -581,7 +572,7 @@ export function MadrasatiAuthPage({ onSyncSuccess }: MadrasatiAuthPageProps) {
                 ref={screenshotRef}
                 src={screenshot}
                 alt="شاشة جلسة تسجيل الدخول إلى مدرستي"
-                className="mx-auto block h-auto max-h-full max-w-full w-full select-none"
+                className="mx-auto block h-auto max-h-full max-w-full w-auto object-contain select-none md:max-h-[min(100%,820px)]"
                 draggable={false}
                 onPointerUp={(event) => void handleLiveViewPointer(event)}
               />
