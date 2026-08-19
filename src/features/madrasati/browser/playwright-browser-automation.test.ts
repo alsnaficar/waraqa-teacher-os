@@ -239,6 +239,67 @@ test("PlaywrightBrowserAutomation — live view and focus stay cookie-free on a 
   await automation.close();
 });
 
+test("PlaywrightBrowserAutomation — focuses a local email field then clicks Next", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html><body>
+    <input id="email" type="email" aria-label="Enter your email" />
+    <input id="secret" type="password" aria-label="Password" />
+    <button type="button" id="next">Next</button>
+    <p id="status">idle</p>
+    <script>
+      document.getElementById("next").addEventListener("click", () => {
+        document.getElementById("status").textContent = "next";
+      });
+    </script>
+  </body></html>`;
+
+  await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await automation.focusEditableControl(page);
+
+  const focus = await automation.inspectFocusedControl(page);
+  assert.equal(focus.isEditable, true);
+  assert.equal(focus.inputType, "email");
+  assert.equal("value" in focus, false);
+
+  await automation.typePage(page, "teacher@example.com");
+
+  const sessions = (
+    automation as unknown as {
+      sessions: Map<string, { pages: Map<string, import("playwright").Page> }>;
+    }
+  ).sessions;
+
+  let pageObject: import("playwright").Page | undefined;
+
+  for (const record of sessions.values()) {
+    pageObject = record.pages.get(page.id);
+    if (pageObject) {
+      break;
+    }
+  }
+
+  assert.ok(pageObject);
+  assert.equal(await pageObject.locator("#email").inputValue(), "teacher@example.com");
+  assert.equal(await pageObject.locator("#secret").inputValue(), "");
+
+  const clicked = await automation.clickControlByAccessibleName(page, [
+    "Next",
+    "التالي",
+  ]);
+  assert.equal(clicked, true);
+  assert.equal(await pageObject.locator("#status").innerText(), "next");
+
+  await automation.close();
+});
+
 test("PlaywrightBrowserAutomation — teacher home landmarks do not include HTML or cookies", async () => {
   const { extractMadrasatiTeacher } = await import("./madrasati-teacher-profile.ts");
   const { mkdtempSync, writeFileSync } = await import("node:fs");

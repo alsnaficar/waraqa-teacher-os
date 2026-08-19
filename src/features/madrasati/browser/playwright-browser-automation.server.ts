@@ -214,6 +214,90 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     await pageObject.keyboard.press(normalizedKey);
   }
 
+  async focusEditableControl(page: BrowserPageHandle): Promise<void> {
+    const current = await this.inspectFocusedControl(page);
+
+    if (
+      current.isEditable &&
+      current.inputType !== "protected" &&
+      current.inputType !== "none"
+    ) {
+      return;
+    }
+
+    const pageObject = this.requirePage(page);
+
+    for (const frame of pageObject.frames()) {
+      try {
+        const textboxes = frame.getByRole("textbox");
+        const count = await textboxes.count();
+
+        for (let index = 0; index < count; index += 1) {
+          const box = textboxes.nth(index);
+
+          if (!(await box.isVisible())) {
+            continue;
+          }
+
+          const type = ((await box.getAttribute("type")) ?? "text").toLowerCase();
+
+          if (type === "password" || type === "hidden") {
+            continue;
+          }
+
+          await box.focus({ timeout: 2000 });
+          return;
+        }
+      } catch {
+        // Cross-origin frames are expected on Microsoft login.
+      }
+    }
+
+    const fallbackSelectors = [
+      'input[type="email"]',
+      'input[name="loginfmt"]',
+      'input[type="text"]',
+      "input:not([type])",
+      "textarea",
+    ];
+
+    for (const frame of pageObject.frames()) {
+      for (const selector of fallbackSelectors) {
+        try {
+          const locator = frame.locator(selector).filter({ visible: true });
+          const count = await locator.count();
+
+          for (let index = 0; index < count; index += 1) {
+            const candidate = locator.nth(index);
+            const type = (
+              (await candidate.getAttribute("type")) ?? "text"
+            ).toLowerCase();
+
+            if (
+              type === "password" ||
+              type === "hidden" ||
+              type === "submit" ||
+              type === "button"
+            ) {
+              continue;
+            }
+
+            if (await candidate.isDisabled()) {
+              continue;
+            }
+
+            await candidate.focus({ timeout: 2000 });
+            return;
+          }
+        } catch {
+          // Try the next selector or frame.
+        }
+      }
+    }
+
+    throw new Error("No visible editable control is available to focus.");
+  }
+
   async startPageLiveView(page: BrowserPageHandle): Promise<void> {
     if (this.liveViews.has(page.id)) {
       return;

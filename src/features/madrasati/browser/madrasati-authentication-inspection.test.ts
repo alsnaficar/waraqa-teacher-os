@@ -71,6 +71,8 @@ class InspectionAutomation implements BrowserAutomation {
     _key: string,
   ): Promise<void> {}
 
+  async focusEditableControl(_page: BrowserPageHandle): Promise<void> {}
+
   async startPageLiveView(_page: BrowserPageHandle): Promise<void> {}
 
   async stopPageLiveView(_page: BrowserPageHandle): Promise<void> {}

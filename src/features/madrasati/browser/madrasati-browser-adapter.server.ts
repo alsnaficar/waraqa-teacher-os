@@ -51,6 +51,19 @@ const MADRASATI_AUTH_VIEWPORT = {
   height: 844,
 } as const;
 
+const MADRASATI_MICROSOFT_LOGIN_NAMES = [
+  "الدخول بحساب مايكروسوفت",
+  "Sign in with Microsoft",
+] as const;
+
+const MICROSOFT_EMAIL_NEXT_NAMES = [
+  "Next",
+  "التالي",
+  "Suivant",
+  "Weiter",
+  "Siguiente",
+] as const;
+
 export class MadrasatiBrowserAdapter implements MadrasatiProvider {
   private readonly automation: BrowserAutomation;
   private session: BrowserSessionHandle | null = null;
@@ -186,6 +199,7 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
       throw new Error("Authentication text is required.");
     }
 
+    await this.automation.focusEditableControl(this.page!);
     await this.automation.typePage(this.page!, text);
   }
 
@@ -197,6 +211,66 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
     }
 
     await this.automation.pressPageKey(this.page!, key.trim());
+  }
+
+  async focusAuthenticationEditableControl(): Promise<MadrasatiFocusedControl> {
+    this.requireReadySession();
+
+    await this.automation.focusEditableControl(this.page!);
+
+    return this.inspectAuthenticationFocus();
+  }
+
+  async clickAuthenticationByAccessibleName(
+    names: readonly string[],
+  ): Promise<boolean> {
+    this.requireReadySession();
+
+    const needles = names.map((name) => name.trim()).filter(Boolean);
+
+    if (needles.length === 0) {
+      throw new Error("Authentication control name is required.");
+    }
+
+    return this.automation.clickControlByAccessibleName(this.page!, needles);
+  }
+
+  /**
+   * Advances Microsoft's email step only.
+   *
+   * Prefers a stable accessible Next control. Falls back to Enter on the
+   * focused email field. Never types a password or MFA code.
+   */
+  async submitAuthenticationEmail() {
+    this.requireReadySession();
+
+    await this.automation.focusEditableControl(this.page!);
+
+    const clickedNext = await this.automation.clickControlByAccessibleName(
+      this.page!,
+      MICROSOFT_EMAIL_NEXT_NAMES,
+    );
+
+    if (!clickedNext) {
+      await this.automation.pressPageKey(this.page!, "Enter");
+    }
+
+    return this.inspectAuthenticationPage();
+  }
+
+  async openMicrosoftAuthentication(): Promise<boolean> {
+    this.requireReadySession();
+
+    const currentUrl = await this.automation.getPageUrl(this.page!);
+
+    if (isMicrosoftLoginHostname(currentUrl)) {
+      return true;
+    }
+
+    return this.automation.clickControlByAccessibleName(
+      this.page!,
+      MADRASATI_MICROSOFT_LOGIN_NAMES,
+    );
   }
 
   async startAuthenticationLiveView(): Promise<void> {
@@ -550,5 +624,20 @@ export class MadrasatiBrowserAdapter implements MadrasatiProvider {
         return;
       }
     }
+  }
+}
+
+function isMicrosoftLoginHostname(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+
+    return (
+      hostname === "login.microsoftonline.com" ||
+      hostname.endsWith(".microsoftonline.com") ||
+      hostname === "login.live.com" ||
+      hostname === "login.microsoft.com"
+    );
+  } catch {
+    return false;
   }
 }
