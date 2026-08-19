@@ -102,7 +102,9 @@ export interface BrowserAutomation {
   ): Promise<void>;
 
   /**
-   * Focuses a visible editable control on the page (email/text first).
+   * Focuses a visible editable control.
+   * A visible password is used when no visible email/text field remains
+   * (Microsoft password step). Otherwise email/text is preferred.
    * Must never return the control value, HTML, cookies, or Playwright objects.
    */
   focusEditableControl(page: BrowserPageHandle): Promise<void>;

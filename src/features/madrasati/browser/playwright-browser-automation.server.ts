@@ -5,6 +5,7 @@ import {
   type Browser,
   type BrowserContext,
   type CDPSession,
+  type Locator,
   type Page,
 } from "playwright";
 import type {
@@ -37,6 +38,11 @@ type LiveViewRecord = {
   readonly listeners: Set<(frame: MadrasatiLiveFrame) => void>;
 };
 
+type TypingTarget = {
+  readonly locator: Locator;
+  readonly kind: "password" | "text";
+};
+
 const MIN_LIVE_FRAME_GAP_MS = 80;
 
 export class PlaywrightBrowserAutomation implements BrowserAutomation {
@@ -47,6 +53,8 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
   private readonly sessions = new Map<string, SessionRecord>();
 
   private readonly liveViews = new Map<string, LiveViewRecord>();
+
+  private readonly typingTargets = new Map<string, TypingTarget>();
 
   async assertAvailable(): Promise<void> {
     await this.ensureBrowser();
@@ -77,6 +85,10 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     if (!record) return;
 
     this.sessions.delete(session.id);
+
+    for (const pageId of record.pages.keys()) {
+      this.typingTargets.delete(pageId);
+    }
 
     await Promise.allSettled(
       [...record.pages.keys()].map((pageId) =>
@@ -109,6 +121,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     const { session, pageObject } = record;
 
     session.pages.delete(page.id);
+    this.typingTargets.delete(page.id);
 
     await this.stopPageLiveView(page);
 
@@ -124,6 +137,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     } = {},
   ): Promise<void> {
     const pageObject = this.requirePage(page);
+    this.typingTargets.delete(page.id);
 
     await pageObject.goto(url, {
       timeout: options.timeoutMs ?? 30000,
@@ -196,6 +210,20 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
       throw new Error("Browser text input must be a string.");
     }
 
+    const target = await this.resolveTypingTarget(page);
+
+    if (target.kind === "password") {
+      if ((await target.locator.getAttribute("readonly")) !== null) {
+        await this.activatePasswordLocator(target.locator);
+      }
+
+      // Overlay keystrokes arrive in chunks. pressSequentially appends;
+      // fill() would replace the field on every chunk.
+      await target.locator.pressSequentially(text, { timeout: 5000 });
+      return;
+    }
+
+    await target.locator.focus({ timeout: 2000 });
     await pageObject.keyboard.insertText(text);
   }
 
@@ -215,83 +243,37 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
   }
 
   async focusEditableControl(page: BrowserPageHandle): Promise<void> {
+    const pageObject = this.requirePage(page);
+    const password = await this.findVisiblePasswordLocator(pageObject);
+    const text = await this.findVisibleTextLocator(pageObject);
     const current = await this.inspectFocusedControl(page);
 
-    // Keep an already-focused editable control, including protected/password.
-    // Password values are never read here; inspectFocusedControl strips them.
-    if (current.isEditable) {
+    // Password values are never read. A leftover hidden email/loginfmt is
+    // ignored by inspectFocusedControl, so it cannot be kept as focus.
+    if (current.inputType === "protected" && password) {
+      await this.ensurePasswordControlReady(password, current);
+      this.rememberTypingTarget(page.id, password, "password");
       return;
     }
 
-    const pageObject = this.requirePage(page);
-
-    for (const frame of pageObject.frames()) {
-      try {
-        const textboxes = frame.getByRole("textbox");
-        const count = await textboxes.count();
-
-        for (let index = 0; index < count; index += 1) {
-          const box = textboxes.nth(index);
-
-          if (!(await box.isVisible())) {
-            continue;
-          }
-
-          const type = ((await box.getAttribute("type")) ?? "text").toLowerCase();
-
-          if (type === "hidden") {
-            continue;
-          }
-
-          await box.focus({ timeout: 2000 });
-          return;
-        }
-      } catch {
-        // Cross-origin frames are expected on Microsoft login.
-      }
+    // Microsoft password step: the email field is gone or hidden, password
+    // is visible. Select it before any textbox/email discovery.
+    if (password && !text) {
+      await this.ensurePasswordControlReady(password, current);
+      this.rememberTypingTarget(page.id, password, "password");
+      return;
     }
 
-    const fallbackSelectors = [
-      'input[type="email"]',
-      'input[name="loginfmt"]',
-      'input[type="text"]',
-      "input:not([type])",
-      "textarea",
-      // Password is not an ARIA textbox; locate it last so email/text stay first.
-      'input[type="password"]',
-    ];
+    if (text) {
+      await text.focus({ timeout: 2000 });
+      this.rememberTypingTarget(page.id, text, "text");
+      return;
+    }
 
-    for (const frame of pageObject.frames()) {
-      for (const selector of fallbackSelectors) {
-        try {
-          const locator = frame.locator(selector).filter({ visible: true });
-          const count = await locator.count();
-
-          for (let index = 0; index < count; index += 1) {
-            const candidate = locator.nth(index);
-            const type = (
-              (await candidate.getAttribute("type")) ?? "text"
-            ).toLowerCase();
-
-            if (
-              type === "hidden" ||
-              type === "submit" ||
-              type === "button"
-            ) {
-              continue;
-            }
-
-            if (await candidate.isDisabled()) {
-              continue;
-            }
-
-            await candidate.focus({ timeout: 2000 });
-            return;
-          }
-        } catch {
-          // Try the next selector or frame.
-        }
-      }
+    if (password) {
+      await this.ensurePasswordControlReady(password, current);
+      this.rememberTypingTarget(page.id, password, "password");
+      return;
     }
 
     throw new Error("No visible editable control is available to focus.");
@@ -402,14 +384,50 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
 
           const tag = el.tagName.toLowerCase();
 
-          if (tag === "input") {
-            const input = el as HTMLInputElement;
+          // The iframe host is not the password/email control. Child frames
+          // are inspected separately via page.frames().
+          if (tag === "iframe" || tag === "frame") {
+            return { isEditable: false, inputType: "none" };
+          }
 
-            if (input.readOnly || input.disabled) {
+          if (el.hidden || el.getAttribute("aria-hidden") === "true") {
+            return { isEditable: false, inputType: "none" };
+          }
+
+          let ancestor: HTMLElement | null = el;
+
+          while (ancestor) {
+            const style = window.getComputedStyle(ancestor);
+
+            if (style.display === "none" || style.visibility === "hidden") {
               return { isEditable: false, inputType: "none" };
             }
 
+            ancestor = ancestor.parentElement;
+          }
+
+          const rect = el.getBoundingClientRect();
+
+          if (rect.width <= 0 || rect.height <= 0) {
+            return { isEditable: false, inputType: "none" };
+          }
+
+          if (tag === "input") {
+            const input = el as HTMLInputElement;
             const domType = (input.getAttribute("type") || "text").toLowerCase();
+
+            if (
+              input.disabled ||
+              input.readOnly ||
+              domType === "hidden" ||
+              domType === "submit" ||
+              domType === "button" ||
+              domType === "checkbox" ||
+              domType === "radio" ||
+              domType === "file"
+            ) {
+              return { isEditable: false, inputType: "none" };
+            }
 
             return {
               isEditable: true,
@@ -443,7 +461,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
           return sanitized;
         }
       } catch {
-        // Cross-origin frames are expected on Microsoft login. Skip them.
+        // Detached or unloaded frames (including Microsoft SSO). Skip them.
       }
     }
 
@@ -754,6 +772,203 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
       }
     } catch {
       // A bad frame must not take down the isolated session.
+    }
+  }
+
+  private rememberTypingTarget(
+    pageId: string,
+    locator: Locator,
+    kind: TypingTarget["kind"],
+  ): void {
+    this.typingTargets.set(pageId, { locator, kind });
+  }
+
+  private async resolveTypingTarget(
+    page: BrowserPageHandle,
+  ): Promise<TypingTarget> {
+    const existing = this.typingTargets.get(page.id);
+
+    if (existing) {
+      const stillUsable = await this.isLocatorUsable(existing.locator);
+
+      if (stillUsable) {
+        if (existing.kind === "password") {
+          return existing;
+        }
+
+        const password = await this.findVisiblePasswordLocator(
+          this.requirePage(page),
+        );
+
+        if (!password) {
+          return existing;
+        }
+      }
+    }
+
+    await this.focusEditableControl(page);
+
+    const target = this.typingTargets.get(page.id);
+
+    if (!target) {
+      throw new Error("No visible editable control is available to type into.");
+    }
+
+    return target;
+  }
+
+  private async isLocatorUsable(locator: Locator): Promise<boolean> {
+    try {
+      if (!(await locator.isVisible())) {
+        return false;
+      }
+
+      if (await locator.isDisabled()) {
+        return false;
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async findVisiblePasswordLocator(
+    pageObject: Page,
+  ): Promise<Locator | null> {
+    for (const frame of pageObject.frames()) {
+      try {
+        const locator = frame.locator('input[type="password"]');
+        const count = await locator.count();
+
+        for (let index = 0; index < count; index += 1) {
+          const candidate = locator.nth(index);
+
+          if (!(await candidate.isVisible())) {
+            continue;
+          }
+
+          if (await candidate.isDisabled()) {
+            continue;
+          }
+
+          return candidate;
+        }
+      } catch {
+        // Detached or unloaded frames. Skip them.
+      }
+    }
+
+    return null;
+  }
+
+  private async findVisibleTextLocator(
+    pageObject: Page,
+  ): Promise<Locator | null> {
+    const fallbackSelectors = [
+      'input[type="email"]',
+      'input[name="loginfmt"]',
+      'input[type="text"]',
+      "input:not([type])",
+      "textarea",
+    ];
+
+    for (const frame of pageObject.frames()) {
+      try {
+        const textboxes = frame.getByRole("textbox");
+        const count = await textboxes.count();
+
+        for (let index = 0; index < count; index += 1) {
+          const box = textboxes.nth(index);
+
+          if (!(await this.isVisibleNonPasswordTextControl(box))) {
+            continue;
+          }
+
+          return box;
+        }
+      } catch {
+        // Detached or unloaded frames. Skip them.
+      }
+    }
+
+    for (const frame of pageObject.frames()) {
+      for (const selector of fallbackSelectors) {
+        try {
+          const locator = frame.locator(selector);
+          const count = await locator.count();
+
+          for (let index = 0; index < count; index += 1) {
+            const candidate = locator.nth(index);
+
+            if (!(await this.isVisibleNonPasswordTextControl(candidate))) {
+              continue;
+            }
+
+            return candidate;
+          }
+        } catch {
+          // Try the next selector or frame.
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private async isVisibleNonPasswordTextControl(
+    locator: Locator,
+  ): Promise<boolean> {
+    try {
+      if (!(await locator.isVisible())) {
+        return false;
+      }
+
+      if (await locator.isDisabled()) {
+        return false;
+      }
+
+      const type = ((await locator.getAttribute("type")) ?? "text").toLowerCase();
+
+      if (
+        type === "password" ||
+        type === "hidden" ||
+        type === "submit" ||
+        type === "button" ||
+        type === "checkbox" ||
+        type === "radio" ||
+        type === "file"
+      ) {
+        return false;
+      }
+
+      if ((await locator.getAttribute("readonly")) !== null) {
+        return false;
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async ensurePasswordControlReady(
+    locator: Locator,
+    current: MadrasatiFocusedControl,
+  ): Promise<void> {
+    const readonly = (await locator.getAttribute("readonly")) !== null;
+
+    if (readonly || current.inputType !== "protected") {
+      await this.activatePasswordLocator(locator);
+      return;
+    }
+  }
+
+  private async activatePasswordLocator(locator: Locator): Promise<void> {
+    try {
+      await locator.click({ timeout: 2000 });
+    } catch {
+      await locator.focus({ timeout: 2000 });
     }
   }
 

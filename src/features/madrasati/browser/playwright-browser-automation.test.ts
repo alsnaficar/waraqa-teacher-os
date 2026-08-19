@@ -4,6 +4,34 @@ import { test } from "node:test";
 
 import { PlaywrightBrowserAutomation } from "./playwright-browser-automation.server.ts";
 
+function getAutomationPage(
+  automation: PlaywrightBrowserAutomation,
+  page: { id: string },
+): import("playwright").Page {
+  const sessions = (
+    automation as unknown as {
+      sessions: Map<string, { pages: Map<string, import("playwright").Page> }>;
+    }
+  ).sessions;
+
+  for (const record of sessions.values()) {
+    const pageObject = record.pages.get(page.id);
+
+    if (pageObject) {
+      return pageObject;
+    }
+  }
+
+  throw new Error("Playwright page is unavailable.");
+}
+
+function assertSanitizedFocus(focus: object): void {
+  assert.deepEqual(Object.keys(focus).sort(), ["inputType", "isEditable"]);
+  assert.equal("value" in focus, false);
+  assert.equal("password" in focus, false);
+  assert.equal("html" in focus, false);
+}
+
 test("PlaywrightBrowserAutomation — availability", async () => {
   const automation = new PlaywrightBrowserAutomation();
 
@@ -419,6 +447,257 @@ test("PlaywrightBrowserAutomation — keeps a focused password field instead of 
 
   const afterType = await automation.inspectFocusedControl(page);
   assert.equal("value" in afterType, false);
+
+  await automation.close();
+});
+
+test("PlaywrightBrowserAutomation — hidden leftover email does not steal visible password typing", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  try {
+    const html = `<!doctype html><html><body>
+    <input id="email" type="email" name="loginfmt" value="teacher@example.com" />
+    <input id="secret" type="password" aria-label="Password" />
+    <p id="typed-length">0</p>
+    <script>
+      const email = document.getElementById("email");
+      email.focus();
+      email.style.display = "none";
+      document.getElementById("secret").addEventListener("input", (event) => {
+        const field = event.target;
+        document.getElementById("typed-length").textContent = String(
+          field && "value" in field ? field.value.length : 0,
+        );
+      });
+    </script>
+  </body></html>`;
+
+    await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    const pageObject = getAutomationPage(automation, page);
+    const leftoverEmail = await pageObject.locator("#email").inputValue();
+
+    await automation.focusEditableControl(page);
+
+    const beforeType = await automation.inspectFocusedControl(page);
+    assert.equal(beforeType.isEditable, true);
+    assert.equal(beforeType.inputType, "protected");
+    assertSanitizedFocus(beforeType);
+
+    await automation.typePage(page, "dummy-secret");
+
+    const typedLength = Number(
+      await pageObject.locator("#typed-length").innerText(),
+    );
+    assert.ok(typedLength > 0);
+    assert.equal(await pageObject.locator("#email").inputValue(), leftoverEmail);
+
+    const afterType = await automation.inspectFocusedControl(page);
+    assert.equal(afterType.isEditable, true);
+    assert.equal(afterType.inputType, "protected");
+    assertSanitizedFocus(afterType);
+  } finally {
+    await automation.close();
+  }
+});
+
+test("PlaywrightBrowserAutomation — visible email stays preferred when password is also visible", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html><body>
+    <input id="email" type="email" aria-label="Enter your email" />
+    <input id="secret" type="password" aria-label="Password" />
+    <p id="password-length">0</p>
+    <script>
+      document.getElementById("secret").addEventListener("input", (event) => {
+        const field = event.target;
+        document.getElementById("password-length").textContent = String(
+          field && "value" in field ? field.value.length : 0,
+        );
+      });
+    </script>
+  </body></html>`;
+
+  await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await automation.focusEditableControl(page);
+
+  const focus = await automation.inspectFocusedControl(page);
+  assert.equal(focus.isEditable, true);
+  assert.equal(focus.inputType, "email");
+  assertSanitizedFocus(focus);
+
+  await automation.typePage(page, "teacher@example.com");
+
+  const pageObject = getAutomationPage(automation, page);
+  assert.equal(await pageObject.locator("#email").inputValue(), "teacher@example.com");
+  assert.equal(await pageObject.locator("#password-length").innerText(), "0");
+  assertSanitizedFocus(await automation.inspectFocusedControl(page));
+
+  await automation.close();
+});
+
+test("PlaywrightBrowserAutomation — types into an iframe password while parent email stays leftover", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+  const dir = mkdtempSync(join(tmpdir(), "madrasati-password-frame-"));
+
+  writeFileSync(
+    join(dir, "child.html"),
+    `<!doctype html><html><body>
+      <input id="secret" type="password" aria-label="Password" />
+      <p id="typed-length">0</p>
+      <script>
+        document.getElementById("secret").addEventListener("input", (event) => {
+          const field = event.target;
+          document.getElementById("typed-length").textContent = String(
+            field && "value" in field ? field.value.length : 0,
+          );
+        });
+      </script>
+    </body></html>`,
+    "utf8",
+  );
+  writeFileSync(
+    join(dir, "parent.html"),
+    `<!doctype html><html><body>
+      <input id="email" type="email" name="loginfmt" value="teacher@example.com" />
+      <iframe id="login-frame" src="child.html"></iframe>
+      <script>
+        const email = document.getElementById("email");
+        email.focus();
+        email.style.display = "none";
+      </script>
+    </body></html>`,
+    "utf8",
+  );
+
+  await automation.goto(page, `file://${join(dir, "parent.html")}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  const pageObject = getAutomationPage(automation, page);
+  const frame = pageObject.frameLocator("#login-frame");
+  await frame.locator("#secret").waitFor({ state: "visible" });
+
+  const leftoverEmail = await pageObject.locator("#email").inputValue();
+
+  await automation.focusEditableControl(page);
+
+  const focus = await automation.inspectFocusedControl(page);
+  assert.equal(focus.isEditable, true);
+  assert.equal(focus.inputType, "protected");
+  assertSanitizedFocus(focus);
+
+  await automation.typePage(page, "dummy-secret");
+
+  const typedLength = Number(await frame.locator("#typed-length").innerText());
+  assert.ok(typedLength > 0);
+  assert.equal(await pageObject.locator("#email").inputValue(), leftoverEmail);
+  assertSanitizedFocus(await automation.inspectFocusedControl(page));
+
+  await automation.close();
+});
+
+test("PlaywrightBrowserAutomation — clicks a readonly password so it becomes typable", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html><body>
+    <input id="secret" type="password" readonly aria-label="Password" />
+    <p id="typed-length">0</p>
+    <script>
+      const field = document.getElementById("secret");
+      function unlock() {
+        field.removeAttribute("readonly");
+      }
+      field.addEventListener("pointerdown", unlock);
+      field.addEventListener("mousedown", unlock);
+      field.addEventListener("click", unlock);
+      field.addEventListener("input", (event) => {
+        const target = event.target;
+        document.getElementById("typed-length").textContent = String(
+          target && "value" in target ? target.value.length : 0,
+        );
+      });
+    </script>
+  </body></html>`;
+
+  await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await automation.focusEditableControl(page);
+
+  const focus = await automation.inspectFocusedControl(page);
+  assert.equal(focus.isEditable, true);
+  assert.equal(focus.inputType, "protected");
+  assertSanitizedFocus(focus);
+
+  await automation.typePage(page, "dummy-secret");
+
+  const pageObject = getAutomationPage(automation, page);
+  const typedLength = Number(await pageObject.locator("#typed-length").innerText());
+  assert.ok(typedLength > 0);
+  assertSanitizedFocus(await automation.inspectFocusedControl(page));
+
+  await automation.close();
+});
+
+test("PlaywrightBrowserAutomation — password typing appends overlay chunks instead of replacing them", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html><body>
+    <input id="secret" type="password" aria-label="Password" />
+    <p id="typed-length">0</p>
+    <script>
+      document.getElementById("secret").addEventListener("input", (event) => {
+        const field = event.target;
+        document.getElementById("typed-length").textContent = String(
+          field && "value" in field ? field.value.length : 0,
+        );
+      });
+    </script>
+  </body></html>`;
+
+  await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await automation.focusEditableControl(page);
+  await automation.typePage(page, "a");
+  await automation.focusEditableControl(page);
+  await automation.typePage(page, "b");
+
+  const pageObject = getAutomationPage(automation, page);
+  assert.equal(await pageObject.locator("#typed-length").innerText(), "2");
+  assertSanitizedFocus(await automation.inspectFocusedControl(page));
 
   await automation.close();
 });
