@@ -300,6 +300,129 @@ test("PlaywrightBrowserAutomation — focuses a local email field then clicks Ne
   await automation.close();
 });
 
+test("PlaywrightBrowserAutomation — focuses a protected password field and types without reading its value", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html><body>
+    <input id="secret" type="password" aria-label="Password" />
+    <p id="typed-length">0</p>
+    <script>
+      document.getElementById("secret").addEventListener("input", (event) => {
+        const field = event.target;
+        document.getElementById("typed-length").textContent = String(
+          field && "value" in field ? field.value.length : 0,
+        );
+      });
+    </script>
+  </body></html>`;
+
+  await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await automation.focusEditableControl(page);
+
+  const focus = await automation.inspectFocusedControl(page);
+  assert.equal(focus.isEditable, true);
+  assert.equal(focus.inputType, "protected");
+  assert.deepEqual(Object.keys(focus).sort(), ["inputType", "isEditable"]);
+  assert.equal("value" in focus, false);
+
+  const secret = "pw-sample-12";
+  await automation.typePage(page, secret);
+
+  const afterType = await automation.inspectFocusedControl(page);
+  assert.equal(afterType.isEditable, true);
+  assert.equal(afterType.inputType, "protected");
+  assert.equal("value" in afterType, false);
+
+  const sessions = (
+    automation as unknown as {
+      sessions: Map<string, { pages: Map<string, import("playwright").Page> }>;
+    }
+  ).sessions;
+
+  let pageObject: import("playwright").Page | undefined;
+
+  for (const record of sessions.values()) {
+    pageObject = record.pages.get(page.id);
+    if (pageObject) {
+      break;
+    }
+  }
+
+  assert.ok(pageObject);
+  assert.equal(await pageObject.locator("#typed-length").innerText(), String(secret.length));
+
+  await automation.close();
+});
+
+test("PlaywrightBrowserAutomation — keeps a focused password field instead of stealing email focus", async () => {
+  const automation = new PlaywrightBrowserAutomation();
+  const session = await automation.openSession({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await automation.openPage(session);
+
+  const html = `<!doctype html><html><body>
+    <input id="email" type="email" aria-label="Enter your email" />
+    <input id="secret" type="password" aria-label="Password" />
+    <p id="typed-length">0</p>
+    <script>
+      document.getElementById("secret").addEventListener("input", (event) => {
+        const field = event.target;
+        document.getElementById("typed-length").textContent = String(
+          field && "value" in field ? field.value.length : 0,
+        );
+      });
+    </script>
+  </body></html>`;
+
+  await automation.goto(page, `data:text/html,${encodeURIComponent(html)}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  const sessions = (
+    automation as unknown as {
+      sessions: Map<string, { pages: Map<string, import("playwright").Page> }>;
+    }
+  ).sessions;
+
+  let pageObject: import("playwright").Page | undefined;
+
+  for (const record of sessions.values()) {
+    pageObject = record.pages.get(page.id);
+    if (pageObject) {
+      break;
+    }
+  }
+
+  assert.ok(pageObject);
+  await pageObject.locator("#secret").focus();
+
+  await automation.focusEditableControl(page);
+
+  const focus = await automation.inspectFocusedControl(page);
+  assert.equal(focus.isEditable, true);
+  assert.equal(focus.inputType, "protected");
+  assert.equal("value" in focus, false);
+
+  const secret = "keep-focus";
+  await automation.typePage(page, secret);
+
+  assert.equal(await pageObject.locator("#email").inputValue(), "");
+  assert.equal(await pageObject.locator("#typed-length").innerText(), String(secret.length));
+
+  const afterType = await automation.inspectFocusedControl(page);
+  assert.equal("value" in afterType, false);
+
+  await automation.close();
+});
+
 test("PlaywrightBrowserAutomation — teacher home landmarks do not include HTML or cookies", async () => {
   const { extractMadrasatiTeacher } = await import("./madrasati-teacher-profile.ts");
   const { mkdtempSync, writeFileSync } = await import("node:fs");
