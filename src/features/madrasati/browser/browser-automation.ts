@@ -102,6 +102,12 @@ export interface BrowserAutomation {
   ): Promise<void>;
 
   /**
+   * Focuses a visible editable control on the page (email/text first).
+   * Must never return the control value, HTML, cookies, or Playwright objects.
+   */
+  focusEditableControl(page: BrowserPageHandle): Promise<void>;
+
+  /**
    * Starts Chromium CDP screencast for the page when the backend supports it.
    * Fail-soft: callers may fall back to PNG screenshots.
    */
@@ -234,6 +240,10 @@ export class UnavailableBrowserAutomation implements BrowserAutomation {
     _page: BrowserPageHandle,
     _key: string,
   ): Promise<void> {
+    await this.assertAvailable();
+  }
+
+  async focusEditableControl(_page: BrowserPageHandle): Promise<void> {
     await this.assertAvailable();
   }
 

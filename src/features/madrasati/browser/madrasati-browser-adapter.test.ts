@@ -85,6 +85,8 @@ class FakeBrowserAutomation implements BrowserAutomation {
     _key: string,
   ): Promise<void> {}
 
+  async focusEditableControl(_page: BrowserPageHandle): Promise<void> {}
+
   async startPageLiveView(_page: BrowserPageHandle): Promise<void> {}
 
   async stopPageLiveView(_page: BrowserPageHandle): Promise<void> {}
@@ -748,6 +750,115 @@ test("MadrasatiBrowserAdapter — confirmed empty جدولي is not a fake succe
   await provider.connect();
   const timetable = await provider.getTimetable();
   assert.deepEqual(timetable, []);
+});
+
+test("MadrasatiBrowserAdapter — focuses the email field, types once, and submits Next once", async () => {
+  class EmailNextAutomation extends FakeBrowserAutomation {
+    readonly sequence: string[] = [];
+    typedText = "";
+    nextNames: string[] = [];
+    enterKeys = 0;
+
+    async getPageUrl(): Promise<string> {
+      return "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+    }
+
+    async getPageTitle(): Promise<string> {
+      return "Sign in to your account";
+    }
+
+    async getPageText(): Promise<string> {
+      return "Sign in\nNext";
+    }
+
+    async focusEditableControl(): Promise<void> {
+      this.sequence.push("focus");
+    }
+
+    async typePage(_page: BrowserPageHandle, text: string): Promise<void> {
+      this.typedText += text;
+      this.sequence.push("type");
+    }
+
+    async clickControlByAccessibleName(
+      _page: BrowserPageHandle,
+      names: readonly string[],
+    ): Promise<boolean> {
+      this.nextNames = [...names];
+      this.sequence.push("next");
+      return names.includes("Next");
+    }
+
+    async pressPageKey(_page: BrowserPageHandle, key: string): Promise<void> {
+      if (key === "Enter") {
+        this.enterKeys += 1;
+      }
+      this.sequence.push(`key:${key}`);
+    }
+  }
+
+  const automation = new EmailNextAutomation();
+  const provider = new MadrasatiBrowserAdapter(automation);
+
+  const connected = await provider.connect();
+  assert.equal(connected.state, "connected");
+
+  await provider.beginAuthentication();
+  await provider.typeAuthentication("teacher@example.com");
+  const page = await provider.submitAuthenticationEmail();
+
+  assert.deepEqual(automation.sequence.slice(0, 2), ["focus", "type"]);
+  assert.equal(automation.typedText, "teacher@example.com");
+  assert.equal(automation.sequence.filter((step) => step === "next").length, 1);
+  assert.equal(automation.enterKeys, 0);
+  assert.equal(
+    automation.sequence.filter((step) => step.startsWith("key:")).length,
+    0,
+  );
+  assert.ok(automation.nextNames.includes("Next"));
+  assert.ok(automation.nextNames.includes("التالي"));
+  assert.equal(page.authenticationState, "not_authenticated");
+  assert.match(page.url, /login\.microsoftonline\.com/);
+  assert.equal("cookies" in page, false);
+  assert.equal("page" in page, false);
+  assert.equal("locator" in page, false);
+  assert.equal("context" in page, false);
+  assert.equal("playwright" in page, false);
+  assert.deepEqual(Object.keys(page).sort(), [
+    "authenticationState",
+    "text",
+    "title",
+    "url",
+  ]);
+});
+
+test("MadrasatiBrowserAdapter — Enter is sent exactly once when Next is not available", async () => {
+  class EnterFallbackAutomation extends FakeBrowserAutomation {
+    nextAttempts = 0;
+    enterKeys = 0;
+
+    async focusEditableControl(): Promise<void> {}
+
+    async clickControlByAccessibleName(): Promise<boolean> {
+      this.nextAttempts += 1;
+      return false;
+    }
+
+    async pressPageKey(_page: BrowserPageHandle, key: string): Promise<void> {
+      if (key === "Enter") {
+        this.enterKeys += 1;
+      }
+    }
+  }
+
+  const automation = new EnterFallbackAutomation();
+  const provider = new MadrasatiBrowserAdapter(automation);
+
+  await provider.connect();
+  await provider.submitAuthenticationEmail();
+
+  assert.equal(automation.nextAttempts, 1);
+  assert.equal(automation.enterKeys, 1);
 });
 
 test("Playwright boundary — page lifecycle through opaque handles", async () => {
