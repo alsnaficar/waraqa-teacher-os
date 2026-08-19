@@ -217,11 +217,9 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
   async focusEditableControl(page: BrowserPageHandle): Promise<void> {
     const current = await this.inspectFocusedControl(page);
 
-    if (
-      current.isEditable &&
-      current.inputType !== "protected" &&
-      current.inputType !== "none"
-    ) {
+    // Keep an already-focused editable control, including protected/password.
+    // Password values are never read here; inspectFocusedControl strips them.
+    if (current.isEditable) {
       return;
     }
 
@@ -241,7 +239,7 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
 
           const type = ((await box.getAttribute("type")) ?? "text").toLowerCase();
 
-          if (type === "password" || type === "hidden") {
+          if (type === "hidden") {
             continue;
           }
 
@@ -259,6 +257,8 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
       'input[type="text"]',
       "input:not([type])",
       "textarea",
+      // Password is not an ARIA textbox; locate it last so email/text stay first.
+      'input[type="password"]',
     ];
 
     for (const frame of pageObject.frames()) {
@@ -274,7 +274,6 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
             ).toLowerCase();
 
             if (
-              type === "password" ||
               type === "hidden" ||
               type === "submit" ||
               type === "button"
