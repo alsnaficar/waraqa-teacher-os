@@ -111,10 +111,7 @@ describe("official Madrasati login in the user browser", () => {
   });
 
   it("uses honest local status copy and never claims a verified Madrasati link", () => {
-    assert.equal(
-      getMadrasatiOfficialLoginStatus("ready"),
-      "جاهز لفتح مدرستي",
-    );
+    assert.equal(getMadrasatiOfficialLoginStatus("ready"), "جاهز لفتح مدرستي");
     assert.equal(
       getMadrasatiOfficialLoginStatus("opened"),
       "تم فتح مدرستي. أكمل تسجيل الدخول ثم عد إلى هذه الصفحة.",
@@ -137,10 +134,7 @@ describe("official Madrasati login in the user browser", () => {
   });
 
   it("login route no longer mounts the remote-browser page", () => {
-    const route = readFileSync(
-      join(ROOT, "src/routes/_authenticated/madrasati-login.tsx"),
-      "utf8",
-    );
+    const route = readFileSync(join(ROOT, "src/routes/_authenticated/madrasati-login.tsx"), "utf8");
     const page = readFileSync(
       join(
         ROOT,
@@ -149,10 +143,7 @@ describe("official Madrasati login in the user browser", () => {
       "utf8",
     );
     const helper = readFileSync(
-      join(
-        ROOT,
-        "src/platform/integration/connectors/madrasati/madrasati-official-login.ts",
-      ),
+      join(ROOT, "src/platform/integration/connectors/madrasati/madrasati-official-login.ts"),
       "utf8",
     );
     const combined = `${route}\n${page}\n${helper}`;

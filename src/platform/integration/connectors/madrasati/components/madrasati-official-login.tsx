@@ -88,9 +88,7 @@ export function MadrasatiOfficialLoginPage() {
           className="max-h-[min(100dvh-24px,100%)] w-[calc(100vw-24px)] gap-4 overflow-y-auto sm:max-w-md"
         >
           <DialogHeader className="space-y-2 pr-10 text-start sm:text-start">
-            <DialogTitle className="text-xl font-bold leading-snug">
-              {copy.title}
-            </DialogTitle>
+            <DialogTitle className="text-xl font-bold leading-snug">{copy.title}</DialogTitle>
             <DialogDescription className="text-sm leading-relaxed">
               {copy.description}
             </DialogDescription>
@@ -115,9 +113,7 @@ export function MadrasatiOfficialLoginPage() {
           ) : null}
 
           {returned ? (
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {copy.verificationNote}
-            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{copy.verificationNote}</p>
           ) : null}
 
           <div className="flex flex-col gap-2">

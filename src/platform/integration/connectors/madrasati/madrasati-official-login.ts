@@ -16,8 +16,7 @@ export const MADRASATI_LOGIN_WINDOW_FEATURES =
 
 export const MADRASATI_OFFICIAL_LOGIN_COPY = {
   title: "تسجيل الدخول إلى مدرستي",
-  description:
-    "سيتم فتح منصة مدرستي الرسمية في نافذة جديدة لتسجيل الدخول باستخدام حسابك.",
+  description: "سيتم فتح منصة مدرستي الرسمية في نافذة جديدة لتسجيل الدخول باستخدام حسابك.",
   securityNotice:
     "بيانات الدخول وكلمة المرور يتم إدخالها مباشرة في منصة مدرستي الرسمية ولا تمر عبر ورقة.",
   openButton: "فتح مدرستي",
@@ -27,19 +26,13 @@ export const MADRASATI_OFFICIAL_LOGIN_COPY = {
   statusReady: "جاهز لفتح مدرستي",
   statusOpened: "تم فتح مدرستي. أكمل تسجيل الدخول ثم عد إلى هذه الصفحة.",
   statusReturned: "تمت العودة إلى ورقة",
-  popupBlocked:
-    "تعذر فتح نافذة مدرستي. يرجى السماح بالنوافذ المنبثقة ثم المحاولة مرة أخرى.",
-  closeBlocked:
-    "تعذر إغلاق نافذة مدرستي تلقائياً. يمكنك إغلاقها يدوياً ثم متابعة العمل في ورقة.",
+  popupBlocked: "تعذر فتح نافذة مدرستي. يرجى السماح بالنوافذ المنبثقة ثم المحاولة مرة أخرى.",
+  closeBlocked: "تعذر إغلاق نافذة مدرستي تلقائياً. يمكنك إغلاقها يدوياً ثم متابعة العمل في ورقة.",
   verificationNote:
     "ورقاء لا تتحقق من نتيجة تسجيل الدخول في متصفحك ولا تستلم بيانات الاعتماد أو ملفات تعريف الارتباط.",
 } as const;
 
-export type MadrasatiOfficialLoginPhase =
-  | "ready"
-  | "opened"
-  | "returned"
-  | "blocked";
+export type MadrasatiOfficialLoginPhase = "ready" | "opened" | "returned" | "blocked";
 
 export type MadrasatiLoginWindowHandle = {
   closed: boolean;
@@ -55,9 +48,7 @@ export type OpenMadrasatiLoginWindowResult = {
 
 export type CloseMadrasatiLoginWindowResult = "closed" | "already-closed" | "blocked";
 
-export function getMadrasatiOfficialLoginStatus(
-  phase: MadrasatiOfficialLoginPhase,
-): string {
+export function getMadrasatiOfficialLoginStatus(phase: MadrasatiOfficialLoginPhase): string {
   switch (phase) {
     case "opened":
       return MADRASATI_OFFICIAL_LOGIN_COPY.statusOpened;
@@ -72,11 +63,7 @@ export function getMadrasatiOfficialLoginStatus(
 
 export function openMadrasatiLoginWindow(
   current: MadrasatiLoginWindowHandle | null,
-  openWindow: (
-    url: string,
-    name: string,
-    features: string,
-  ) => MadrasatiLoginWindowHandle | null,
+  openWindow: (url: string, name: string, features: string) => MadrasatiLoginWindowHandle | null,
 ): OpenMadrasatiLoginWindowResult {
   if (current && !current.closed) {
     try {
