@@ -19,6 +19,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 const LEGACY_UI_FILES = [
   "src/platform/integration/connectors/madrasati/components/madrasati-auth-page.tsx",
+  "src/platform/integration/connectors/madrasati/components/madrasati-official-login.tsx",
+  "src/platform/integration/connectors/madrasati/madrasati-official-login.ts",
   "src/routes/_authenticated/madrasati-login.tsx",
   "src/routes/connect-school.tsx",
   "src/routes/_authenticated/settings.tsx",
@@ -35,10 +37,22 @@ describe("Madrasati legacy password / fake auth removal", () => {
     for (const relative of LEGACY_UI_FILES) {
       const source = readFileSync(join(ROOT, relative), "utf8");
       assert.equal(
-        /\btype=["']password["']|\bpassword\s*[:=]|كلمة المرور/i.test(source),
+        /\btype=["']password["']/.test(source),
         false,
-        `${relative} must not collect Madrasati passwords`,
+        `${relative} must not render a password field`,
       );
+      assert.equal(
+        /\bpassword\s*[:=]/.test(source),
+        false,
+        `${relative} must not assign or submit a password`,
+      );
+      if (source.includes("كلمة المرور")) {
+        assert.match(
+          source,
+          /ولا تمر عبر ورقة/,
+          `${relative} may mention passwords only to say they never pass through Waraqa`,
+        );
+      }
       assert.equal(
         /syncMadrasatiSchedule\s*\(/.test(source),
         false,
